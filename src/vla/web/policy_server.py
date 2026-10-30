@@ -62,8 +62,11 @@ def serve(server,path):
                         response,values=server.handle(header,arrays)
                         send_packet(connection,response,values)
                     except Exception as error:
-                        send_packet(connection,{'kind':'error','request_id':header.get('request_id',-1),
-                                                'error_type':type(error).__name__,'error':str(error)})
+                        try:
+                            send_packet(connection,{'kind':'error','request_id':header.get('request_id',-1),
+                                                    'error_type':type(error).__name__,'error':str(error)})
+                        except OSError:
+                            pass  # A timed-out/disconnected caller must not kill the model service.
         finally:
             path.unlink(missing_ok=True)
 

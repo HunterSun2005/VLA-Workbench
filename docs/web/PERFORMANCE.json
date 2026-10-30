@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-30",
+  "kind": "synthetic dual-arm, three cameras, no hardware",
+  "duration_s": 600.033,
+  "camera_resolution": [
+    320,
+    240
+  ],
+  "telemetry_signals": 56,
+  "websocket_hz": 9.88,
+  "telemetry_hz": 19.96,
+  "camera_fps": {
+    "base": 9.54,
+    "left_wrist": 9.54,
+    "right_wrist": 9.54
+  },
+  "sample_age_ms": {
+    "p50": 50.9,
+    "p95": 96.6
+  },
+  "stable_window_after_s": 360,
+  "rss_mib": {
+    "runner": {
+      "min": 73.09,
+      "max": 73.86,
+      "final": 73.09
+    },
+    "web": {
+      "min": 49.98,
+      "max": 50.02,
+      "final": 50.02
+    }
+  },
+  "cpu_percent_one_core_median": {
+    "runner": 6.2,
+    "web": 2.3
+  },
+  "notes": [
+    "Sample age is server-side, not camera-to-screen or robot latency.",
+    "RSS history reaches its 6000-sample bound around 300 seconds.",
+    "Final source-display and disconnected-policy-client fixes do not affect the demo sampling path."
+  ]
+}

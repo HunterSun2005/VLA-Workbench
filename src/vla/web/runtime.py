@@ -32,11 +32,14 @@ class Runtime:
         self.revision = 0
         self.seq = 0
         self.samples = deque(maxlen=6000)
-        self.status = {'state': 'starting', 'enabled': False, 'recording': False}
+        self.status = {'state': 'starting', 'enabled': False, 'recording': False, 'available_commands':['stop'], 'updated_at':time.monotonic()}
         self.frames = {}
+        self.frame_rates = {}
         self.frame_interest = {}
         self.stopped = threading.Event()
+        self.cancel_start = threading.Event()
         self.completed = False
+        self.pending_completion = None
         self.last_sample = 0.
         self.monitor_error = None
         self._threads = []
@@ -54,7 +57,7 @@ class Runtime:
                         'status': self.status, 'samples': samples,
                         'commands': list(self.results.values())[-16:], 'now': time.monotonic(),
                         'monitor_error': self.monitor_error,
-                        'cameras': {r: {'captured_at': f[0], 'encoded_at': f[2]} for r,f in self.frames.items()}}
+                        'cameras': {r: {'captured_at': f[0], 'encoded_at': f[2], 'fps': self.frame_rates.get(r)} for r,f in self.frames.items()}}
             if kind == 'camera':
                 role = message.get('role')
                 if role not in self.config.cameras:
@@ -71,12 +74,14 @@ class Runtime:
                 return self.results[cid]
             if self.completed or self.stopped.is_set():
                 raise RuntimeError('session has ended')
-            if message.get('revision') != self.revision:
+            if type(message.get('revision')) is not int or message['revision'] != self.revision:
                 raise RuntimeError('state changed; refresh before submitting')
             if message.get('operation') not in COMMANDS or not isinstance(message.get('args', {}), dict):
                 raise ValueError('unknown command')
             if any(v['status'] == 'accepted' for v in self.results.values()):
                 raise RuntimeError('another command is pending')
+            if self.backend is None and message['operation'] == 'stop':
+                self.cancel_start.set()
             self.commands.put_nowait(message)
             self.revision += 1
             record = {'command_id': cid, 'status': 'accepted', 'operation': message['operation'], 'revision': self.revision}
@@ -86,13 +91,34 @@ class Runtime:
             return record
 
     def poll_command(self):
+        if self.pending_completion is not None:
+            cid, check = self.pending_completion
+            try:
+                if not check():
+                    return
+                result = {**self.results[cid], 'status': 'completed'}
+            except Exception as error:
+                result = {**self.results[cid], 'status': 'failed', 'error': str(error)}
+            with self.lock:
+                self.results[cid] = result
+            self.pending_completion = None
+            return
         try:
             message = self.commands.get_nowait()
         except queue.Empty:
             return
         cid, op = message['command_id'], message['operation']
         try:
-            self.backend.command(op, message.get('args', {}))
+            args = message.get('args', {})
+            if set(args) - {'mode', 'outcome'} or args.get('outcome', 'success') not in ('success', 'failure'):
+                raise ValueError('invalid operation arguments')
+            if op == 'save':
+                with self.lock:
+                    self.status = {**self.status, 'state':'saving', 'saving':True, 'updated_at':time.monotonic()}
+            completion = self.backend.command(op, args)
+            if callable(completion):
+                self.pending_completion = (cid, completion)
+                return
             result = {**self.results[cid], 'status': 'completed'}
             if op == 'stop':
                 self.completed = True
@@ -113,9 +139,21 @@ class Runtime:
             with self.lock:
                 self.seq += 1
                 self.samples.append({'seq': self.seq, 'time': stamp, 'values': values})
+                if self.completed or self.stopped.is_set():
+                    return
+                if any(r['status']=='accepted' and r['operation']=='save' for r in self.results.values()):
+                    sample.update(state='saving',saving=True)
                 self.status = {**sample, 'updated_at': now, 'session_id': self.id}
+                self.monitor_error = None
         except Exception as error:
             self.monitor_error = str(error)
+
+    def _monitor(self):
+        # Backend sample() reads owner caches only. Even failed/slow telemetry is
+        # independent of the control/ROS event loop.
+        while not self.stopped.wait(.05):
+            if self.backend is not None and not self.completed:
+                self.publish()
 
     def _encode(self):
         import cv2
@@ -141,6 +179,9 @@ class Runtime:
                                                [cv2.IMWRITE_JPEG_QUALITY, 75])
                     if ok:
                         with self.lock:
+                            if old and stamp>old[0]:
+                                rate=1/(stamp-old[0])
+                                self.frame_rates[role]=.8*self.frame_rates.get(role,rate)+.2*rate
                             self.frames[role] = (stamp, encoded.tobytes(), time.monotonic())
             except Exception as error:
                 self.monitor_error = str(error)
@@ -161,9 +202,24 @@ class Runtime:
         class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
             daemon_threads = True
             request_queue_size = 16
+            slots = threading.BoundedSemaphore(16)
+            def process_request(self, request, address):
+                if not self.slots.acquire(blocking=False):
+                    self.shutdown_request(request)
+                    return
+                try:
+                    super().process_request(request,address)
+                except BaseException:
+                    self.slots.release()
+                    raise
+            def process_request_thread(self, request, address):
+                try:
+                    super().process_request_thread(request,address)
+                finally:
+                    self.slots.release()
         self.server = Server(str(self.directory/'control.sock'), Handler)
         (self.directory/'control.sock').chmod(0o600)
-        for target in (self.server.serve_forever, self._encode):
+        for target in (self.server.serve_forever, self._encode, self._monitor):
             thread = threading.Thread(target=target, daemon=True)
             thread.start()
             self._threads.append(thread)

@@ -12,10 +12,11 @@ from .processes import Children, clean_environment, hardware_environment, interp
 from .telemetry import descriptors, extra_signals, vector, franky_values, ros_values
 
 
-def make_backend(config, directory, root):
+def make_backend(config, directory, root, *, cancelled=lambda:False):
     cls = ROSBackend if config.ros else FrankyBackend
     result = cls.__new__(cls)
     result.resources = ExitStack()
+    result.cancelled = cancelled
     try:
         result.__init__(config, directory, root)
     except BaseException:
@@ -43,6 +44,8 @@ class BaseBackend:
         self.events = (self.events + [str(text)])[-10:]
 
     def check_children(self):
+        if getattr(self,'cancelled',lambda:False)():
+            raise RuntimeError('session startup cancelled')
         now = time.monotonic()
         if now >= self._next_health:
             self._next_health = now + .5
@@ -65,7 +68,7 @@ class BaseBackend:
         import socket
         deadline = time.monotonic()+300
         while time.monotonic() < deadline:
-            self.children.check()
+            self.check_children()
             if socket_path.exists():
                 try:
                     with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
@@ -160,12 +163,13 @@ class BaseBackend:
         active = c.episode_active if hasattr(c,'episode_active') else c._recording
         result = c._latest_policy_result
         human = c._intervention
-        actual = ('gamepad' if human else 'rlt' if result and result.phase > .5 else 'vla') if active else 'idle'
+        actual = ('gamepad' if human else 'waiting' if result is None else 'rlt' if result.phase > .5 else 'vla') if active else 'idle'
         setup = getattr(c,'_setup_teleop',None)
         controls = getattr(c,'_gamepad_controls',None) if active else setup
         arms = {a: {'source': actual, 'speed': 'fixed', 'speed_scale': None} for a in self.arms}
         if controls is not None:
-            arms['left'].update(speed='fast' if controls.high_speed else 'normal', speed_scale=controls.speed_scale)
+            arms['left'].update(speed='fast' if controls.high_speed else 'normal', speed_scale=controls.speed_scale,
+                                transition=abs(controls.speed_scale-(controls.config.speed_modes.high_multiplier if controls.high_speed else 1.))>1e-6)
         ops = ['enable','pause','record','save','discard','stop']
         if hasattr(c,'recover_fault'):
             ops.append('recover')
@@ -208,6 +212,7 @@ class FrankyBackend(BaseBackend):
             robot_class = module.FrankaRobotiq31DRobot if config.schema == '31d' else module.FrankaRobotiqRobot
             self.robot = robot_class(replace(control.robot,calibration_dir=self.directory/'calibration'))
             self.resources.callback(self.robot.disconnect)
+            self.check_children()
             self.robot.connect()
             self.session = module.RecordingSession(control,recording,self.robot,receiver,store,report=self.report)
             self.resources.callback(self._abort_recording)
@@ -235,6 +240,7 @@ class FrankyBackend(BaseBackend):
             self.collector = FrankyRolloutCollector(replace(rollout,gamepad_profile='sft_record'),self.robot,joy_receiver=receiver)
             self.resources.callback(self.collector.close)
             self.collector.set_control_mode(config.mode)
+            self.check_children()
             self.robot.connect()
             self.collector._gamepad_controls.capture_initial_pose(self.robot.get_control_state())
             self.session = None
@@ -333,7 +339,8 @@ class FrankyBackend(BaseBackend):
                       'elapsed_s': time.monotonic()-s.started_at if s.worker else 0.,
                       'critical': s.phase.active, 'error': c.reason if c.mode == 'fault' else None,
                       'arms': {'left': {'source':'gamepad','speed':'fast' if c.high_speed else 'normal',
-                                        'speed_scale':c.speed_scale}},
+                                        'speed_scale':c.speed_scale,
+                                        'transition':abs(c.speed_scale-(c.config.speed_modes.high_multiplier if c.high_speed else 1.))>1e-6}},
                       'available_commands':['enable','pause','record','save','discard','recover','stop','critical'],
                       'modes':[], 'actual_source':'gamepad',
                       'outcomes':['success','failure'] if self.config.schema == '31d' else ['success']}
@@ -409,7 +416,7 @@ class ROSBackend(BaseBackend):
         self.children.start('hardware',['/bin/bash',str(resource('datacollection/start_teleop/start_teleop.sh'))],env)
         deadline = time.monotonic()+180
         while not (self.directory/'hardware.ready').exists():
-            self.children.check()
+            self.check_children()
             if time.monotonic() > deadline:
                 raise TimeoutError('ROS hardware startup timed out; see hardware.log')
             time.sleep(.1)
@@ -576,7 +583,7 @@ class ROSBackend(BaseBackend):
                       'frames':len(r._states),'saving':False,
                       'elapsed_s':time.monotonic()-self.record_started if r.is_recording and self.record_started else 0.,
                       'error':self.storage_fault or next((n.managed_fault for n in self.arbiters if n.managed_fault),None),
-                      'actual_source':'gello','arms':{a:{'source':n.mode.value,'speed':'fixed','speed_scale':None}
+                      'actual_source':'gello','arms':{a:{'source':n.mode.value,'speed':'fixed','speed_scale':None,'transition':n.mode.value=='returning_to_gello'}
                                                       for a,n in zip(self.arms,self.arbiters)},
                       'available_commands':['enable','pause','record','save','discard','recover','stop'],'modes':[], 'outcomes':['success']}
         values = ros_values(latest,self.arms)

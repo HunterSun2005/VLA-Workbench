@@ -35,28 +35,32 @@ def main():
                 backend = DemoBackend(config, args.directory)
             else:
                 from .backends import make_backend
-                backend = make_backend(config, args.directory, args.root)
+                backend = make_backend(config, args.directory, args.root, cancelled=runtime.cancel_start.is_set)
             runtime.backend = backend
             while not runtime.completed and not interrupted:
                 started = time.monotonic()
                 runtime.poll_command()
                 if not runtime.completed:
                     backend.tick()
-                    runtime.publish()
                 time.sleep(max(0., .005-(time.monotonic()-started)))
             runtime.status = {**runtime.status, 'state': 'stopped', 'enabled': False}
         except BaseException as error:
             traceback.print_exc()
-            runtime.status = {**runtime.status, 'state': 'fault', 'enabled': False, 'error': str(error)}
+            runtime.status = {**runtime.status, 'state': 'stopped' if runtime.cancel_start.is_set() else 'fault', 'enabled': False, 'error': str(error)}
         finally:
+            runtime.stopped.set()
             try:
                 if backend is not None:
                     backend.close()
             except Exception as error:
                 traceback.print_exc()
                 runtime.status = {**runtime.status, 'state': 'fault', 'error': str(error)}
+            for cid, command in list(runtime.results.items()):
+                if command['status'] == 'accepted':
+                    runtime.results[cid] = {**command, 'status':'completed' if command['operation']=='stop' and runtime.cancel_start.is_set() else 'failed',
+                                            'error':None if runtime.cancel_start.is_set() else 'session ended before completion'}
             result = {'session_id': runtime.id, 'revision': runtime.revision, 'seq': runtime.seq,
-                      'status': runtime.status, 'samples': [], 'commands': list(runtime.results.values()),
+                      'status': {**runtime.status, 'final': True}, 'samples': [], 'commands': list(runtime.results.values()),
                       'now': time.monotonic(), 'cameras': {}}
             (args.directory/'final.json').write_text(json.dumps(plain(result), allow_nan=False))
             runtime.close()

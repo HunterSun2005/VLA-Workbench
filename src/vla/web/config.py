@@ -101,7 +101,9 @@ def preflight(config, *, demo=False, root=None):
         if not config.resume and target.exists() and (not target.is_dir() or any(target.iterdir())):
             errors.append('输出目录非空；请选择续采或新目录')
     if config.ros:
-        ws = Path(config.ros_workspace or root / 'ros_ws')
+        ws = Path(config.ros_workspace or root / 'ros_ws').expanduser().resolve()
+        if ws != (root / 'ros_ws').resolve():
+            errors.append('面板仅使用 VLA_ROOT/ros_ws，避免继承外部 ROS overlay')
         if not (ws / 'install/local_setup.bash').is_file():
             errors.append(f'ROS 工作空间未构建: {ws}')
         if not Path('/opt/ros/humble/setup.bash').is_file():
@@ -116,8 +118,18 @@ def preflight(config, *, demo=False, root=None):
                     for key in (f'{arm}_ROBOT_IP', f'{arm}_ROBOTIQ_PORT'):
                         if not hardware.get(key):
                             errors.append(f'ROS 硬件配置缺少 {key}')
-                if config.source == 'gello' and not hardware.get('GELLO_CONFIG'):
-                    errors.append('GELLO 采集需要显式 GELLO_CONFIG 配置路径')
+                if config.source == 'gello':
+                    if not hardware.get('GELLO_CONFIG'):
+                        errors.append('GELLO 采集需要显式 GELLO_CONFIG 配置路径')
+                    else:
+                        import yaml
+                        source = Path(hardware['GELLO_CONFIG'])
+                        if not source.is_absolute():
+                            source = ws/'src/franka_gello_state_publisher/config'/source
+                        entries = yaml.safe_load(source.read_text())
+                        expected = {'left','right'} if config.arms == 'dual' else {'left'}
+                        if not isinstance(entries,dict) or not expected.issubset({v.get('namespace') for v in entries.values() if isinstance(v,dict)}):
+                            errors.append('GELLO 配置缺少所选机械臂 namespace')
             except (ValueError, OSError, TypeError) as error:
                 errors.append(str(error))
     if config.workflow == 'deploy':

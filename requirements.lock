@@ -62,6 +62,7 @@ examples-rclpy-minimal-publisher==0.15.5
 examples-rclpy-minimal-service==0.15.5
 examples-rclpy-minimal-subscriber==0.15.5
 Farama-Notifications==0.0.6
+fastapi==0.115.12
 filelock==4.2.4
 franka-msgs==1.0.0
 franky-control==1.1.4
@@ -250,6 +251,7 @@ six==1.17.0
 smmap==5.0.3
 srdfdom==2.0.7
 sros2==0.10.9
+starlette==0.46.2
 statistics-msgs==1.2.3
 std-msgs==4.9.2
 std-srvs==4.9.2
@@ -285,6 +287,7 @@ tzdata==2026.6
 unique-identifier-msgs==2.2.1
 urdfdom-py==1.2.1
 urllib3==2.8.0
+uvicorn==0.34.2
 vision-msgs==4.1.1
 visualization-msgs==4.9.2
 wandb==0.27.2

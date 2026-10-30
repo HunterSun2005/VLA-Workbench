@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VLA · 操作面板</title><link rel="stylesheet" href="/static/vendor/uPlot.min.css"><link rel="stylesheet" href="/static/panel.css"></head>
+<body>
+<header><div class="brand"><span class="mark">V</span><div><strong>VLA</strong><small>机器人操作面板</small></div></div><nav><button id="collectTab" class="selected">数据采集</button><button id="deployTab">推理部署</button></nav><div class="connection"><span id="dot" class="dot"></span><span id="connection">连接中</span><span id="demo" class="badge" hidden>模拟设备</span></div></header>
+<main><aside>
+<section class="card setup"><div class="section-title"><h2>会话配置</h2><span class="muted">启动前设置</span></div>
+<details id="sessionConfig" open><summary>配置参数</summary><form id="setup">
+<label>机械臂<select name="arms"><option value="single_left">单左臂</option><option value="dual">双臂 · 左 + 右</option></select></label>
+<label>遥操作输入源<select name="source"><option value="gamepad">Gamepad</option><option value="gello">GELLO</option></select></label>
+<label id="schemaField">采集格式<select name="schema"><option value="standard">标准</option><option value="31d">31D · 力矩与速度</option></select></label>
+<label>任务描述<textarea name="task" rows="2" placeholder="描述本次操作任务" required>将物体放入目标位置</textarea></label>
+<label>数据集输出目录<input name="dataset_root" placeholder="/绝对路径/数据集"></label>
+<label class="check"><input name="resume" type="checkbox">续采已有数据集</label>
+<label>采集／部署 YAML（GELLO 不使用）<input name="config_path" placeholder="留空使用对应默认配置"></label>
+<div id="modelFields" hidden><label>模型类型<select name="policy_kind"><option value="rlt">RLT · 包含 VLA 主干</option><option value="sft">PI0.5 SFT · 仅 VLA</option></select></label><label>模型目录<input name="policy_path" placeholder="/模型/checkpoint"></label><label>Tokenizer 目录<input name="tokenizer_path" placeholder="/模型/tokenizer"></label><label>分类头目录<input name="handover_path" placeholder="自动模式所需"></label></div>
+<details><summary>环境与 ROS 配置</summary><label>模型 Python<input name="model_python"></label><label>ROS 工作空间<input name="ros_workspace" placeholder="仅 VLA_ROOT/ros_ws"></label><label>ROS 硬件 JSON<input name="ros_config" placeholder="IP、相机、串口等配置文件"></label></details>
+<div class="row"><button type="button" id="preflight">检查配置</button><button type="submit" id="start" class="primary">启动会话</button></div>
+</form></details><div id="preflightResult" class="muted"></div></section>
+<section class="card controls"><h2>会话操作</h2><div class="row"><button data-op="enable" class="primary">启用控制</button><button data-op="pause" class="warn">软件暂停</button></div><div class="row"><button data-op="record">开始回合</button><button data-op="save">成功 · 保存</button></div><div class="row"><button data-op="save" data-outcome="failure">失败 · 保存</button><button data-op="discard">丢弃当前回合</button></div><div class="row"><button data-op="critical">Critical 标注</button><button data-op="next_subtask">下一阶段</button></div><div class="row"><button data-op="intervention">接管 / 归还策略</button><button data-op="recover">恢复故障</button></div><button data-op="stop" class="danger full">停止会话</button><p class="hint">关闭网页后任务继续运行；重连可恢复监控。暂停沿用采集端行为，可能丢弃当前回合。</p></section>
+</aside><article>
+<section class="status-bar card"><div><span class="eyebrow">当前状态</span><strong id="state">尚未启动</strong></div><div><span class="eyebrow">EPISODE</span><strong id="episode">—</strong></div><div><span class="eyebrow">帧数 / 时长</span><strong id="frames">—</strong></div><div><span class="eyebrow">实际控制来源</span><strong id="source">—</strong></div><div><span class="eyebrow">更新状态</span><strong id="freshness">等待数据</strong></div></section>
+<div id="error" class="error" hidden></div>
+<section id="policy" class="card policy" hidden><div><span class="eyebrow">策略模式</span><div class="segmented"><button data-mode="vla">VLA</button><button data-mode="rlt">RLT</button><button data-mode="auto">分类头自动</button></div></div><div><span class="eyebrow">切换状态</span><strong id="modeState">—</strong></div><div><span class="eyebrow">分类头 P(RLT)</span><strong id="probability">—</strong></div><div><span class="eyebrow">推理 / RTC</span><strong id="latency">—</strong></div></section>
+<section><div class="section-title"><h2>实时相机</h2><span class="muted">共享缓存 · 最新帧</span></div><div id="cameras" class="cameras"></div></section>
+<section class="card charts"><div class="section-title"><div><h2>机械臂遥测</h2><p class="muted">实测数据 · 选择需要关注的维度</p></div><div class="row compact"><select id="window"><option value="10">近 10 秒</option><option value="60" selected>近 60 秒</option><option value="300">近 300 秒</option></select><button id="freeze">暂停图表</button></div></div><div id="armStatus" class="arm-status"></div><details id="signalDetails"><summary>显示维度 <span class="muted">位置 / 姿态 / 关节 / 速度 / 力矩 / 夹爪</span></summary><div class="row compact"><button id="hideAll">全部隐藏</button><button id="defaults">恢复默认</button></div><div id="signals"></div></details><div id="plots"></div><p id="emptyPlots" class="empty">启用会话后显示实时数据。默认只显示 TCP XYZ 与夹爪。</p></section>
+<details class="card logs"><summary>最近命令与会话事件</summary><pre id="events">等待会话</pre></details>
+</article></main><footer>VLA · 本地操作面板 <span>监控与控制进程隔离 · 不自动恢复运动</span></footer>
+<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script></body></html>

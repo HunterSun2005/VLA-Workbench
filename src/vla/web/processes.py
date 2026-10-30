@@ -44,7 +44,7 @@ def interpreter_command(python, args, *, ros=False, root=None, workspace=None):
               'export CMAKE_PREFIX_PATH="/opt/openrobots:${CMAKE_PREFIX_PATH:-}"; '
               'shift 3; exec /usr/bin/python3 "$@"')
     return ['/bin/bash','--noprofile','--norc','-ec',script,'vla-ros',
-            str(workspace or root/'ros_ws'),str(root),str(Path(__file__).resolve().parents[2]),*args]
+            str(workspace or root/'ros_ws'),str(root),str(root/'src'),*args]
 
 
 class Children:

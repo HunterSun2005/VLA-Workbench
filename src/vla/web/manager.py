@@ -17,7 +17,8 @@ from .protocol import request
 def process_identity(pid):
     try:
         # Linux /proc start time distinguishes PID reuse.
-        return Path(f'/proc/{pid}/stat').read_text().rsplit(')',1)[1].split()[19]
+        parts = Path(f'/proc/{pid}/stat').read_text().rsplit(')',1)[1].split()
+        return None if parts[0] == 'Z' else parts[19]
     except (OSError, IndexError):
         return None
 

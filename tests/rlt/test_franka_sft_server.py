@@ -33,20 +33,26 @@ def test_takeover_collector_accepts_pure_sft_without_online_or_rtc():
     assert collector._phase == "vla"
 
 
-def test_sft_server_resets_queue_on_episode_or_takeover_return():
+@pytest.mark.parametrize("arm_count", [1, 2])
+def test_sft_server_resets_queue_on_episode_or_takeover_return(arm_count):
     server = object.__new__(Server)
     server.task, server.fingerprint, server.device = "task", "weights", "cpu"
+    server.action_dim = 10 * arm_count
+    server.robot_type = "franka_robotiq_dual" if arm_count == 2 else "franka_robotiq"
+    server.camera_keys = ["observation.images.base", "observation.images.left_wrist"]
+    if arm_count == 2:
+        server.camera_keys.append("observation.images.right_wrist")
+    server.contract = {"camera_shapes_hwc": {key: [224,224,3] for key in server.camera_keys}}
     server.torch = torch
     server.prepare = lambda obs, *_: obs
     server.pre = server.post = lambda value: value
-    server.policy = SimpleNamespace(reset=Mock(), select_action=Mock(return_value=torch.zeros(1, 10)))
-    arrays = {"observation.state": np.zeros(10),
-              "observation.images.base": np.zeros((224, 224, 3), dtype=np.uint8),
-              "observation.images.left_wrist": np.zeros((224, 224, 3), dtype=np.uint8)}
+    server.policy = SimpleNamespace(reset=Mock(), select_action=Mock(return_value=torch.zeros(1, server.action_dim)))
+    arrays = {"observation.state": np.zeros(server.action_dim),
+              **{key: np.zeros((224,224,3), dtype=np.uint8) for key in server.camera_keys}}
     header = {"kind": "infer", "phase": "vla", "reset_episode": True}
     _, action = server.handle(header, arrays)
     server.policy.reset.assert_called_once()
-    assert action["action"].shape == (10,)
+    assert action["action"].shape == (server.action_dim,)
     server.handle({**header, "reset_episode": False}, arrays)
     assert server.policy.reset.call_count == 1
     server.handle(header, arrays)

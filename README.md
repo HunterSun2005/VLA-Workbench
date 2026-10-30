@@ -25,6 +25,16 @@ source scripts/model_env.sh
 
 `requirements.lock` 固定本次实际验证的 Python 依赖。需要复现本机 Conda 原生包时，用 `conda create -n vla --file conda-linux-64.lock` 替代第一行。模型环境为 Python 3.12；ROS 使用系统 Python 3.10。
 
+## Web 采集与部署面板
+
+```bash
+python -m pip install -r requirements-web.lock
+python -m pip install --no-deps '.[web]'
+vla-web --demo --root /data0/sht/VLA
+```
+
+访问 `http://127.0.0.1:8765`。Demo 不连接硬件；实际会话取消 `--demo` 并配置设备和模型。支持单左臂／双臂、相机与可选遥测、采集及 VLA/RLT/自动部署。浏览器退出后任务继续运行。配置、软件暂停语义及限制见 [Web 面板说明](docs/WEB_PANEL.md)，离线证据见 [Web 验收](docs/web/VALIDATION.md)。
+
 ## 专用 ROS 工作空间
 
 在单独终端操作，不激活模型环境：

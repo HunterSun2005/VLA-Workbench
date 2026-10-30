@@ -1,0 +1,175 @@
+"""Small localhost HTTP facade; all device operations live in the detached runner."""
+from __future__ import annotations
+import argparse
+import asyncio
+import base64
+from contextlib import asynccontextmanager
+import hmac
+from importlib.resources import files
+import os
+from pathlib import Path
+import secrets
+from urllib.parse import urlsplit
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from .config import SessionConfig, preflight
+from .manager import Manager
+
+
+def create_app(root=None, *, demo=False):
+    manager = Manager(root or os.environ.get('VLA_ROOT',Path.cwd()),demo=demo)
+    token = secrets.token_urlsafe(32)
+    app = FastAPI(docs_url=None,redoc_url=None)
+    app.state.manager = manager
+    app.state.token = token
+    app.state.sockets = 0
+    app.state.streams = 0
+    app.add_middleware(TrustedHostMiddleware,allowed_hosts=['localhost','127.0.0.1','[::1]'])
+    static = Path(str(files('vla.web').joinpath('static')))
+    app.mount('/static',StaticFiles(directory=static),name='static')
+
+    def valid_origin(headers):
+        origin=headers.get('origin')
+        if origin is None:
+            return True
+        parsed=urlsplit(origin)
+        return parsed.scheme in ('http','https') and parsed.netloc == headers.get('host')
+
+    @app.middleware('http')
+    async def guard(request, call_next):
+        from fastapi.responses import JSONResponse
+        if not valid_origin(request.headers):
+            return JSONResponse({'detail':'origin rejected'},status_code=403)
+        if request.method not in ('GET','HEAD'):
+            if not hmac.compare_digest(request.headers.get('x-vla-token',''),token):
+                return JSONResponse({'detail':'request token rejected'},status_code=403)
+            length=request.headers.get('content-length')
+            if length and (not length.isdigit() or int(length)>32768):
+                return JSONResponse({'detail':'request too large'},status_code=413)
+        response=await call_next(request)
+        response.headers['X-Content-Type-Options']='nosniff'
+        response.headers['Cache-Control']='no-store'
+        response.headers['Content-Security-Policy']="default-src 'self'; img-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'"
+        return response
+
+    @app.get('/')
+    async def index():
+        return FileResponse(static/'index.html')
+
+    @app.get('/api/bootstrap')
+    async def bootstrap():
+        return {'token':token,'demo':demo,'active':await asyncio.to_thread(manager.active),
+                'defaults':{'model_python':os.environ.get('VLA_PYTHON',__import__('sys').executable)},
+                'camera_roles':['base','left_wrist','right_wrist']}
+
+    @app.post('/api/preflight')
+    async def check(request:Request):
+        try:
+            config=SessionConfig.parse(await request.json())
+            return await asyncio.to_thread(preflight,config,demo=demo,root=manager.root)
+        except (ValueError,TypeError) as error:
+            raise HTTPException(422,str(error)) from error
+
+    @app.post('/api/sessions',status_code=202)
+    async def create(request:Request):
+        try:
+            return await asyncio.to_thread(manager.create,await request.json())
+        except (ValueError,TypeError) as error:
+            raise HTTPException(422,str(error)) from error
+        except (RuntimeError,OSError) as error:
+            raise HTTPException(409,str(error)) from error
+
+    @app.post('/api/commands',status_code=202)
+    async def command(request:Request):
+        message=await request.json()
+        if not isinstance(message,dict) or set(message)-{'session_id','command_id','revision','operation','args'}:
+            raise HTTPException(422,'invalid command envelope')
+        try:
+            return await asyncio.to_thread(manager.rpc,'command',**message)
+        except (ValueError,TypeError) as error:
+            raise HTTPException(422,str(error)) from error
+        except (RuntimeError,OSError) as error:
+            raise HTTPException(409,str(error)) from error
+
+    @app.get('/api/state')
+    async def state():
+        try:
+            return await asyncio.to_thread(manager.rpc,'state')
+        except (RuntimeError,OSError) as error:
+            return {'status':{'state':'unavailable','error':str(error)},'active':manager.active()}
+
+    @app.websocket('/api/live')
+    async def live(ws:WebSocket):
+        protocols=ws.headers.get('sec-websocket-protocol','').split(',')
+        if (not valid_origin(ws.headers) or len(protocols)!=2
+                or not hmac.compare_digest(protocols[1].strip(),token) or app.state.sockets>=4):
+            await ws.close(code=1008)
+            return
+        await ws.accept(subprotocol='vla')
+        app.state.sockets+=1
+        seq=-1
+        session=None
+        try:
+            while True:
+                started=asyncio.get_running_loop().time()
+                record=None
+                try:
+                    record=await asyncio.to_thread(manager.active)
+                    if record and record['session_id'] != session:
+                        session,seq=record['session_id'],-1
+                    result=await asyncio.to_thread(manager.rpc,'state',since=seq)
+                    result['config']=record['config'] if record else None
+                    seq=result.get('seq',seq)
+                except (OSError,RuntimeError,ValueError) as error:
+                    result={'status':{'state':'starting' if record and record['alive'] else 'unavailable',
+                                      'error':str(error)},'active':record,'samples':[]}
+                await asyncio.wait_for(ws.send_json(result),timeout=2)
+                await asyncio.sleep(max(0.,.1-(asyncio.get_running_loop().time()-started)))
+        except (WebSocketDisconnect,RuntimeError,OSError,asyncio.TimeoutError):
+            pass
+        finally:
+            app.state.sockets-=1
+
+    @app.get('/api/cameras/{role}')
+    async def camera(role:str):
+        if role not in ('base','left_wrist','right_wrist'):
+            raise HTTPException(404,'unknown camera')
+        if app.state.streams>=12:
+            raise HTTPException(429,'too many camera viewers')
+        app.state.streams+=1
+        async def frames():
+            previous=None
+            try:
+                while True:
+                    try:
+                        frame=await asyncio.to_thread(manager.rpc,'camera',role=role)
+                        if frame['jpeg'] and previous!=frame['captured_at']:
+                            previous=frame['captured_at']
+                            data=base64.b64decode(frame['jpeg'])
+                            yield (b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: '+str(len(data)).encode()+
+                                   b'\r\n\r\n'+data+b'\r\n')
+                    except (OSError,RuntimeError,ValueError):
+                        pass
+                    await asyncio.sleep(.1)
+            finally:
+                app.state.streams-=1
+        return StreamingResponse(frames(),media_type='multipart/x-mixed-replace; boundary=frame')
+
+    return app
+
+
+def main():
+    p=argparse.ArgumentParser(description='VLA local operations panel; no hardware starts until a session is created.')
+    p.add_argument('--demo',action='store_true')
+    p.add_argument('--root',type=Path,default=Path(os.environ.get('VLA_ROOT',Path.cwd())))
+    p.add_argument('--port',type=int,default=8765)
+    args=p.parse_args()
+    import uvicorn
+    uvicorn.run(create_app(args.root,demo=args.demo),host='127.0.0.1',port=args.port,access_log=False)
+
+
+if __name__=='__main__':
+    main()
