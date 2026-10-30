@@ -182,5 +182,33 @@
   {
     "source": "website/assets/videos/teleop.mp4",
     "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "src/evo_rlt/cli/build_bucket_cache.py",
+    "reason": "removed after dependency audit; see CLEANUP.md"
+  },
+  {
+    "source": "src/evo_rlt/cli/build_transition_cache.py",
+    "reason": "removed after dependency audit; see CLEANUP.md"
+  },
+  {
+    "source": "src/evo_rlt/cli/train_chunk_actor_critic.py",
+    "reason": "removed after dependency audit; see CLEANUP.md"
+  },
+  {
+    "source": "src/evo_rlt/experimental/__init__.py",
+    "reason": "removed after dependency audit; see CLEANUP.md"
+  },
+  {
+    "source": "src/evo_rlt/experimental/model_path_resolution.py",
+    "reason": "removed after dependency audit; see CLEANUP.md"
+  },
+  {
+    "source": "src/evo_rlt/experimental/visualize_rlt_warmup_compare.py",
+    "reason": "removed after dependency audit; see CLEANUP.md"
+  },
+  {
+    "source": "tests/rlt/test_checkpoint_visualization_metadata.py",
+    "reason": "removed after dependency audit; see CLEANUP.md"
   }
 ]

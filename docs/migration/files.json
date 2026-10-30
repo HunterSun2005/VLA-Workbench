@@ -2,1231 +2,1435 @@
   {
     "source": "datacollection/__init__.py",
     "destination": "src/vla/datacollection/__init__.py",
-    "sha256": "236bf43a6fd7c4b544ff00b4c62d0a2f8eb11545185f82993c90e4cda737a2fc"
+    "sha256": "236bf43a6fd7c4b544ff00b4c62d0a2f8eb11545185f82993c90e4cda737a2fc",
+    "destination_sha256": "236bf43a6fd7c4b544ff00b4c62d0a2f8eb11545185f82993c90e4cda737a2fc"
   },
   {
     "source": "datacollection/franka_robotiq_dual/__init__.py",
     "destination": "src/vla/datacollection/franka_robotiq_dual/__init__.py",
-    "sha256": "8914082c9b85aa038f784e644a4003716302315bf9a1d8717a25d03513418f13"
+    "sha256": "8914082c9b85aa038f784e644a4003716302315bf9a1d8717a25d03513418f13",
+    "destination_sha256": "8914082c9b85aa038f784e644a4003716302315bf9a1d8717a25d03513418f13"
   },
   {
     "source": "datacollection/franka_robotiq_dual/auto_record.py",
     "destination": "src/vla/datacollection/franka_robotiq_dual/auto_record.py",
-    "sha256": "9e869372999850e4fba3507d4e6e085646cf92c5487c671fd6e74bf8e185645f"
+    "sha256": "9e869372999850e4fba3507d4e6e085646cf92c5487c671fd6e74bf8e185645f",
+    "destination_sha256": "da25fe9265816ac0dfa03e31d21faa0c7983be5df51efd9b881df4e8becabb5f"
   },
   {
     "source": "datacollection/franka_robotiq_dual/gamepad_record.py",
     "destination": "src/vla/datacollection/franka_robotiq_dual/gamepad_record.py",
-    "sha256": "5a1f2e67c2912b13ba2dde3a9dbf2740410bf94f037523afe5ddbb2229324dcd"
+    "sha256": "5a1f2e67c2912b13ba2dde3a9dbf2740410bf94f037523afe5ddbb2229324dcd",
+    "destination_sha256": "5d4ef0523153e30bc3d22b8575f5c681485b13e5380b13a9292a6c2e34135e94"
   },
   {
     "source": "datacollection/franka_robotiq_dual/report.py",
     "destination": "src/vla/datacollection/franka_robotiq_dual/report.py",
-    "sha256": "20652094d3078551068c3d7d4865e88b96404050cab0bdd7c2927dfcae60206e"
+    "sha256": "20652094d3078551068c3d7d4865e88b96404050cab0bdd7c2927dfcae60206e",
+    "destination_sha256": "20652094d3078551068c3d7d4865e88b96404050cab0bdd7c2927dfcae60206e"
   },
   {
     "source": "datacollection/franka_robotiq_dual/schema.py",
     "destination": "src/vla/datacollection/franka_robotiq_dual/schema.py",
-    "sha256": "cf4218bf7a696ded9f3f643f8eac71ad6052aa271e66c6430e583b24ce55ade3"
+    "sha256": "cf4218bf7a696ded9f3f643f8eac71ad6052aa271e66c6430e583b24ce55ade3",
+    "destination_sha256": "f3052e38cef7b794bdd2fee5649ca52d5d374c3de46cfec74bc586816432e0d0"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/__init__.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/__init__.py",
-    "sha256": "b9956fa45d61b5d8baf89d23de3434d0a80a367860c05964178f3b069b08f917"
+    "sha256": "b9956fa45d61b5d8baf89d23de3434d0a80a367860c05964178f3b069b08f917",
+    "destination_sha256": "b9956fa45d61b5d8baf89d23de3434d0a80a367860c05964178f3b069b08f917"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/collect.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/collect.py",
-    "sha256": "493fde328e6fe50b46c2c74286e6e0882de2533862d58b031ca4570db9a3d846"
+    "sha256": "493fde328e6fe50b46c2c74286e6e0882de2533862d58b031ca4570db9a3d846",
+    "destination_sha256": "493fde328e6fe50b46c2c74286e6e0882de2533862d58b031ca4570db9a3d846"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/collect_franky.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/collect_franky.py",
-    "sha256": "2c5d723236fac1ce8cadd1497738f7013644c0b421d6145689ea2d96eedb8a44"
+    "sha256": "2c5d723236fac1ce8cadd1497738f7013644c0b421d6145689ea2d96eedb8a44",
+    "destination_sha256": "4a07906d17a26641700044385fc57c33251257638fec2d7033d602f0f7494593"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/collect_ros.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/collect_ros.py",
-    "sha256": "72b11eb52ad5f21dcf80a151414ea14fd54812878aaeb3c270d1f042c121ab25"
+    "sha256": "72b11eb52ad5f21dcf80a151414ea14fd54812878aaeb3c270d1f042c121ab25",
+    "destination_sha256": "ca149ac67ab01486f6ac7521a92956cfb34e7681e6a0ceee2a8624d53c0186cc"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/common.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/common.py",
-    "sha256": "c9822d144742bb40d8ff1f2149c15de6b2f00a4766a9b91c21827c3ff08eeaeb"
+    "sha256": "c9822d144742bb40d8ff1f2149c15de6b2f00a4766a9b91c21827c3ff08eeaeb",
+    "destination_sha256": "c9822d144742bb40d8ff1f2149c15de6b2f00a4766a9b91c21827c3ff08eeaeb"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/config.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/config.py",
-    "sha256": "e5c42cdc1e88548648be495e40076d22b73b0c244553a8a8596688f79741bd90"
+    "sha256": "e5c42cdc1e88548648be495e40076d22b73b0c244553a8a8596688f79741bd90",
+    "destination_sha256": "0fa929617997533555b6e2e1a3b8b9b843d12e1bb31d8bf6de3df8cd66ae157f"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/configs/dual.yaml",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/configs/dual.yaml",
-    "sha256": "8022bbf101acea8131ae648b17227d811ec5883c1ffafede800ad01bf2a93371"
+    "sha256": "8022bbf101acea8131ae648b17227d811ec5883c1ffafede800ad01bf2a93371",
+    "destination_sha256": "55791911d0598f37b798bc016acf19b6890b66517c856eebf6c07918b2d969c1"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/configs/single_left.yaml",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/configs/single_left.yaml",
-    "sha256": "be2f94e40727c7459bdff3e80a56e7b2117096224e5c8689ebc4a60b0d628ae5"
+    "sha256": "be2f94e40727c7459bdff3e80a56e7b2117096224e5c8689ebc4a60b0d628ae5",
+    "destination_sha256": "76103e935d6ca062b6eb1b79889fdc8913c9b2192ef2b4a9627456aea0794800"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/configs/single_left_31d.yaml",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/configs/single_left_31d.yaml",
-    "sha256": "a2cdc730df0ad1008f38dee6230d139d8d1479b68a112e5d1aeb9c4930432d89"
+    "sha256": "a2cdc730df0ad1008f38dee6230d139d8d1479b68a112e5d1aeb9c4930432d89",
+    "destination_sha256": "5f5534ec50e451777e8067cc2dff1cbe3d286e18824f0b4dc5674246c9d55156"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/configs/single_left_sft_takeover.yaml",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/configs/single_left_sft_takeover.yaml",
-    "sha256": "18e7522721a1a6aea5df85ce937ea22f4858f21c82fda6dc52376a1b5ab53ff0"
+    "sha256": "18e7522721a1a6aea5df85ce937ea22f4858f21c82fda6dc52376a1b5ab53ff0",
+    "destination_sha256": "ddcd0b9bd0ad0b599dc4115403bba655054bad3039d0140c084bc8514d3e45b0"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/gamepad.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/gamepad.py",
-    "sha256": "026cbefbee260e30da0dce19dda1954d12600e731359fd7a9f15305d6a7c3b77"
+    "sha256": "026cbefbee260e30da0dce19dda1954d12600e731359fd7a9f15305d6a7c3b77",
+    "destination_sha256": "026cbefbee260e30da0dce19dda1954d12600e731359fd7a9f15305d6a7c3b77"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/joy_bridge.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/joy_bridge.py",
-    "sha256": "11ae86143bcca217163c8f9608dbb771768dc751b9928ba9c2d2fa5aad2aa1b3"
+    "sha256": "11ae86143bcca217163c8f9608dbb771768dc751b9928ba9c2d2fa5aad2aa1b3",
+    "destination_sha256": "f2c90f2cfc452cc23f708ec22814848778c871d26180de2695478699a251dae5"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/joy_transport.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/joy_transport.py",
-    "sha256": "1dccda5bfcdd42cf36d5241632ea1fee61b10e503cfc42ce4cdcc602f57b5ad2"
+    "sha256": "1dccda5bfcdd42cf36d5241632ea1fee61b10e503cfc42ce4cdcc602f57b5ad2",
+    "destination_sha256": "1dccda5bfcdd42cf36d5241632ea1fee61b10e503cfc42ce4cdcc602f57b5ad2"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/policy_client.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/policy_client.py",
-    "sha256": "af5be3379142436f7137ed7d2327f4e4182e5a988803fa19a5fca77e3a43ecdc"
+    "sha256": "af5be3379142436f7137ed7d2327f4e4182e5a988803fa19a5fca77e3a43ecdc",
+    "destination_sha256": "6bf451b5eb1e1ec032107db7c163412a0ce26a081777dc2437b0d42d7c69ee6f"
   },
   {
     "source": "datacollection/franka_robotiq_rollout/safety.py",
     "destination": "src/vla/datacollection/franka_robotiq_rollout/safety.py",
-    "sha256": "2aacca455ff02cedbdb56786576e494f5ba26f5eaff7db6c601e23818f3fd88b"
+    "sha256": "2aacca455ff02cedbdb56786576e494f5ba26f5eaff7db6c601e23818f3fd88b",
+    "destination_sha256": "60581a07a4939a465eeb937bfba3a5ecf79b71288502209532a2fc1761ff66f4"
   },
   {
     "source": "datacollection/franka_robotiq_single_left/__init__.py",
     "destination": "src/vla/datacollection/franka_robotiq_single_left/__init__.py",
-    "sha256": "c1bfc348640c6c9d5eb65cf4f5e6239633b8606ec8708695abf98b35ffc46535"
+    "sha256": "c1bfc348640c6c9d5eb65cf4f5e6239633b8606ec8708695abf98b35ffc46535",
+    "destination_sha256": "c1bfc348640c6c9d5eb65cf4f5e6239633b8606ec8708695abf98b35ffc46535"
   },
   {
     "source": "datacollection/franka_robotiq_single_left/auto_record.py",
     "destination": "src/vla/datacollection/franka_robotiq_single_left/auto_record.py",
-    "sha256": "f6f53c868b592cefd3292c14f5439d5f8246f8f7828352e91b0d84e54afb4d97"
+    "sha256": "f6f53c868b592cefd3292c14f5439d5f8246f8f7828352e91b0d84e54afb4d97",
+    "destination_sha256": "8c672e4da3bd763b641a75b3a6708a5a13ea8601881b17b903831df370ee3507"
   },
   {
     "source": "datacollection/franka_robotiq_single_left/check_31d_collection.py",
     "destination": "src/vla/datacollection/franka_robotiq_single_left/check_31d_collection.py",
-    "sha256": "0e36b28730e4ad657ba58251feaa788c51fe10d9a2dc0b15debca8b0babab9e7"
+    "sha256": "0e36b28730e4ad657ba58251feaa788c51fe10d9a2dc0b15debca8b0babab9e7",
+    "destination_sha256": "b576cd0885e95f9e0404051c83948d5a94e0e4c3b8eebeed5d2bcbe7c7b84ea7"
   },
   {
     "source": "datacollection/franka_robotiq_single_left/schema.py",
     "destination": "src/vla/datacollection/franka_robotiq_single_left/schema.py",
-    "sha256": "080bc782fbba8c7e431fae49e51742e0ca67a97934e7cf8461bf78d1d319d27b"
+    "sha256": "080bc782fbba8c7e431fae49e51742e0ca67a97934e7cf8461bf78d1d319d27b",
+    "destination_sha256": "8febb362e3b1e0f6e4b2aa2d22aab949ce47ffdbdf8ac40b0982568cbb0ded86"
   },
   {
     "source": "datacollection/franka_robotiq_single_left/schema_31d.py",
     "destination": "src/vla/datacollection/franka_robotiq_single_left/schema_31d.py",
-    "sha256": "2268827b489bf6d9605bc25add53a5f45e27ff79e394119e548ecf809377fa7f"
+    "sha256": "2268827b489bf6d9605bc25add53a5f45e27ff79e394119e548ecf809377fa7f",
+    "destination_sha256": "8db2b3aed2d49016107def77247f86b629a4b46c3935177368a69ec02f9c4c24"
   },
   {
     "source": "datacollection/franka_robotiq_single_left/v30_writer.py",
     "destination": "src/vla/datacollection/franka_robotiq_single_left/v30_writer.py",
-    "sha256": "1fa95bc858f882ed0df5bb912d3b1d0ae3234a24448949fe279a7b4bd72520f3"
+    "sha256": "1fa95bc858f882ed0df5bb912d3b1d0ae3234a24448949fe279a7b4bd72520f3",
+    "destination_sha256": "4442c88794c49da7d3da2fedcf612d1be2a5d0b8d76e8d5ab89c0deb37291100"
   },
   {
     "source": "datacollection/resize_lerobot_videos.py",
     "destination": "src/vla/datacollection/resize_lerobot_videos.py",
-    "sha256": "9d766539ee7c6315fc6e719d6104b55c3cdd2f7b7f5ed90f556e9c05695da8d3"
+    "sha256": "9d766539ee7c6315fc6e719d6104b55c3cdd2f7b7f5ed90f556e9c05695da8d3",
+    "destination_sha256": "bb34158d397a69e63f197da53572b3d2f8211a26d6e0cc8690584501ae192aec"
   },
   {
     "source": "datacollection/start_teleop/check_controller_state.py",
     "destination": "src/vla/datacollection/start_teleop/check_controller_state.py",
-    "sha256": "f7b323d3092c67fad38a6f1d899ad24c27e4374261722d1437da3abef14e704d"
+    "sha256": "f7b323d3092c67fad38a6f1d899ad24c27e4374261722d1437da3abef14e704d",
+    "destination_sha256": "cbb2cbfef5ec553128757b9c8fdf697d8f62747cec88bb9bedede00072f0aa1b"
   },
   {
     "source": "datacollection/start_teleop/clean_teleop.sh",
     "destination": "src/vla/datacollection/start_teleop/clean_teleop.sh",
-    "sha256": "e49d0ad8bdd35e3e26c88fd0f05c53dd3e0aa93a048ee76031b187f0ae4d8fc1"
+    "sha256": "e49d0ad8bdd35e3e26c88fd0f05c53dd3e0aa93a048ee76031b187f0ae4d8fc1",
+    "destination_sha256": "58cbd1598c874e7b03be1daf53fc227af4ccc4e2ba072cd66a2a740d5983fa48"
   },
   {
     "source": "datacollection/start_teleop/configs/single_left_gamepad.yaml",
     "destination": "src/vla/datacollection/start_teleop/configs/single_left_gamepad.yaml",
-    "sha256": "98875a5f1a2cbd26be91c18b196d628c12820c3a482471d66c9bd2e976e453aa"
+    "sha256": "98875a5f1a2cbd26be91c18b196d628c12820c3a482471d66c9bd2e976e453aa",
+    "destination_sha256": "98875a5f1a2cbd26be91c18b196d628c12820c3a482471d66c9bd2e976e453aa"
   },
   {
     "source": "datacollection/start_teleop/configs/single_left_gamepad_31d.yaml",
     "destination": "src/vla/datacollection/start_teleop/configs/single_left_gamepad_31d.yaml",
-    "sha256": "1ed363a640c57ad81cabdd3351711630d2e42a9eb6b81d54cb382dfcf10775df"
+    "sha256": "1ed363a640c57ad81cabdd3351711630d2e42a9eb6b81d54cb382dfcf10775df",
+    "destination_sha256": "1ed363a640c57ad81cabdd3351711630d2e42a9eb6b81d54cb382dfcf10775df"
   },
   {
     "source": "datacollection/start_teleop/configs/single_left_gamepad_record.yaml",
     "destination": "src/vla/datacollection/start_teleop/configs/single_left_gamepad_record.yaml",
-    "sha256": "c2bdd7ed0be5d821eff79e1a830520ec0b84267ee894e2d6516fbc2a4b0cb055"
+    "sha256": "c2bdd7ed0be5d821eff79e1a830520ec0b84267ee894e2d6516fbc2a4b0cb055",
+    "destination_sha256": "c2bdd7ed0be5d821eff79e1a830520ec0b84267ee894e2d6516fbc2a4b0cb055"
   },
   {
     "source": "datacollection/start_teleop/fine_teleop.py",
     "destination": "src/vla/datacollection/start_teleop/fine_teleop.py",
-    "sha256": "4e4425904496dba597c7f14338c4225fc1120ee9e41e27d1464d569fb0b5685e"
+    "sha256": "4e4425904496dba597c7f14338c4225fc1120ee9e41e27d1464d569fb0b5685e",
+    "destination_sha256": "4e4425904496dba597c7f14338c4225fc1120ee9e41e27d1464d569fb0b5685e"
   },
   {
     "source": "datacollection/start_teleop/fr3_duo_teleop.launch.py",
     "destination": "src/vla/datacollection/start_teleop/fr3_duo_teleop.launch.py",
-    "sha256": "73f393660bcdfc92e2fe426bfa20932aaa1d743c81fe4c5235f6e594577df448"
+    "sha256": "73f393660bcdfc92e2fe426bfa20932aaa1d743c81fe4c5235f6e594577df448",
+    "destination_sha256": "73f393660bcdfc92e2fe426bfa20932aaa1d743c81fe4c5235f6e594577df448"
   },
   {
     "source": "datacollection/start_teleop/franka_kinematics.py",
     "destination": "src/vla/datacollection/start_teleop/franka_kinematics.py",
-    "sha256": "2bb06b3f773b71ece641a84928e00f84df59467fb4f6780c50d2d11e55009a84"
+    "sha256": "2bb06b3f773b71ece641a84928e00f84df59467fb4f6780c50d2d11e55009a84",
+    "destination_sha256": "2bb06b3f773b71ece641a84928e00f84df59467fb4f6780c50d2d11e55009a84"
   },
   {
     "source": "datacollection/start_teleop/gamepad_config.py",
     "destination": "src/vla/datacollection/start_teleop/gamepad_config.py",
-    "sha256": "425a5a68b068869e7586726105f34daff4013fa61925cf4e2596d9f8090db096"
+    "sha256": "425a5a68b068869e7586726105f34daff4013fa61925cf4e2596d9f8090db096",
+    "destination_sha256": "a50b3c21102155bb0501ba3b8094ec1d8a34d9b13efe267a9e43f6417b0b20ac"
   },
   {
     "source": "datacollection/start_teleop/gamepad_preview.py",
     "destination": "src/vla/datacollection/start_teleop/gamepad_preview.py",
-    "sha256": "f1d6b6c32271dbb9b8789999deb5eeec71284df55d2f72ad5b61cca49e9542ea"
+    "sha256": "f1d6b6c32271dbb9b8789999deb5eeec71284df55d2f72ad5b61cca49e9542ea",
+    "destination_sha256": "1e227ba058446fea29022dcbb58e2de3f1d8f8bca59d7c17e97597bef4bd2182"
   },
   {
     "source": "datacollection/start_teleop/gamepad_record.py",
     "destination": "src/vla/datacollection/start_teleop/gamepad_record.py",
-    "sha256": "53a75a321b1970cadbd8fd2a246b14f8ce6d02bc4c91d19d36e6d6bfacf8ff20"
+    "sha256": "53a75a321b1970cadbd8fd2a246b14f8ce6d02bc4c91d19d36e6d6bfacf8ff20",
+    "destination_sha256": "282c4028173d4074e255add954dc5a3ec77597930756cf4df4e37eeccdf7ef2c"
   },
   {
     "source": "datacollection/start_teleop/gamepad_record_31d.py",
     "destination": "src/vla/datacollection/start_teleop/gamepad_record_31d.py",
-    "sha256": "6082ef64d558a8f9182995dc8840571535091eef4b2b54bf17d45887511226de"
+    "sha256": "6082ef64d558a8f9182995dc8840571535091eef4b2b54bf17d45887511226de",
+    "destination_sha256": "04cf96095a1b6003f0e8b34107bb88ca8ed9f9069a51801cb318bbd1890af181"
   },
   {
     "source": "datacollection/start_teleop/gamepad_recording.py",
     "destination": "src/vla/datacollection/start_teleop/gamepad_recording.py",
-    "sha256": "f58f928304c87ebb87a67f0e039639bf59f2afa69133d0412f870bc90aaced37"
+    "sha256": "f58f928304c87ebb87a67f0e039639bf59f2afa69133d0412f870bc90aaced37",
+    "destination_sha256": "2fd8dba70cff435fe29a63e53a5f26a78a628053600d013b3314064818ba858b"
   },
   {
     "source": "datacollection/start_teleop/gamepad_recording_31d.py",
     "destination": "src/vla/datacollection/start_teleop/gamepad_recording_31d.py",
-    "sha256": "6e0b29ac2ff18a63bb7549631573b6fe0e918ef4c494e0ac4b7afd4e43cdc08a"
+    "sha256": "6e0b29ac2ff18a63bb7549631573b6fe0e918ef4c494e0ac4b7afd4e43cdc08a",
+    "destination_sha256": "2bcadfed1ab466e44887fb969be4f1f040c4bb4d1a3c3da5da28a2861402a3b9"
   },
   {
     "source": "datacollection/start_teleop/gamepad_teleop.py",
     "destination": "src/vla/datacollection/start_teleop/gamepad_teleop.py",
-    "sha256": "867a94d47e0139f7e126a1bf880740147d4eae9be8bacd2535ee6f3b1e302321"
+    "sha256": "867a94d47e0139f7e126a1bf880740147d4eae9be8bacd2535ee6f3b1e302321",
+    "destination_sha256": "0b12b44996e7169e817d595d1f4423cfa8d37c5acb230043d8b740c458718d8e"
   },
   {
     "source": "datacollection/start_teleop/gello_duo_fine.launch.py",
     "destination": "src/vla/datacollection/start_teleop/gello_duo_fine.launch.py",
-    "sha256": "412cc3681d5ca341fabc74ce679763a84b0ffcf97332c81d5ed5a2a114b33fe1"
+    "sha256": "412cc3681d5ca341fabc74ce679763a84b0ffcf97332c81d5ed5a2a114b33fe1",
+    "destination_sha256": "412cc3681d5ca341fabc74ce679763a84b0ffcf97332c81d5ed5a2a114b33fe1"
   },
   {
     "source": "datacollection/start_teleop/lib/controllers.sh",
     "destination": "src/vla/datacollection/start_teleop/lib/controllers.sh",
-    "sha256": "bf143b7ee9ec73fa4c6e8f30e8ce1fbc9f1947c615cfae799c79ca8748f53867"
+    "sha256": "bf143b7ee9ec73fa4c6e8f30e8ce1fbc9f1947c615cfae799c79ca8748f53867",
+    "destination_sha256": "62f27307ce9903e85c5544f94dd5b8709753abe8f1de74563e1d812f2d5e89b5"
   },
   {
     "source": "datacollection/start_teleop/lib/environment.sh",
     "destination": "src/vla/datacollection/start_teleop/lib/environment.sh",
-    "sha256": "22edd7554c4124529f4bb704c11453e4a5c00b344ab83f6f963287b794d10813"
+    "sha256": "22edd7554c4124529f4bb704c11453e4a5c00b344ab83f6f963287b794d10813",
+    "destination_sha256": "f3801df686fbfcc08239d018fe33cc134edce02cc5161a76ac62b2e6c06fe6ba"
   },
   {
     "source": "datacollection/start_teleop/lib/keyboard.sh",
     "destination": "src/vla/datacollection/start_teleop/lib/keyboard.sh",
-    "sha256": "280436258a94395cefe453ec9073e9c5b5830020a87c618bb21b9742b24177ce"
+    "sha256": "280436258a94395cefe453ec9073e9c5b5830020a87c618bb21b9742b24177ce",
+    "destination_sha256": "280436258a94395cefe453ec9073e9c5b5830020a87c618bb21b9742b24177ce"
   },
   {
     "source": "datacollection/start_teleop/lib/processes.sh",
     "destination": "src/vla/datacollection/start_teleop/lib/processes.sh",
-    "sha256": "49e3b28c505255ee1e39599164c8b6be2bdd2868fa2060e70211ca1f9ad797eb"
+    "sha256": "49e3b28c505255ee1e39599164c8b6be2bdd2868fa2060e70211ca1f9ad797eb",
+    "destination_sha256": "408f83cb172e6dca9e8b1f652927663649147948e8ca274124014aa3ebf4dacf"
   },
   {
     "source": "datacollection/start_teleop/prepare_runtime_configs.py",
     "destination": "src/vla/datacollection/start_teleop/prepare_runtime_configs.py",
-    "sha256": "b361a7f5886089d53791b901c34f32391392bf8294f25df754d7c7071ed14a7a"
+    "sha256": "b361a7f5886089d53791b901c34f32391392bf8294f25df754d7c7071ed14a7a",
+    "destination_sha256": "b361a7f5886089d53791b901c34f32391392bf8294f25df754d7c7071ed14a7a"
   },
   {
     "source": "datacollection/start_teleop/robot_31d.py",
     "destination": "src/vla/datacollection/start_teleop/robot_31d.py",
-    "sha256": "51ae866d234dfaa3fc3750df0951a9cadabb4e287bf7d1ae69192a7066d92dd0"
+    "sha256": "51ae866d234dfaa3fc3750df0951a9cadabb4e287bf7d1ae69192a7066d92dd0",
+    "destination_sha256": "47078dc43b1bd5e0d568f06d697b46c63d76d19827b5a673f467a74e6e0355fd"
   },
   {
     "source": "datacollection/start_teleop/robotiq_duo_teleop.launch.py",
     "destination": "src/vla/datacollection/start_teleop/robotiq_duo_teleop.launch.py",
-    "sha256": "b9f9db35c966835545aa29cb2c25332bf51a7dcae01a9e06982105ed50b1e542"
+    "sha256": "b9f9db35c966835545aa29cb2c25332bf51a7dcae01a9e06982105ed50b1e542",
+    "destination_sha256": "b9f9db35c966835545aa29cb2c25332bf51a7dcae01a9e06982105ed50b1e542"
   },
   {
     "source": "datacollection/start_teleop/rollout_gamepad.py",
     "destination": "src/vla/datacollection/start_teleop/rollout_gamepad.py",
-    "sha256": "6ac8c5b9c1231fbbb88901b649d0753419833a1d3f6df696f98da22f49b332a4"
+    "sha256": "6ac8c5b9c1231fbbb88901b649d0753419833a1d3f6df696f98da22f49b332a4",
+    "destination_sha256": "0a33035e10a4597151a60ca485febb81c2db227a9d69e545e758d7837db1816b"
   },
   {
     "source": "datacollection/start_teleop/start_gamepad_record_dual.sh",
     "destination": "src/vla/datacollection/start_teleop/start_gamepad_record_dual.sh",
-    "sha256": "719f2ed1f72d2063b8a25b49415de9f6433bd2f77e4ca70a2f17157fd109f3c6"
+    "sha256": "719f2ed1f72d2063b8a25b49415de9f6433bd2f77e4ca70a2f17157fd109f3c6",
+    "destination_sha256": "e4bda8a204f1a48dcc715acdb9a694c61e512fff7184ef8e92d0da9a0baf4aee"
   },
   {
     "source": "datacollection/start_teleop/start_gamepad_record_sft_single_left.sh",
     "destination": "src/vla/datacollection/start_teleop/start_gamepad_record_sft_single_left.sh",
-    "sha256": "bbe8d06227fe97a044331d05e9d921c78acbed660dd84a357196dfc3d76ec563"
+    "sha256": "bbe8d06227fe97a044331d05e9d921c78acbed660dd84a357196dfc3d76ec563",
+    "destination_sha256": "859ed385dcaacb1b5dca04365320e8e87f521c1e20915cc5421a6e15c537dcf5"
   },
   {
     "source": "datacollection/start_teleop/start_gamepad_record_single_left.sh",
     "destination": "src/vla/datacollection/start_teleop/start_gamepad_record_single_left.sh",
-    "sha256": "9aed61b7474d72a68e486b5eec5bf31f75ec34da8561c004b36477755fab6ca2"
+    "sha256": "9aed61b7474d72a68e486b5eec5bf31f75ec34da8561c004b36477755fab6ca2",
+    "destination_sha256": "be859c287b14269150e582a3730e6ef445c2a6cbf6e398b27ad66542d7fe8b33"
   },
   {
     "source": "datacollection/start_teleop/start_gamepad_record_single_left_31d.sh",
     "destination": "src/vla/datacollection/start_teleop/start_gamepad_record_single_left_31d.sh",
-    "sha256": "c13597f4b6eb78c56bb9e02a161893ea72c0ca4af15410ee27ff9fe5f67968e2"
+    "sha256": "c13597f4b6eb78c56bb9e02a161893ea72c0ca4af15410ee27ff9fe5f67968e2",
+    "destination_sha256": "b3e1b20898ead06f0d7795ec7740350aa761eb1f1e8d09728ab4e3b541478aa0"
   },
   {
     "source": "datacollection/start_teleop/start_gamepad_single_left.sh",
     "destination": "src/vla/datacollection/start_teleop/start_gamepad_single_left.sh",
-    "sha256": "680947e5d047ab4b3708c705ee55cb81afeab2ba60fc9b628b3d314acb73bfef"
+    "sha256": "680947e5d047ab4b3708c705ee55cb81afeab2ba60fc9b628b3d314acb73bfef",
+    "destination_sha256": "413f04008aaa90eeb6d5e24d248e90d6ac62395f0cdb5332fb2fec6585cf554d"
   },
   {
     "source": "datacollection/start_teleop/start_pi05_gamepad_takeover_single_left.sh",
     "destination": "src/vla/datacollection/start_teleop/start_pi05_gamepad_takeover_single_left.sh",
-    "sha256": "7a7e28fe9f221ea4801f350db685effc63db3a4f4e0ea8accb8adcaa024d12bd"
+    "sha256": "7a7e28fe9f221ea4801f350db685effc63db3a4f4e0ea8accb8adcaa024d12bd",
+    "destination_sha256": "8d087bd401e767b32d80f438dd8269513bf6decb044a133e26100defdb1553f7"
   },
   {
     "source": "datacollection/start_teleop/start_rollout_duo.sh",
     "destination": "src/vla/datacollection/start_teleop/start_rollout_duo.sh",
-    "sha256": "196eef57b4bdc91d7d0754167dc32d701e61f968b2d86942032c8554bafc5dba"
+    "sha256": "196eef57b4bdc91d7d0754167dc32d701e61f968b2d86942032c8554bafc5dba",
+    "destination_sha256": "196eef57b4bdc91d7d0754167dc32d701e61f968b2d86942032c8554bafc5dba"
   },
   {
     "source": "datacollection/start_teleop/start_rollout_single_left.sh",
     "destination": "src/vla/datacollection/start_teleop/start_rollout_single_left.sh",
-    "sha256": "a0219991a90296cae44498fcf079f6c97828740d159bdb8e4a6ebf1b4223f39b"
+    "sha256": "a0219991a90296cae44498fcf079f6c97828740d159bdb8e4a6ebf1b4223f39b",
+    "destination_sha256": "eb65d99400d3e45c4b888bc39e42010180393ddd2cbd7f0af93be6d64e99e6dc"
   },
   {
     "source": "datacollection/start_teleop/start_teleop.sh",
     "destination": "src/vla/datacollection/start_teleop/start_teleop.sh",
-    "sha256": "97a77dd9367e0678a1ed699e66927d1f99493ff0a6ce4ecb2897c6c081184844"
+    "sha256": "97a77dd9367e0678a1ed699e66927d1f99493ff0a6ce4ecb2897c6c081184844",
+    "destination_sha256": "d48fbefaf6ad84d44b66c6b216dfc800713226d0fabaae11826f5058a82c7aaf"
   },
   {
     "source": "datacollection/start_teleop/start_teleop_duo.sh",
     "destination": "src/vla/datacollection/start_teleop/start_teleop_duo.sh",
-    "sha256": "9d4b913385deb20d7e7cc19615e8331457651c8400b0a680eef5b8d4059a9778"
+    "sha256": "9d4b913385deb20d7e7cc19615e8331457651c8400b0a680eef5b8d4059a9778",
+    "destination_sha256": "9d4b913385deb20d7e7cc19615e8331457651c8400b0a680eef5b8d4059a9778"
   },
   {
     "source": "datacollection/start_teleop/start_teleop_single_left.sh",
     "destination": "src/vla/datacollection/start_teleop/start_teleop_single_left.sh",
-    "sha256": "565408da4d9a32e2304328173f81f1c5f4d493588c0ec45ee47aca0b6feb1768"
+    "sha256": "565408da4d9a32e2304328173f81f1c5f4d493588c0ec45ee47aca0b6feb1768",
+    "destination_sha256": "565408da4d9a32e2304328173f81f1c5f4d493588c0ec45ee47aca0b6feb1768"
   },
   {
     "source": "pyproject.toml",
     "destination": "pyproject.toml",
-    "sha256": "989a61b4e16cf71f73f0b4de05b774c9aec8e01cbdf6b2cf7309944d7bd6d04c"
+    "sha256": "989a61b4e16cf71f73f0b4de05b774c9aec8e01cbdf6b2cf7309944d7bd6d04c",
+    "destination_sha256": "59303788f28d17cb3240bb427d964ee516ab1ad71e738e9fd32c7257c3efccb0"
   },
   {
     "source": "scripts/cleanup_franka_pi05_rtc.sh",
     "destination": "scripts/franka/cleanup_franka_pi05_rtc.sh",
-    "sha256": "f2ab40a4ee343793f6664b77276bc3763bd29b9ff4a20a99245af45d2ecd8734"
+    "sha256": "f2ab40a4ee343793f6664b77276bc3763bd29b9ff4a20a99245af45d2ecd8734",
+    "destination_sha256": "f80ae078cd7925e195fd654d7a69b2d5893347c2601f4d11ea7a4fea0fa9f514"
   },
   {
     "source": "scripts/rollback_franka_realtime_cpus.sh",
     "destination": "scripts/franka/rollback_franka_realtime_cpus.sh",
-    "sha256": "896a2ad786139d4d2efd2372f80198217924cff37fab077a09ca55632e348398"
+    "sha256": "896a2ad786139d4d2efd2372f80198217924cff37fab077a09ca55632e348398",
+    "destination_sha256": "4e91b4a604348b58251b176d3d372f67a7511152bd10213df2dcc6d15d42af1a"
   },
   {
     "source": "scripts/setup_franka_realtime_cpus.sh",
     "destination": "scripts/franka/setup_franka_realtime_cpus.sh",
-    "sha256": "0b021d71f9898c5619e2056262fb37872d4905b247104805e5bb0408c6284b97"
+    "sha256": "0b021d71f9898c5619e2056262fb37872d4905b247104805e5bb0408c6284b97",
+    "destination_sha256": "4308f080df3e9dbe15c6f48843b7ac2c485c06e76b5cd5ee2fb4170495c8955b"
   },
   {
     "source": "scripts/system/configure_franka_realtime_runtime.sh",
     "destination": "scripts/system/configure_franka_realtime_runtime.sh",
-    "sha256": "a4883e798f004263a979225e5538b0d37d69062b84150dd3d0f3fe2c1f572a6e"
+    "sha256": "a4883e798f004263a979225e5538b0d37d69062b84150dd3d0f3fe2c1f572a6e",
+    "destination_sha256": "a4883e798f004263a979225e5538b0d37d69062b84150dd3d0f3fe2c1f572a6e"
   },
   {
     "source": "scripts/system/franka-realtime-runtime.service",
     "destination": "scripts/system/franka-realtime-runtime.service",
-    "sha256": "e4d1da6737920a9a69ee971e8d523afbe6047467781903886c30668fd1caa73f"
+    "sha256": "e4d1da6737920a9a69ee971e8d523afbe6047467781903886c30668fd1caa73f",
+    "destination_sha256": "6a63493895eadad8c9f4987aaf3af29d3883b8513e7ada4ac5ed09c0256c04a0"
   },
   {
     "source": "scripts/system/franka-xhci-irq.service",
     "destination": "scripts/system/franka-xhci-irq.service",
-    "sha256": "fc4cc7b8994ada966f082405414e1eee73d8d374c3c89ee6b5ea94678cf80a61"
+    "sha256": "fc4cc7b8994ada966f082405414e1eee73d8d374c3c89ee6b5ea94678cf80a61",
+    "destination_sha256": "8b82d700cd41e00bacbb0d9d99dcd4a80515f49d45da56edf93cb27db6fae11f"
   },
   {
     "source": "scripts/system/set_franka_xhci_irq.sh",
     "destination": "scripts/system/set_franka_xhci_irq.sh",
-    "sha256": "c15419eda6bcc147f1161bbf093b82a6235c001c1b09fb45549ca29e46c5c24b"
+    "sha256": "c15419eda6bcc147f1161bbf093b82a6235c001c1b09fb45549ca29e46c5c24b",
+    "destination_sha256": "c15419eda6bcc147f1161bbf093b82a6235c001c1b09fb45549ca29e46c5c24b"
   },
   {
     "source": "scripts/train_franka_pi05_sft_screens.sh",
     "destination": "scripts/franka/train_franka_pi05_sft_screens.sh",
-    "sha256": "8de81695119eb1aba2edd5175ddd0dd1552c93906eb4283cbe66a1f49cb7ccb0"
+    "sha256": "8de81695119eb1aba2edd5175ddd0dd1552c93906eb4283cbe66a1f49cb7ccb0",
+    "destination_sha256": "2578993a487d4ff36bb76424018f2dbb8e08a4a48e8ad181763af0d307410276"
   },
   {
     "source": "scripts/verify_franka_realtime_cpus.sh",
     "destination": "scripts/franka/verify_franka_realtime_cpus.sh",
-    "sha256": "89d347dc9865ce82d03d5cc3975e06b4cbb38ab81e9eb7389d062cc374931ec1"
+    "sha256": "89d347dc9865ce82d03d5cc3975e06b4cbb38ab81e9eb7389d062cc374931ec1",
+    "destination_sha256": "89d347dc9865ce82d03d5cc3975e06b4cbb38ab81e9eb7389d062cc374931ec1"
   },
   {
     "source": "src/evo_rlt/__init__.py",
     "destination": "src/vla/__init__.py",
-    "sha256": "2dae1a6f3a170e3e48d5b047cf63c77d654fd9fbfce454637f43270b72641ce1"
+    "sha256": "2dae1a6f3a170e3e48d5b047cf63c77d654fd9fbfce454637f43270b72641ce1",
+    "destination_sha256": "b7888357ca82cdf3b1e88f2bfe4e0dce526babad14cf65a2a9d7a42518625a21"
   },
   {
     "source": "src/evo_rlt/adapters/__init__.py",
     "destination": "src/vla/adapters/__init__.py",
-    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f",
+    "destination_sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/__init__.py",
     "destination": "src/vla/adapters/lerobot/__init__.py",
-    "sha256": "06a0e1e7885fc6d2f6598d773afd41eaff93e7a2cfe070fd4205e738997daa8a"
+    "sha256": "06a0e1e7885fc6d2f6598d773afd41eaff93e7a2cfe070fd4205e738997daa8a",
+    "destination_sha256": "be3d753fdb7dc6b67d6b03c942cba16496a711e8b1cb12fb0cdcb5e0b8758fae"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/checkpoint_contract.py",
     "destination": "src/vla/adapters/lerobot/checkpoint_contract.py",
-    "sha256": "1f6ec70340e5eae1054bc33eb01432ba7563999b6234e12798f0388c7b4809de"
+    "sha256": "1f6ec70340e5eae1054bc33eb01432ba7563999b6234e12798f0388c7b4809de",
+    "destination_sha256": "1f6ec70340e5eae1054bc33eb01432ba7563999b6234e12798f0388c7b4809de"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/convert_checkpoint.py",
     "destination": "src/vla/adapters/lerobot/convert_checkpoint.py",
-    "sha256": "731e5d3c677dd4a1062203d1b60c8814b0f94757c21ae3c07d450cf9d277723f"
+    "sha256": "731e5d3c677dd4a1062203d1b60c8814b0f94757c21ae3c07d450cf9d277723f",
+    "destination_sha256": "86ca480b431027afeef94903977c9e86bc8184d366d243d6fafde13d769c70fa"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/demo_loader.py",
     "destination": "src/vla/adapters/lerobot/demo_loader.py",
-    "sha256": "300b8f204909925e507427c2acc4d1c1da09f591e2f0d002501f5107c6b8af87"
+    "sha256": "300b8f204909925e507427c2acc4d1c1da09f591e2f0d002501f5107c6b8af87",
+    "destination_sha256": "240cfe8419c00b623b963cb3d8d6c5c86df8dd95dec4d655ab603c2565da3223"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/offline_dataset.py",
     "destination": "src/vla/adapters/lerobot/offline_dataset.py",
-    "sha256": "7b1597f9df56b881e910d35f881fe1ccfa154474dca4eeaf32c232930c719673"
+    "sha256": "7b1597f9df56b881e910d35f881fe1ccfa154474dca4eeaf32c232930c719673",
+    "destination_sha256": "e42c11824dbc3f512f1ca4c1f873034d12b13dc46a21df86e6f7e9ec0864185c"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/pi05_adapter.py",
     "destination": "src/vla/adapters/lerobot/pi05_adapter.py",
-    "sha256": "8a5a08502c28dd08c19e330eb230f979790205db34209e027f988e365febee20"
+    "sha256": "8a5a08502c28dd08c19e330eb230f979790205db34209e027f988e365febee20",
+    "destination_sha256": "9df8db68c2950a064098273e0078dae4df6cd97be6c4fc4d293ae0ae6c1f5760"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/__init__.py",
     "destination": "src/vla/adapters/lerobot/policies/__init__.py",
-    "sha256": "2a05f64df68a3dbf292ba825615dc5fc74c8c068715f4f7095088db622a44f58"
+    "sha256": "2a05f64df68a3dbf292ba825615dc5fc74c8c068715f4f7095088db622a44f58",
+    "destination_sha256": "cf642fcd1d48ada6500368bd22dcf47c0a203a605d426581257edb418471e673"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/action_modifier.py",
     "destination": "src/vla/adapters/lerobot/policies/action_modifier.py",
-    "sha256": "76aa9f2ccbc3fb7a1b80fd3e3422cd7fcdc7f12c8676ffa1271bc8efbcabb522"
+    "sha256": "76aa9f2ccbc3fb7a1b80fd3e3422cd7fcdc7f12c8676ffa1271bc8efbcabb522",
+    "destination_sha256": "ad243dc5b239d6215b33952cb9f86e1b3b58f4c2e8eca6a25099a76319be3c52"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/cache_manifest.py",
     "destination": "src/vla/adapters/lerobot/policies/cache_manifest.py",
-    "sha256": "0e09964a7146adff6864e6b7a4edb6d9f14498adb59b8f02552e97356f3e15d6"
+    "sha256": "0e09964a7146adff6864e6b7a4edb6d9f14498adb59b8f02552e97356f3e15d6",
+    "destination_sha256": "0e09964a7146adff6864e6b7a4edb6d9f14498adb59b8f02552e97356f3e15d6"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/configuration_rlt.py",
     "destination": "src/vla/adapters/lerobot/policies/configuration_rlt.py",
-    "sha256": "e1616146c9cae08123338d728839af5f551cba2636d8c3a4a7d70e00e7006268"
+    "sha256": "e1616146c9cae08123338d728839af5f551cba2636d8c3a4a7d70e00e7006268",
+    "destination_sha256": "a415e68c72c7c2333189735c3547e4efaaecaea1e491d6f293b1109b054ed717"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/configuration_rlt_ac.py",
     "destination": "src/vla/adapters/lerobot/policies/configuration_rlt_ac.py",
-    "sha256": "85aeba9a6db20e912f444e334b5c537daee162c7257ec67a878c0a999d448026"
+    "sha256": "85aeba9a6db20e912f444e334b5c537daee162c7257ec67a878c0a999d448026",
+    "destination_sha256": "649a7b32f1556271c021f808389022124d63036fca8720723aa0d6e96078b16e"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/configuration_rlt_token.py",
     "destination": "src/vla/adapters/lerobot/policies/configuration_rlt_token.py",
-    "sha256": "cfece788141e23321125e55e934756c93102e84e9885be18c02386a7b5c83963"
+    "sha256": "cfece788141e23321125e55e934756c93102e84e9885be18c02386a7b5c83963",
+    "destination_sha256": "b2557555640b55c2c057ab81071bfc1e75cae8624470178e64bb1d2ce3a0a826"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/configuration_schema.py",
     "destination": "src/vla/adapters/lerobot/policies/configuration_schema.py",
-    "sha256": "3899db45bc924fbf8216191c6579cc19556e22d1c3ac588e2852171f88abfb3e"
+    "sha256": "3899db45bc924fbf8216191c6579cc19556e22d1c3ac588e2852171f88abfb3e",
+    "destination_sha256": "b9bc23d3c782b9628e9903da50cc21a45151bc3811d69685019728eea38a55a7"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/dataset_rlt_ac.py",
     "destination": "src/vla/adapters/lerobot/policies/dataset_rlt_ac.py",
-    "sha256": "b4e9f039dd76fa3fb107898aee03fb3ca058f46be8aa6fdaece50c29811402a9"
+    "sha256": "b4e9f039dd76fa3fb107898aee03fb3ca058f46be8aa6fdaece50c29811402a9",
+    "destination_sha256": "4a7cfe78f170194a0f87663fbedf364d52376fe03356820c8d041021b3cf312b"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/modeling_rlt.py",
     "destination": "src/vla/adapters/lerobot/policies/modeling_rlt.py",
-    "sha256": "1d808ab5a70f651ff9ef5511b2aa30ed30e16100b7130a74e035879727671f8a"
+    "sha256": "1d808ab5a70f651ff9ef5511b2aa30ed30e16100b7130a74e035879727671f8a",
+    "destination_sha256": "e154d6f4400a1d83cea290feebc1ab0233a070c5de7367230d131da0cf6b2c50"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/modeling_rlt_ac.py",
     "destination": "src/vla/adapters/lerobot/policies/modeling_rlt_ac.py",
-    "sha256": "31fa91e9204371aaa11d8241aafba7abf399515c3fa1d2ebce4c9b07f73fb660"
+    "sha256": "31fa91e9204371aaa11d8241aafba7abf399515c3fa1d2ebce4c9b07f73fb660",
+    "destination_sha256": "74636452c5c8f1c2eb0cad8ccb0a5a6e84a770f65221565b6326e6e7c0ba2da0"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/modeling_rlt_token.py",
     "destination": "src/vla/adapters/lerobot/policies/modeling_rlt_token.py",
-    "sha256": "6c958eb57fef8527c2f551536a42c700ae137f0557e2716279a3b10988ba0b4b"
+    "sha256": "6c958eb57fef8527c2f551536a42c700ae137f0557e2716279a3b10988ba0b4b",
+    "destination_sha256": "4e3bc8c39fe85a7dff1296441016606df212a7205f7ab94c8876b8edbf4e3a6f"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/processor_rlt_ac.py",
     "destination": "src/vla/adapters/lerobot/policies/processor_rlt_ac.py",
-    "sha256": "90b28afd818335aaa23d4014acfc5b6abf7d795664417573b242383b9ca450a7"
+    "sha256": "90b28afd818335aaa23d4014acfc5b6abf7d795664417573b242383b9ca450a7",
+    "destination_sha256": "282326bc02083a2c60cac9aeb0d7b653f6a3c84de8976c72f36ebb743f10aec2"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/processor_rlt_common.py",
     "destination": "src/vla/adapters/lerobot/policies/processor_rlt_common.py",
-    "sha256": "38b5c2af2f864cc264a7a6e2fb72741d558be9fd9aecd893ec18a2ed484053f2"
+    "sha256": "38b5c2af2f864cc264a7a6e2fb72741d558be9fd9aecd893ec18a2ed484053f2",
+    "destination_sha256": "38b5c2af2f864cc264a7a6e2fb72741d558be9fd9aecd893ec18a2ed484053f2"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/policies/processor_rlt_token.py",
     "destination": "src/vla/adapters/lerobot/policies/processor_rlt_token.py",
-    "sha256": "7643eaf6c1d923841f41f21658bd644450740edba3862303204474db2930e779"
+    "sha256": "7643eaf6c1d923841f41f21658bd644450740edba3862303204474db2930e779",
+    "destination_sha256": "2dc3b772375b48c14c879bab53f7c147c2f5ebeb4dbc48c3f26aa32d18a03053"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/recording.py",
     "destination": "src/vla/adapters/lerobot/recording.py",
-    "sha256": "c8c842c851082d54e5af70bf1672d9d1ea871a79ec3979592d2915a5fc27085e"
+    "sha256": "c8c842c851082d54e5af70bf1672d9d1ea871a79ec3979592d2915a5fc27085e",
+    "destination_sha256": "c8c842c851082d54e5af70bf1672d9d1ea871a79ec3979592d2915a5fc27085e"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/registry.py",
     "destination": "src/vla/adapters/lerobot/registry.py",
-    "sha256": "8d7eedaee0eb8945c5bc742041e7691e8cce5b24c417cc732134dfb0b5a18a8a"
+    "sha256": "8d7eedaee0eb8945c5bc742041e7691e8cce5b24c417cc732134dfb0b5a18a8a",
+    "destination_sha256": "c0a1fb4c52d064f853251f87fb5c705547ab5fe92c06d0b33d029156c0fc4424"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/train_utils.py",
     "destination": "src/vla/adapters/lerobot/train_utils.py",
-    "sha256": "6de1d16e5f99c50c1809d394e1bbca78bf44661c370e681d3f21edec9e06d9d6"
+    "sha256": "6de1d16e5f99c50c1809d394e1bbca78bf44661c370e681d3f21edec9e06d9d6",
+    "destination_sha256": "8461b13d20ab5568f4ce37ebdca25108f568bf27ea5a45b2bbe146c2e5667084"
   },
   {
     "source": "src/evo_rlt/adapters/lerobot/training_config.py",
     "destination": "src/vla/adapters/lerobot/training_config.py",
-    "sha256": "6a95528485f1bbf3bcdde1dc444db19e86ce08ce5d91746b99299d50ca00d379"
+    "sha256": "6a95528485f1bbf3bcdde1dc444db19e86ce08ce5d91746b99299d50ca00d379",
+    "destination_sha256": "6a95528485f1bbf3bcdde1dc444db19e86ce08ce5d91746b99299d50ca00d379"
   },
   {
     "source": "src/evo_rlt/cli/__init__.py",
     "destination": "src/vla/cli/__init__.py",
-    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f",
+    "destination_sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
   },
   {
     "source": "src/evo_rlt/cli/annotate_phases.py",
     "destination": "src/vla/cli/annotate_phases.py",
-    "sha256": "732cad77a2fc0a9d2276432bd01dd7f14b4c5b33409f603624bf1fb52bb93b8e"
-  },
-  {
-    "source": "src/evo_rlt/cli/build_bucket_cache.py",
-    "destination": "src/vla/cli/build_bucket_cache.py",
-    "sha256": "3f63106f35710103428b7ff3f705ce11ae24f925dc5842eb82670fb06bbe8c76"
+    "sha256": "732cad77a2fc0a9d2276432bd01dd7f14b4c5b33409f603624bf1fb52bb93b8e",
+    "destination_sha256": "6a721a3e44657898a06663b7bbb5dce43c12a0f2fc61052dba4070d26a69eac1"
   },
   {
     "source": "src/evo_rlt/cli/build_handover_cache.py",
     "destination": "src/vla/cli/build_handover_cache.py",
-    "sha256": "37036a1d489237b18aafe6dd31682283f8adfd67dd4dcb0dec0b32809a8dfc42"
-  },
-  {
-    "source": "src/evo_rlt/cli/build_transition_cache.py",
-    "destination": "src/vla/cli/build_transition_cache.py",
-    "sha256": "aa18ab85bd2ab40527dbbdb1d1c7f30f78dc9d7bb12fbc5e62b3ac4962ca9fc2"
+    "sha256": "37036a1d489237b18aafe6dd31682283f8adfd67dd4dcb0dec0b32809a8dfc42",
+    "destination_sha256": "dfe6b1d9f4d954e736bb0cba8d184f7a5631a1034f8ac84bc4ae2742e101f6a5"
   },
   {
     "source": "src/evo_rlt/cli/build_transition_cache_v2.py",
     "destination": "src/vla/cli/build_transition_cache_v2.py",
-    "sha256": "c2049ef5f0223cf32b67664256f08d4ca0643d170f2a51300a747265bfb4204d"
+    "sha256": "c2049ef5f0223cf32b67664256f08d4ca0643d170f2a51300a747265bfb4204d",
+    "destination_sha256": "1ae870206cf94c59a503cf2d95f5d5ae431d446d8981cdbf7934f7f026f2260d"
   },
   {
     "source": "src/evo_rlt/cli/common.py",
     "destination": "src/vla/cli/common.py",
-    "sha256": "cd79f18a830783dbf79ec91edc64e05e7197eab091d6ab2cfd8e5f3981a5bf45"
+    "sha256": "cd79f18a830783dbf79ec91edc64e05e7197eab091d6ab2cfd8e5f3981a5bf45",
+    "destination_sha256": "428789f5671df99a9edcdbcb41e79dc6ae4e791785cd5f3a7bca69cbc09f8e6d"
   },
   {
     "source": "src/evo_rlt/cli/compute_token_variance.py",
     "destination": "src/vla/cli/compute_token_variance.py",
-    "sha256": "14dee910e4dc87a10b7fed96071af93e6562f21567201e32733aca4ee3f9796c"
+    "sha256": "14dee910e4dc87a10b7fed96071af93e6562f21567201e32733aca4ee3f9796c",
+    "destination_sha256": "6e988dc9ec15827eab6fbf5456858aa55c9a4daeb5c11cee4bf18671fdf6c742"
   },
   {
     "source": "src/evo_rlt/cli/deploy_franka_pi05_rtc.py",
     "destination": "src/vla/cli/deploy_franka_pi05_rtc.py",
-    "sha256": "3f1356ca11fb1822d28d8ba2ab1cbbc36f2067c3030422e19533ac0f45107013"
+    "sha256": "3f1356ca11fb1822d28d8ba2ab1cbbc36f2067c3030422e19533ac0f45107013",
+    "destination_sha256": "95cf4124a9f6761accb1a15b9f34a435d789de1f1c14f5c929d06ae0b5c003bc"
   },
   {
     "source": "src/evo_rlt/cli/diagnose_franka_pi05_sft.py",
     "destination": "src/vla/cli/diagnose_franka_pi05_sft.py",
-    "sha256": "44483c59e323152029b7cc4a097fa1a8c894146570534b601f17c82de8420a24"
+    "sha256": "44483c59e323152029b7cc4a097fa1a8c894146570534b601f17c82de8420a24",
+    "destination_sha256": "442639937d30fd975f31989f160bcfc623282b0665e57b194f4d6224c58fc420"
   },
   {
     "source": "src/evo_rlt/cli/extract_dataset_features.py",
     "destination": "src/vla/cli/extract_dataset_features.py",
-    "sha256": "11e5fd9de275b5083f1adbce2e437c8e7ce1e185cde19002af26442460afba82"
+    "sha256": "11e5fd9de275b5083f1adbce2e437c8e7ce1e185cde19002af26442460afba82",
+    "destination_sha256": "afe21be5720ed7e0ba5f13686556477d11d4b1f5e7d4b0f12f5708fa98556fad"
   },
   {
     "source": "src/evo_rlt/cli/merge_franka_datasets.py",
     "destination": "src/vla/cli/merge_franka_datasets.py",
-    "sha256": "db5ef8a31af30941ef2f7a1114b40d000f59de724e6f59fb4e8d2e2ae6d9edf7"
+    "sha256": "db5ef8a31af30941ef2f7a1114b40d000f59de724e6f59fb4e8d2e2ae6d9edf7",
+    "destination_sha256": "768a1f1a8d66f3530298a9b6d959db0ad709cd392f83ca38499f90b16e189409"
   },
   {
     "source": "src/evo_rlt/cli/merge_transition_caches.py",
     "destination": "src/vla/cli/merge_transition_caches.py",
-    "sha256": "1334e2e910b64c76dcd426e35d3595d03671fdc82f9ff3bdb48f21dabf6c9d7b"
+    "sha256": "1334e2e910b64c76dcd426e35d3595d03671fdc82f9ff3bdb48f21dabf6c9d7b",
+    "destination_sha256": "891aa018bc443f53ad1e797feb8e649a696270523376bcce64cfcc31ae0cf0b2"
   },
   {
     "source": "src/evo_rlt/cli/phase_annotation_web.py",
     "destination": "src/vla/cli/phase_annotation_web.py",
-    "sha256": "6463d69f41a9d278b8906a55ebdcc638565cd2e6e0b5ac22a503b17115a8a1e7"
+    "sha256": "6463d69f41a9d278b8906a55ebdcc638565cd2e6e0b5ac22a503b17115a8a1e7",
+    "destination_sha256": "3c9f867dbae1eb9a976cd6040befc5226f42e28f1cf4a500eaba106ce3003b7e"
   },
   {
     "source": "src/evo_rlt/cli/phase_annotator.html",
     "destination": "src/vla/cli/phase_annotator.html",
-    "sha256": "25b7f7a38c3bf1d3814cb6b27033da5dba0815378632ffdaa703ae3ee20cd44d"
+    "sha256": "25b7f7a38c3bf1d3814cb6b27033da5dba0815378632ffdaa703ae3ee20cd44d",
+    "destination_sha256": "44953b546525251f1260c02d0ac343a06cc7c4c12b1f5957a5742909bc2cc356"
   },
   {
     "source": "src/evo_rlt/cli/prepare_franka_sft_split.py",
     "destination": "src/vla/cli/prepare_franka_sft_split.py",
-    "sha256": "8e116465dd44a0baf1d6857a1bacc6a536299a39b8d491e9256ae8b0405a9824"
+    "sha256": "8e116465dd44a0baf1d6857a1bacc6a536299a39b8d491e9256ae8b0405a9824",
+    "destination_sha256": "3f3009ccfc22b0a80b271fe1533a0edd56161b647c960869bfa453c73930f279"
   },
   {
     "source": "src/evo_rlt/cli/prepare_mix_buckets.py",
     "destination": "src/vla/cli/prepare_mix_buckets.py",
-    "sha256": "20adb7ac3b60869962e380189d57e599c676a82c69d8f54b0b2d243db3fe2671"
+    "sha256": "20adb7ac3b60869962e380189d57e599c676a82c69d8f54b0b2d243db3fe2671",
+    "destination_sha256": "d3e23639778b4be1492abefdc276aec81b0d644579ffb106080087dbf6538917"
   },
   {
     "source": "src/evo_rlt/cli/rescale_cache_reward.py",
     "destination": "src/vla/cli/rescale_cache_reward.py",
-    "sha256": "733058ed0d144e9c4f97c20425c2f4e2ce11fd11c1e93659c4fd143f74054f69"
+    "sha256": "733058ed0d144e9c4f97c20425c2f4e2ce11fd11c1e93659c4fd143f74054f69",
+    "destination_sha256": "684962439b05c064ec6564cc2176d4c6da8aeb4480b1f1482d5d5bd3c74871f6"
   },
   {
     "source": "src/evo_rlt/cli/serve_franka_rollout.py",
     "destination": "src/vla/cli/serve_franka_rollout.py",
-    "sha256": "d55009c28157385afff6590e0672a14d8fc0685be863e91f6c0ddb3971b6cdd1"
+    "sha256": "d55009c28157385afff6590e0672a14d8fc0685be863e91f6c0ddb3971b6cdd1",
+    "destination_sha256": "ceb3c95e30b630bbc7d2dacfd8e1ca79ed9fcc0186f769ffc415bbb8566d8a29"
   },
   {
     "source": "src/evo_rlt/cli/serve_franka_sft.py",
     "destination": "src/vla/cli/serve_franka_sft.py",
-    "sha256": "9b1dc0f8b4e5646b5fb5cb61b13d9b34ccbf50ff732bf735cdbc86214bcab0a8"
+    "sha256": "9b1dc0f8b4e5646b5fb5cb61b13d9b34ccbf50ff732bf735cdbc86214bcab0a8",
+    "destination_sha256": "376c5d7632eee9b9da36257aea258c3d4132139a16d4c787fc737e643337782d"
   },
   {
     "source": "src/evo_rlt/cli/train_actor_critic_native.py",
     "destination": "src/vla/cli/train_actor_critic_native.py",
-    "sha256": "511ac4adbdfdf117fe4f9641e7b7dc1b2abceca081e33ad841d637b7ed47cf41"
-  },
-  {
-    "source": "src/evo_rlt/cli/train_chunk_actor_critic.py",
-    "destination": "src/vla/cli/train_chunk_actor_critic.py",
-    "sha256": "f06e1a6b41caf4408f48d43f023a0fbdbcf537d13e2fe00ce1305eefbeb68b32"
+    "sha256": "511ac4adbdfdf117fe4f9641e7b7dc1b2abceca081e33ad841d637b7ed47cf41",
+    "destination_sha256": "2ef22855901a466bd7168ed25813e800354c719b1ffb953323eeccd27a8d08ba"
   },
   {
     "source": "src/evo_rlt/cli/train_franka_pi05_sft.py",
     "destination": "src/vla/cli/train_franka_pi05_sft.py",
-    "sha256": "5157272a5a0e8148009d4816656fbf75be17cff38b33aa328e8f8958f48e9f80"
+    "sha256": "5157272a5a0e8148009d4816656fbf75be17cff38b33aa328e8f8958f48e9f80",
+    "destination_sha256": "171ba5c11607516a3bd020dab8208661ac029c1b52b4ba9d6f91bbd4fa4a42d5"
   },
   {
     "source": "src/evo_rlt/cli/train_handover.py",
     "destination": "src/vla/cli/train_handover.py",
-    "sha256": "480c86bb3ed5c3e91610948e85ab144b68840b69f276a58c0a3a66bb641b87c9"
+    "sha256": "480c86bb3ed5c3e91610948e85ab144b68840b69f276a58c0a3a66bb641b87c9",
+    "destination_sha256": "34408848730d37cd31517377645962ac10fe62d9463de67a3cc7b021d29a5531"
   },
   {
     "source": "src/evo_rlt/cli/train_rl_token.py",
     "destination": "src/vla/cli/train_rl_token.py",
-    "sha256": "6c46a0c46957cefb02bfcd2a325a9d9dea005c1e5433ff86e3b845e08e8cac95"
+    "sha256": "6c46a0c46957cefb02bfcd2a325a9d9dea005c1e5433ff86e3b845e08e8cac95",
+    "destination_sha256": "d8fe8a3ac54328a4dcd0cf4b098998c0f3d946540e2e307680550a65c31c589a"
   },
   {
     "source": "src/evo_rlt/cli/upgrade_rlt_training.py",
     "destination": "src/vla/cli/upgrade_rlt_training.py",
-    "sha256": "b4bd63465fdfb85d0aa397375964a6960a99568cb92b704df9269cf06befdc75"
+    "sha256": "b4bd63465fdfb85d0aa397375964a6960a99568cb92b704df9269cf06befdc75",
+    "destination_sha256": "9f6caeb49c38ae3c6a7cb618942324478de7d46a81c87c73483d39d718c5451d"
   },
   {
     "source": "src/evo_rlt/cli/validate_rl_token_inputs.py",
     "destination": "src/vla/cli/validate_rl_token_inputs.py",
-    "sha256": "3e80a1e5b5a4c95e9c2e5331da7a263a5db19d5c12f1f9121e02a190e1d727ed"
+    "sha256": "3e80a1e5b5a4c95e9c2e5331da7a263a5db19d5c12f1f9121e02a190e1d727ed",
+    "destination_sha256": "021eddea0cfc59549d5e0327a567e5a65cdc5f91f3a9e93543a56188d06045a5"
   },
   {
     "source": "src/evo_rlt/cli/validate_transition_cache.py",
     "destination": "src/vla/cli/validate_transition_cache.py",
-    "sha256": "89c69814581f86d6971b89598eee10fb7403fb0da318a6ea1614a91d5948397c"
+    "sha256": "89c69814581f86d6971b89598eee10fb7403fb0da318a6ea1614a91d5948397c",
+    "destination_sha256": "0014d7a0dc505424cd677d7f407c47ce7c9c060f2f9bef301f75a49459fc97ae"
   },
   {
     "source": "src/evo_rlt/configs/dataset_features/franka_dual_tcp_rot6d_20d.yaml",
     "destination": "src/vla/configs/dataset_features/franka_dual_tcp_rot6d_20d.yaml",
-    "sha256": "1a45bca6286118e592390be147d969c3639fde6a0456690253690181197b8ab1"
+    "sha256": "1a45bca6286118e592390be147d969c3639fde6a0456690253690181197b8ab1",
+    "destination_sha256": "1a45bca6286118e592390be147d969c3639fde6a0456690253690181197b8ab1"
   },
   {
     "source": "src/evo_rlt/configs/dataset_features/franka_single_left_tcp_rot6d_10d.yaml",
     "destination": "src/vla/configs/dataset_features/franka_single_left_tcp_rot6d_10d.yaml",
-    "sha256": "2d9399c8a4f4f9a532a0deff556d6f099a903c2a67cb6ae574f109a4f4712ed0"
+    "sha256": "2d9399c8a4f4f9a532a0deff556d6f099a903c2a67cb6ae574f109a4f4712ed0",
+    "destination_sha256": "2d9399c8a4f4f9a532a0deff556d6f099a903c2a67cb6ae574f109a4f4712ed0"
   },
   {
     "source": "src/evo_rlt/configs/dataset_features/franka_single_left_tcp_rot6d_22d.yaml",
     "destination": "src/vla/configs/dataset_features/franka_single_left_tcp_rot6d_22d.yaml",
-    "sha256": "8652615b3da0c2fb6ec0dd11d278286497e9c85f8f3aca942967313e75e6627d"
+    "sha256": "8652615b3da0c2fb6ec0dd11d278286497e9c85f8f3aca942967313e75e6627d",
+    "destination_sha256": "8652615b3da0c2fb6ec0dd11d278286497e9c85f8f3aca942967313e75e6627d"
   },
   {
     "source": "src/evo_rlt/configs/deployment/franka_single_left_pi05_rtc.yaml",
     "destination": "src/vla/configs/deployment/franka_single_left_pi05_rtc.yaml",
-    "sha256": "b796e01d22f8027b89ab715e38ea6d1944fc3aebfeef91d8bd2366694b53beca"
+    "sha256": "b796e01d22f8027b89ab715e38ea6d1944fc3aebfeef91d8bd2366694b53beca",
+    "destination_sha256": "4f34dcd9297667be4317e28e148a21d829af28b33a5551bab327a8d30a3caa4c"
   },
   {
     "source": "src/evo_rlt/configs/deployment/franka_single_left_pi05_sft_takeover.yaml",
     "destination": "src/vla/configs/deployment/franka_single_left_pi05_sft_takeover.yaml",
-    "sha256": "7f7e2b050e55d826187a40518ab99371c892b0f90778d9bc04b890c1936403f6"
+    "sha256": "7f7e2b050e55d826187a40518ab99371c892b0f90778d9bc04b890c1936403f6",
+    "destination_sha256": "5ca7637426a375c4da1866edca32e7f0990aa46a2897a1a553bf6242c2c67e19"
   },
   {
     "source": "src/evo_rlt/core/__init__.py",
     "destination": "src/vla/core/__init__.py",
-    "sha256": "9296cd5de2e82ca0fd5d2cac6974727c51e25d4cccba5553ebdf56321bf47a93"
+    "sha256": "9296cd5de2e82ca0fd5d2cac6974727c51e25d4cccba5553ebdf56321bf47a93",
+    "destination_sha256": "12d432bc5a1b9eedd3ab2896235bdb241828a3ab05a3751c8a89224800847954"
   },
   {
     "source": "src/evo_rlt/core/actor.py",
     "destination": "src/vla/core/actor.py",
-    "sha256": "0c738dfeee44f7a6131553b2e4a3713f731ff34350a9dc23854edd183bf3f3fb"
+    "sha256": "0c738dfeee44f7a6131553b2e4a3713f731ff34350a9dc23854edd183bf3f3fb",
+    "destination_sha256": "ac3c16cec39ad7934352105f480eaa9aaf7daf3a02ea0289de5b0c3a5422c344"
   },
   {
     "source": "src/evo_rlt/core/algorithm.py",
     "destination": "src/vla/core/algorithm.py",
-    "sha256": "e7fb5f7eb718755b552208c7cd10a6134e609719892761ff1cc14d228102c4e3"
+    "sha256": "e7fb5f7eb718755b552208c7cd10a6134e609719892761ff1cc14d228102c4e3",
+    "destination_sha256": "1b23bf806a0c8fc1ec22fa9a03a9895ee2baf4e229ff2fb536a479687835c2b0"
   },
   {
     "source": "src/evo_rlt/core/collector.py",
     "destination": "src/vla/core/collector.py",
-    "sha256": "fd0cdabbb1fa9efffaec800541a106cbcec040ad2448597304fd473e8fb57d3a"
+    "sha256": "fd0cdabbb1fa9efffaec800541a106cbcec040ad2448597304fd473e8fb57d3a",
+    "destination_sha256": "123a20ad20a1531e0643fd740a217256339deeed9b9a7132f2f631e53ecbb4ee"
   },
   {
     "source": "src/evo_rlt/core/config.py",
     "destination": "src/vla/core/config.py",
-    "sha256": "c736dd4dff6b53868079c0825f176beb61fbd01e046cc4d2d4cd3623f5bda949"
+    "sha256": "c736dd4dff6b53868079c0825f176beb61fbd01e046cc4d2d4cd3623f5bda949",
+    "destination_sha256": "c736dd4dff6b53868079c0825f176beb61fbd01e046cc4d2d4cd3623f5bda949"
   },
   {
     "source": "src/evo_rlt/core/configs/ac_best_v3.yaml",
     "destination": "src/vla/core/configs/ac_best_v3.yaml",
-    "sha256": "d2541ad5402b19c03b2ca04b8507c864e1713d054fefae078d3e9476a3d14526"
+    "sha256": "d2541ad5402b19c03b2ca04b8507c864e1713d054fefae078d3e9476a3d14526",
+    "destination_sha256": "d2541ad5402b19c03b2ca04b8507c864e1713d054fefae078d3e9476a3d14526"
   },
   {
     "source": "src/evo_rlt/core/configs/ac_paper_screw.yaml",
     "destination": "src/vla/core/configs/ac_paper_screw.yaml",
-    "sha256": "f8342487ed42602da213d42b491188e17de3968857962115cfb3ebcfe3c792e9"
+    "sha256": "f8342487ed42602da213d42b491188e17de3968857962115cfb3ebcfe3c792e9",
+    "destination_sha256": "f8342487ed42602da213d42b491188e17de3968857962115cfb3ebcfe3c792e9"
   },
   {
     "source": "src/evo_rlt/core/configs/base.yaml",
     "destination": "src/vla/core/configs/base.yaml",
-    "sha256": "30dd5879eca4e991e55d4cf00c0d03df90fc2103cb1dce73d6f42bf79f052110"
+    "sha256": "30dd5879eca4e991e55d4cf00c0d03df90fc2103cb1dce73d6f42bf79f052110",
+    "destination_sha256": "30dd5879eca4e991e55d4cf00c0d03df90fc2103cb1dce73d6f42bf79f052110"
   },
   {
     "source": "src/evo_rlt/core/configs/pi05_rlt.yaml",
     "destination": "src/vla/core/configs/pi05_rlt.yaml",
-    "sha256": "5608ccde9fa4a190805bfe3abab2687d2ad49b4089c78a797e94857cc174b241"
+    "sha256": "5608ccde9fa4a190805bfe3abab2687d2ad49b4089c78a797e94857cc174b241",
+    "destination_sha256": "5608ccde9fa4a190805bfe3abab2687d2ad49b4089c78a797e94857cc174b241"
   },
   {
     "source": "src/evo_rlt/core/configs/pi05_rlt_cp_best.yaml",
     "destination": "src/vla/core/configs/pi05_rlt_cp_best.yaml",
-    "sha256": "37a8fa9d554b698801555e41618d18dacbc602337f26af78740525b17fe82989"
+    "sha256": "37a8fa9d554b698801555e41618d18dacbc602337f26af78740525b17fe82989",
+    "destination_sha256": "37a8fa9d554b698801555e41618d18dacbc602337f26af78740525b17fe82989"
   },
   {
     "source": "src/evo_rlt/core/critic.py",
     "destination": "src/vla/core/critic.py",
-    "sha256": "781bfc2be7f0f3edb4b1dddd924649b88ce960f02aed6592f0438fbea240f809"
+    "sha256": "781bfc2be7f0f3edb4b1dddd924649b88ce960f02aed6592f0438fbea240f809",
+    "destination_sha256": "b9a230778490d867be9bffa0fb2d2cd94f2c6ade3d40bf58cd77632bf9536a52"
   },
   {
     "source": "src/evo_rlt/core/envs/__init__.py",
     "destination": "src/vla/core/envs/__init__.py",
-    "sha256": "d80412c2d10e74f2f47049e8946d04a736b86f2156071b10456102a80d1938ec"
+    "sha256": "d80412c2d10e74f2f47049e8946d04a736b86f2156071b10456102a80d1938ec",
+    "destination_sha256": "7012df20646a3497b2a5a4ea5302442eb00c9da4e60a54b25cd218540d7131b9"
   },
   {
     "source": "src/evo_rlt/core/envs/reaching.py",
     "destination": "src/vla/core/envs/reaching.py",
-    "sha256": "5afd28e3ebcd86c7ad9eb747362214a565799b88ca801ea4eb89df979b35d22e"
+    "sha256": "5afd28e3ebcd86c7ad9eb747362214a565799b88ca801ea4eb89df979b35d22e",
+    "destination_sha256": "6605dcc58887962f42d4e3fff40b510d50fdd2d1fef7eb5e0b0f17690dfdf1d6"
   },
   {
     "source": "src/evo_rlt/core/evaluator.py",
     "destination": "src/vla/core/evaluator.py",
-    "sha256": "2ced39c43ad97c0c00ab7f6fa2e8a1feae59bc2ec0363e120650c302d013e0b8"
+    "sha256": "2ced39c43ad97c0c00ab7f6fa2e8a1feae59bc2ec0363e120650c302d013e0b8",
+    "destination_sha256": "49c4a333cef8f5cd221fa2a16810ba43ba578c6269b5926482c89518b9e9e73f"
   },
   {
     "source": "src/evo_rlt/core/handover_checkpoint.py",
     "destination": "src/vla/core/handover_checkpoint.py",
-    "sha256": "a8568dcf477cfba226b3ea4ca810b240c406b92677507653f214f7b990064868"
+    "sha256": "a8568dcf477cfba226b3ea4ca810b240c406b92677507653f214f7b990064868",
+    "destination_sha256": "6e9403e58af4918fdb87d89ad3ec680a4eb68bee9d1914a4b8da18e22549d954"
   },
   {
     "source": "src/evo_rlt/core/interfaces.py",
     "destination": "src/vla/core/interfaces.py",
-    "sha256": "d4acaf7a8c8de8d9a19e8d4c1496f8c60a61aebbfae626d6f9c02c194ffc0383"
+    "sha256": "d4acaf7a8c8de8d9a19e8d4c1496f8c60a61aebbfae626d6f9c02c194ffc0383",
+    "destination_sha256": "d4acaf7a8c8de8d9a19e8d4c1496f8c60a61aebbfae626d6f9c02c194ffc0383"
   },
   {
     "source": "src/evo_rlt/core/losses.py",
     "destination": "src/vla/core/losses.py",
-    "sha256": "e3e474f48119877381c93570ca19afee525c630877cf19dec1e26860376a157b"
+    "sha256": "e3e474f48119877381c93570ca19afee525c630877cf19dec1e26860376a157b",
+    "destination_sha256": "c9ba1459b67cd664f5dcc175b5bc2de2f5c3142b4849e5c4acd874291dbc71e7"
   },
   {
     "source": "src/evo_rlt/core/mix_dataset.py",
     "destination": "src/vla/core/mix_dataset.py",
-    "sha256": "948ced5900f673b9f29e707f2ff0adff1673c0e778f6610a34a1e5c864eb4033"
+    "sha256": "948ced5900f673b9f29e707f2ff0adff1673c0e778f6610a34a1e5c864eb4033",
+    "destination_sha256": "b39b8978a1a10c30e93c3dc494cb896eca753a67b5f1bba1a386a3a17a416ad2"
   },
   {
     "source": "src/evo_rlt/core/obs_bridge.py",
     "destination": "src/vla/core/obs_bridge.py",
-    "sha256": "b72cbca084d3b5bb1e4df774808f6004199bbed24a923dd6837921fc0538e8f9"
+    "sha256": "b72cbca084d3b5bb1e4df774808f6004199bbed24a923dd6837921fc0538e8f9",
+    "destination_sha256": "c32a7da69094537dff94287a92b4eb495d787a8fcf67897c8a02608122c888d9"
   },
   {
     "source": "src/evo_rlt/core/online_contract.py",
     "destination": "src/vla/core/online_contract.py",
-    "sha256": "9e1576a253e7136d37a56f41cd8dd6eb4910f0ac4562fd3319a2380f5111b2ae"
+    "sha256": "9e1576a253e7136d37a56f41cd8dd6eb4910f0ac4562fd3319a2380f5111b2ae",
+    "destination_sha256": "9e1576a253e7136d37a56f41cd8dd6eb4910f0ac4562fd3319a2380f5111b2ae"
   },
   {
     "source": "src/evo_rlt/core/online_replay.py",
     "destination": "src/vla/core/online_replay.py",
-    "sha256": "e1cd6d8b83eae7c6abceb8b1fd5f413af2ad1847f419fb7a8628beea0fc01daa"
+    "sha256": "e1cd6d8b83eae7c6abceb8b1fd5f413af2ad1847f419fb7a8628beea0fc01daa",
+    "destination_sha256": "d85b49c05858020d5db2b587d13f343dd5ceddc9602bf262ee744d7c574cae73"
   },
   {
     "source": "src/evo_rlt/core/online_training.py",
     "destination": "src/vla/core/online_training.py",
-    "sha256": "e88d75fa505c27cb48dcbacf9c5a02677e50003f210955265f4733d873abb388"
+    "sha256": "e88d75fa505c27cb48dcbacf9c5a02677e50003f210955265f4733d873abb388",
+    "destination_sha256": "b636206619c0b1339a07252e8e74269f733035355812ba4dec8052478880bfbc"
   },
   {
     "source": "src/evo_rlt/core/phase_annotations.py",
     "destination": "src/vla/core/phase_annotations.py",
-    "sha256": "f6a494f71033215afec6bcbcf897dcce0ef215ba198b3fa88c357cf944ef39df"
+    "sha256": "f6a494f71033215afec6bcbcf897dcce0ef215ba198b3fa88c357cf944ef39df",
+    "destination_sha256": "f6a494f71033215afec6bcbcf897dcce0ef215ba198b3fa88c357cf944ef39df"
   },
   {
     "source": "src/evo_rlt/core/phase_controller.py",
     "destination": "src/vla/core/phase_controller.py",
-    "sha256": "c3a3a4a74346a55229efd6694c3908497a644f1dae906724f8404befaf9ebc1b"
+    "sha256": "c3a3a4a74346a55229efd6694c3908497a644f1dae906724f8404befaf9ebc1b",
+    "destination_sha256": "c3a3a4a74346a55229efd6694c3908497a644f1dae906724f8404befaf9ebc1b"
   },
   {
     "source": "src/evo_rlt/core/policy.py",
     "destination": "src/vla/core/policy.py",
-    "sha256": "556fc7c7c8c2f3207d5e60df6bf6ff2740bf84cd10eb0de464cb6cc358019987"
+    "sha256": "556fc7c7c8c2f3207d5e60df6bf6ff2740bf84cd10eb0de464cb6cc358019987",
+    "destination_sha256": "84cca6be563c532b3e9b01f94d87d6867055bae2cb4e7e3a4a856492e3b2a7ab"
   },
   {
     "source": "src/evo_rlt/core/replay_buffer.py",
     "destination": "src/vla/core/replay_buffer.py",
-    "sha256": "7dafceee0239f577bec97762756c7b62213966df7254629cc9ee1c1c5dae3529"
+    "sha256": "7dafceee0239f577bec97762756c7b62213966df7254629cc9ee1c1c5dae3529",
+    "destination_sha256": "c7e4977fc96f650f550a0b798d2e74dc0bbeec791e6c0beb25a4ea404518130a"
   },
   {
     "source": "src/evo_rlt/core/rewards.py",
     "destination": "src/vla/core/rewards.py",
-    "sha256": "3adb90c2f5081814a60910b692f43a004373f326288df02e9db9d1eb6b105b27"
+    "sha256": "3adb90c2f5081814a60910b692f43a004373f326288df02e9db9d1eb6b105b27",
+    "destination_sha256": "3adb90c2f5081814a60910b692f43a004373f326288df02e9db9d1eb6b105b27"
   },
   {
     "source": "src/evo_rlt/core/rl_token.py",
     "destination": "src/vla/core/rl_token.py",
-    "sha256": "5eca6071c51a42ae91b29dccc55ad22add95ef50ca86eb22f056b9fced165765"
+    "sha256": "5eca6071c51a42ae91b29dccc55ad22add95ef50ca86eb22f056b9fced165765",
+    "destination_sha256": "5eca6071c51a42ae91b29dccc55ad22add95ef50ca86eb22f056b9fced165765"
   },
   {
     "source": "src/evo_rlt/core/trainer.py",
     "destination": "src/vla/core/trainer.py",
-    "sha256": "be1422b0a38cc02edc93a77018e1f0197acbce5007ea41c0cc6a8354ac5ce431"
+    "sha256": "be1422b0a38cc02edc93a77018e1f0197acbce5007ea41c0cc6a8354ac5ce431",
+    "destination_sha256": "a829896596c24995296c53453fdfe16bd99e69ee123c5089d8f116491356465a"
   },
   {
     "source": "src/evo_rlt/core/training_contract.py",
     "destination": "src/vla/core/training_contract.py",
-    "sha256": "49dbe7c9e6aef3edd366510df9cc3489155b028b6ad5cebcfa4502a90da36b95"
+    "sha256": "49dbe7c9e6aef3edd366510df9cc3489155b028b6ad5cebcfa4502a90da36b95",
+    "destination_sha256": "49dbe7c9e6aef3edd366510df9cc3489155b028b6ad5cebcfa4502a90da36b95"
   },
   {
     "source": "src/evo_rlt/core/utils.py",
     "destination": "src/vla/core/utils.py",
-    "sha256": "70fa9d422a5976b9917cdffc10cd265959e43cb159ce4c0f373ea633fa6e757d"
+    "sha256": "70fa9d422a5976b9917cdffc10cd265959e43cb159ce4c0f373ea633fa6e757d",
+    "destination_sha256": "70fa9d422a5976b9917cdffc10cd265959e43cb159ce4c0f373ea633fa6e757d"
   },
   {
     "source": "src/evo_rlt/core/vla_adapter.py",
     "destination": "src/vla/core/vla_adapter.py",
-    "sha256": "f58235da548a39c6fb5e88a399c9b54562b29eaed2a5fb241ba5ade541a00a0e"
+    "sha256": "f58235da548a39c6fb5e88a399c9b54562b29eaed2a5fb241ba5ade541a00a0e",
+    "destination_sha256": "828eaee8612ec5ad744667c6baaa318aed58ad08519de14d1df15a527c471909"
   },
   {
     "source": "src/evo_rlt/core/writer_lock.py",
     "destination": "src/vla/core/writer_lock.py",
-    "sha256": "0c4d457b8c15550da9e1856893edc3ed2d7b960598d133b19878ad1cbee58c38"
+    "sha256": "0c4d457b8c15550da9e1856893edc3ed2d7b960598d133b19878ad1cbee58c38",
+    "destination_sha256": "0c4d457b8c15550da9e1856893edc3ed2d7b960598d133b19878ad1cbee58c38"
   },
   {
     "source": "src/evo_rlt/deployment/__init__.py",
     "destination": "src/vla/deployment/__init__.py",
-    "sha256": "4d2295c0e0357058870d4c0999548b7d229e346285bbc0e35197c3c75fd33570"
+    "sha256": "4d2295c0e0357058870d4c0999548b7d229e346285bbc0e35197c3c75fd33570",
+    "destination_sha256": "4d2295c0e0357058870d4c0999548b7d229e346285bbc0e35197c3c75fd33570"
   },
   {
     "source": "src/evo_rlt/deployment/franka_pi05_rtc.py",
     "destination": "src/vla/deployment/franka_pi05_rtc.py",
-    "sha256": "2f730e2664c632997499af870bca7aeb54ec1e37ac6620bebec8e4890bf8106e"
+    "sha256": "2f730e2664c632997499af870bca7aeb54ec1e37ac6620bebec8e4890bf8106e",
+    "destination_sha256": "57b24e7a4b2311bbe2e6c4e2ef353fd76b275e0853dd0cceac3c58267c9c566b"
   },
   {
     "source": "src/evo_rlt/diagnostics/__init__.py",
     "destination": "src/vla/diagnostics/__init__.py",
-    "sha256": "7f8192407921eebddf572b8f004b25caeb45915b044cc6d59c1eb742083b4754"
+    "sha256": "7f8192407921eebddf572b8f004b25caeb45915b044cc6d59c1eb742083b4754",
+    "destination_sha256": "5eccc4ea31df91bb5f9528db412d95a6ad4e45fb3fb9cdb1b164e9210d064143"
   },
   {
     "source": "src/evo_rlt/diagnostics/franka_sft_split.py",
     "destination": "src/vla/diagnostics/franka_sft_split.py",
-    "sha256": "0380d31970f7d4006526e0d809cf58b13c917e479b1a26bd2cfc816a896eb005"
+    "sha256": "0380d31970f7d4006526e0d809cf58b13c917e479b1a26bd2cfc816a896eb005",
+    "destination_sha256": "fc78190e9700c3fdf368230d6e630a2bcf3d91a270630244f3a78b96a93aa636"
   },
   {
     "source": "src/evo_rlt/diagnostics/pi05_sft.py",
     "destination": "src/vla/diagnostics/pi05_sft.py",
-    "sha256": "0387d05261c7a34b103e34ec4c38eda39efe4c586a77a00be77a29c82e58de41"
-  },
-  {
-    "source": "src/evo_rlt/experimental/__init__.py",
-    "destination": "src/vla/experimental/__init__.py",
-    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
-  },
-  {
-    "source": "src/evo_rlt/experimental/model_path_resolution.py",
-    "destination": "src/vla/experimental/model_path_resolution.py",
-    "sha256": "7814f20de5cfa50b293ede3626da169c1eec40b3f45af2f7a01be1c058f08e48"
-  },
-  {
-    "source": "src/evo_rlt/experimental/visualize_rlt_warmup_compare.py",
-    "destination": "src/vla/experimental/visualize_rlt_warmup_compare.py",
-    "sha256": "3a7be93c3df7768570a2175634961fabc9a02456a0fbb46e424a9d6fd0f9b2d6"
+    "sha256": "0387d05261c7a34b103e34ec4c38eda39efe4c586a77a00be77a29c82e58de41",
+    "destination_sha256": "4554e5c09fcbcaa3b3ad20ae718bf247d4510681aaedcdfd999f8e5ac5e0c079"
   },
   {
     "source": "src/evo_rlt/robots/__init__.py",
     "destination": "src/vla/robots/__init__.py",
-    "sha256": "4e302593f5be958f5ea962e29db09dbbd7e0455b15c43d7e0203a9cc613eb14d"
+    "sha256": "4e302593f5be958f5ea962e29db09dbbd7e0455b15c43d7e0203a9cc613eb14d",
+    "destination_sha256": "9a1a7f4801e66e5a6b95f66e5989c3cdb6662e5aa92dfee3f22170357b889566"
   },
   {
     "source": "src/evo_rlt/robots/franka_robotiq/__init__.py",
     "destination": "src/vla/robots/franka_robotiq/__init__.py",
-    "sha256": "9ac1cbc6588e819f0a8485a4e53c1f27ed01da2348f39cfb09113752ea1d64c0"
+    "sha256": "9ac1cbc6588e819f0a8485a4e53c1f27ed01da2348f39cfb09113752ea1d64c0",
+    "destination_sha256": "e2c23186705b1a16c1244a5d809629b0ec53dbac91a7ac388642c39ac4f99b98"
   },
   {
     "source": "src/evo_rlt/robots/franka_robotiq/camera.py",
     "destination": "src/vla/robots/franka_robotiq/camera.py",
-    "sha256": "8372f18691c7ac267def9e3ee26663338a58ccd59d39b2bc9f17febd67647d0d"
+    "sha256": "8372f18691c7ac267def9e3ee26663338a58ccd59d39b2bc9f17febd67647d0d",
+    "destination_sha256": "8372f18691c7ac267def9e3ee26663338a58ccd59d39b2bc9f17febd67647d0d"
   },
   {
     "source": "src/evo_rlt/robots/franka_robotiq/config.py",
     "destination": "src/vla/robots/franka_robotiq/config.py",
-    "sha256": "2f2dae8bad483543671264e12801eb352400005ab42061b8f2f0ac412cd80d63"
+    "sha256": "2f2dae8bad483543671264e12801eb352400005ab42061b8f2f0ac412cd80d63",
+    "destination_sha256": "2f2dae8bad483543671264e12801eb352400005ab42061b8f2f0ac412cd80d63"
   },
   {
     "source": "src/evo_rlt/robots/franka_robotiq/gripper.py",
     "destination": "src/vla/robots/franka_robotiq/gripper.py",
-    "sha256": "bf7e0079420ba6c0851a81e688eecd7937ad0e4cf0e38507a5330d511fde87c3"
+    "sha256": "bf7e0079420ba6c0851a81e688eecd7937ad0e4cf0e38507a5330d511fde87c3",
+    "destination_sha256": "bf7e0079420ba6c0851a81e688eecd7937ad0e4cf0e38507a5330d511fde87c3"
   },
   {
     "source": "src/evo_rlt/robots/franka_robotiq/resource_lock.py",
     "destination": "src/vla/robots/franka_robotiq/resource_lock.py",
-    "sha256": "2c7fb2ec81b16648cd8b9d087642d25d4942aecef9ca34a3c7857bfe1ff45caa"
+    "sha256": "2c7fb2ec81b16648cd8b9d087642d25d4942aecef9ca34a3c7857bfe1ff45caa",
+    "destination_sha256": "0986a64c14f2f17d289b50c324f5c11b5b160ad4e6b5f3e0cb0625fa2aa700a9"
   },
   {
     "source": "src/evo_rlt/robots/franka_robotiq/robot.py",
     "destination": "src/vla/robots/franka_robotiq/robot.py",
-    "sha256": "656ee6507bfed3959eb87552f415c57fed5240419fbcf1b2473c18391b02d49d"
+    "sha256": "656ee6507bfed3959eb87552f415c57fed5240419fbcf1b2473c18391b02d49d",
+    "destination_sha256": "95dab711c0c5af2d71fef4c5ea18584ebcbf38b450d2c38c1dd7e726910a5ba6"
   },
   {
     "source": "src/evo_rlt_rollout_protocol/__init__.py",
     "destination": "src/vla_rollout_protocol/__init__.py",
-    "sha256": "55129dfdc37223e5e79141bdefda4238dabddaa74cc75dd472dfc5f6adca9f33"
+    "sha256": "55129dfdc37223e5e79141bdefda4238dabddaa74cc75dd472dfc5f6adca9f33",
+    "destination_sha256": "dae3c26503a7eeef0b71fac2495b3b38e10c39442c05c409452618acdf985923"
   },
   {
     "source": "src/evo_rlt_rollout_protocol/protocol.py",
     "destination": "src/vla_rollout_protocol/protocol.py",
-    "sha256": "337d9cca1f6e55b8e2e675f2a51fc904d054155ec081593929b2b86a9a3748b3"
+    "sha256": "337d9cca1f6e55b8e2e675f2a51fc904d054155ec081593929b2b86a9a3748b3",
+    "destination_sha256": "337d9cca1f6e55b8e2e675f2a51fc904d054155ec081593929b2b86a9a3748b3"
   },
   {
     "source": "tests/__init__.py",
     "destination": "tests/__init__.py",
-    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f",
+    "destination_sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
   },
   {
     "source": "tests/rlt/__init__.py",
     "destination": "tests/rlt/__init__.py",
-    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f",
+    "destination_sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
   },
   {
     "source": "tests/rlt/helpers.py",
     "destination": "tests/rlt/helpers.py",
-    "sha256": "39e659d285d788539305963c9b9b88bd897ce9ed5154af57793ec86de6c3864d"
+    "sha256": "39e659d285d788539305963c9b9b88bd897ce9ed5154af57793ec86de6c3864d",
+    "destination_sha256": "c074b5eee96033ea0aa75fcb918c067053e514b411255590c6e59aca1d6d83ea"
   },
   {
     "source": "tests/rlt/test_actor_critic.py",
     "destination": "tests/rlt/test_actor_critic.py",
-    "sha256": "4bc5a3be682250d434ced5da9e6872dfaeac42141e9686482014ff8ab1bc0807"
+    "sha256": "4bc5a3be682250d434ced5da9e6872dfaeac42141e9686482014ff8ab1bc0807",
+    "destination_sha256": "f342678c16fc640c765a3071f019e7a58b857dd90eb38cce335e6ff01f54bf0b"
   },
   {
     "source": "tests/rlt/test_algorithm.py",
     "destination": "tests/rlt/test_algorithm.py",
-    "sha256": "f7f21a803eaa061915b53f5e42d174f300bcb4750d5a161cade293731e39659f"
+    "sha256": "f7f21a803eaa061915b53f5e42d174f300bcb4750d5a161cade293731e39659f",
+    "destination_sha256": "f7f21a803eaa061915b53f5e42d174f300bcb4750d5a161cade293731e39659f"
   },
   {
     "source": "tests/rlt/test_build_transition_cache_v2.py",
     "destination": "tests/rlt/test_build_transition_cache_v2.py",
-    "sha256": "6baa681900a78513a729edc9a8389f4ef8871becced385d04598a993cc2f33a5"
+    "sha256": "6baa681900a78513a729edc9a8389f4ef8871becced385d04598a993cc2f33a5",
+    "destination_sha256": "6ccb89dee960988b5c0a4dbdd2d62e2f2ff394ed9e3d24d71ae177a71f0c92c6"
   },
   {
     "source": "tests/rlt/test_cache_manifest_ac.py",
     "destination": "tests/rlt/test_cache_manifest_ac.py",
-    "sha256": "5c82cb6451515b996810432253211e11f02b942856ab560a16ff63b32aa78a27"
+    "sha256": "5c82cb6451515b996810432253211e11f02b942856ab560a16ff63b32aa78a27",
+    "destination_sha256": "1a03cdc7fa01e8fd2336aaa4d2e4900f9325f24c3cae89554418621af04a6582"
   },
   {
     "source": "tests/rlt/test_cartesian_gamepad.py",
     "destination": "tests/rlt/test_cartesian_gamepad.py",
-    "sha256": "317288dbae19bb27b7ff320e41e0615d93cacd305420a893d2dbe4a0b5fdf491"
-  },
-  {
-    "source": "tests/rlt/test_checkpoint_visualization_metadata.py",
-    "destination": "tests/rlt/test_checkpoint_visualization_metadata.py",
-    "sha256": "4d875e51327e4d50c10dc95c8816fc377c32ea2b2b9b01506caf4d80ced90155"
+    "sha256": "317288dbae19bb27b7ff320e41e0615d93cacd305420a893d2dbe4a0b5fdf491",
+    "destination_sha256": "5e19403e068bb0878db58c09bd136cc646a5ba1c2afa0857ffe125e91de5bf8e"
   },
   {
     "source": "tests/rlt/test_collector.py",
     "destination": "tests/rlt/test_collector.py",
-    "sha256": "8b996972b62c80c9e56ff73939aa51f3b9f63de6fc9e267cf27c34f85850ed69"
+    "sha256": "8b996972b62c80c9e56ff73939aa51f3b9f63de6fc9e267cf27c34f85850ed69",
+    "destination_sha256": "e7dd52f636c66c352b6ed60932e87f1bb32b7dc81acf76dbd3da1385830f8676"
   },
   {
     "source": "tests/rlt/test_demo_loader_success.py",
     "destination": "tests/rlt/test_demo_loader_success.py",
-    "sha256": "317e611e6aa9f8f701cfd6c8919c541a6db700e245d633aa2e3da641fe3d65f5"
+    "sha256": "317e611e6aa9f8f701cfd6c8919c541a6db700e245d633aa2e3da641fe3d65f5",
+    "destination_sha256": "f76fd3b47c10638538fcc78187b97ebabd0d6eb6e7cad027050a9c6232cbb184"
   },
   {
     "source": "tests/rlt/test_dual_gamepad_record.py",
     "destination": "tests/rlt/test_dual_gamepad_record.py",
-    "sha256": "998e3dcead6f1f5262a03b414055fa15f6c84ca9f92532e378c06a04be8ab37e"
+    "sha256": "998e3dcead6f1f5262a03b414055fa15f6c84ca9f92532e378c06a04be8ab37e",
+    "destination_sha256": "c1b8481c382c2c376ff63ed9d7e723702deb5a87fbdda70fa421725a32154ab7"
   },
   {
     "source": "tests/rlt/test_extract_dataset_features.py",
     "destination": "tests/rlt/test_extract_dataset_features.py",
-    "sha256": "1390b6dc68fd39fce0f6f1b78227ab391cdbe99f9eac6fa8f0a1d036cb4fe099"
+    "sha256": "1390b6dc68fd39fce0f6f1b78227ab391cdbe99f9eac6fa8f0a1d036cb4fe099",
+    "destination_sha256": "04c86c95f8da5bf5fc69fa06bfa3b946b7df854407cd6d33b7481d6e773521dd"
   },
   {
     "source": "tests/rlt/test_franka_absolute_recorder.py",
     "destination": "tests/rlt/test_franka_absolute_recorder.py",
-    "sha256": "67790ae7e75e2f1b297074fda22754e4e97aa54d4797e8d9f86e112761263a3d"
+    "sha256": "67790ae7e75e2f1b297074fda22754e4e97aa54d4797e8d9f86e112761263a3d",
+    "destination_sha256": "51fb66c1a4a11ec4a00f836f66e02c1bdae2b93c880b963eb1fa8b601cb75e4a"
   },
   {
     "source": "tests/rlt/test_franka_dual_sft_recorder.py",
     "destination": "tests/rlt/test_franka_dual_sft_recorder.py",
-    "sha256": "ece37ef1cee9316456871dabd50017f6ef1b796eb216eadab031b2e0f80429e0"
+    "sha256": "ece37ef1cee9316456871dabd50017f6ef1b796eb216eadab031b2e0f80429e0",
+    "destination_sha256": "f240ffe2940b098b3bdf2a1cbc2b80e3d1f7b4b17f1af0a014d931df274d0c77"
   },
   {
     "source": "tests/rlt/test_franka_pi05_robot.py",
     "destination": "tests/rlt/test_franka_pi05_robot.py",
-    "sha256": "9889f225892bceac016ea676845f15d0f412e91db77ab35a98802317432bcfa8"
+    "sha256": "9889f225892bceac016ea676845f15d0f412e91db77ab35a98802317432bcfa8",
+    "destination_sha256": "aadbab9d45b341a9d39a69ce653e7a1767d81565fa40d431ef450727e764e4d7"
   },
   {
     "source": "tests/rlt/test_franka_pi05_rtc_deployment.py",
     "destination": "tests/rlt/test_franka_pi05_rtc_deployment.py",
-    "sha256": "81ff99cdfa8865a22cbf03cd95c6f90bfadfe2bc597ea7dc9bc187761eeca1c6"
+    "sha256": "81ff99cdfa8865a22cbf03cd95c6f90bfadfe2bc597ea7dc9bc187761eeca1c6",
+    "destination_sha256": "192aa5de1cfbba27a29ca3d0fac1235f4964e5a09659769911a51b12a2df084d"
   },
   {
     "source": "tests/rlt/test_franka_rollout_collection.py",
     "destination": "tests/rlt/test_franka_rollout_collection.py",
-    "sha256": "d9ded9841511d9acd337093cfe2cdcbd64c6b4054781beac39d7c164427f1629"
+    "sha256": "d9ded9841511d9acd337093cfe2cdcbd64c6b4054781beac39d7c164427f1629",
+    "destination_sha256": "7331311475bf239887ccc78e08cc0adbf2d26cb23213fabaf9f5a6dd98677ae3"
   },
   {
     "source": "tests/rlt/test_franka_sft_server.py",
     "destination": "tests/rlt/test_franka_sft_server.py",
-    "sha256": "27bd7a45ec27063e69bf0884782b26d48e69c1a6cbb21aba8b7d955bf0f66756"
+    "sha256": "27bd7a45ec27063e69bf0884782b26d48e69c1a6cbb21aba8b7d955bf0f66756",
+    "destination_sha256": "32a344765d7061587ffc8e637d8dd8e3a47af8e4e0a2bebebea40c9d2489df69"
   },
   {
     "source": "tests/rlt/test_franka_sft_split.py",
     "destination": "tests/rlt/test_franka_sft_split.py",
-    "sha256": "6fefc6d1ba47b38a0f7546430764031078f6ec14519f3bf5954f45085332ef3d"
+    "sha256": "6fefc6d1ba47b38a0f7546430764031078f6ec14519f3bf5954f45085332ef3d",
+    "destination_sha256": "f128f4184753fa23d35dab3f88b56cffa73882d2c2212b59daf2dc256dd010e8"
   },
   {
     "source": "tests/rlt/test_gamepad_preview.py",
     "destination": "tests/rlt/test_gamepad_preview.py",
-    "sha256": "e9de55bb1e8d26bd765f27ad5b5339edac5f164f3e96b5e44a10427c030ffef9"
+    "sha256": "e9de55bb1e8d26bd765f27ad5b5339edac5f164f3e96b5e44a10427c030ffef9",
+    "destination_sha256": "c28c4b7d9ee09a78838878f8de86478203398f6aa8bb4445a98c4137522e2026"
   },
   {
     "source": "tests/rlt/test_gamepad_recording.py",
     "destination": "tests/rlt/test_gamepad_recording.py",
-    "sha256": "5d505c86650e91db11eb792d8808e4578f66c0daf0eedfdbcebf45f24709e8e6"
+    "sha256": "5d505c86650e91db11eb792d8808e4578f66c0daf0eedfdbcebf45f24709e8e6",
+    "destination_sha256": "0d99cc9929ccd81a4b670016c9a4d414f20e53eae6081dd5685ab4146c061609"
   },
   {
     "source": "tests/rlt/test_gamepad_teleop.py",
     "destination": "tests/rlt/test_gamepad_teleop.py",
-    "sha256": "75c24bc571f421fba3d11c658a0c6e148d151f704d6b28f017b34c830c3220e1"
+    "sha256": "75c24bc571f421fba3d11c658a0c6e148d151f704d6b28f017b34c830c3220e1",
+    "destination_sha256": "7a28a6d82aad1ed1ffa5069d7873ef69ab53697d394eac3a4f6fb9e745b262e7"
   },
   {
     "source": "tests/rlt/test_handover.py",
     "destination": "tests/rlt/test_handover.py",
-    "sha256": "587bb24daf4fef0056aad2452e4c3d3b22281f9c780a80b578681436e2579084"
+    "sha256": "587bb24daf4fef0056aad2452e4c3d3b22281f9c780a80b578681436e2579084",
+    "destination_sha256": "3c997c5677c1613ba3d6a6615f8493c4c2dd4fae39c93b83c8b04fe6ca24f667"
   },
   {
     "source": "tests/rlt/test_interfaces.py",
     "destination": "tests/rlt/test_interfaces.py",
-    "sha256": "870eb27d5050bc1a9b8dd3c4fc023596fa0308771f04f126c944bd7bda39dd9c"
+    "sha256": "870eb27d5050bc1a9b8dd3c4fc023596fa0308771f04f126c944bd7bda39dd9c",
+    "destination_sha256": "fdb66d4b901446117f06033a5a793ca6b925740b8883419660b6d3cd8183b069"
   },
   {
     "source": "tests/rlt/test_intervention_blend.py",
     "destination": "tests/rlt/test_intervention_blend.py",
-    "sha256": "ab504116c902dbf38470469e660bf891c89495232e36049adf3619c4d135300d"
+    "sha256": "ab504116c902dbf38470469e660bf891c89495232e36049adf3619c4d135300d",
+    "destination_sha256": "9e504bc29af4079f2d0bb06adf3c07e1e029fdbb1961a7d416888da66d5975a1"
   },
   {
     "source": "tests/rlt/test_load_joint_checkpoint.py",
     "destination": "tests/rlt/test_load_joint_checkpoint.py",
-    "sha256": "49a5148742455b879bf45dc55e9b8b0552aa64775b40e7ced46166b3ac23748f"
+    "sha256": "49a5148742455b879bf45dc55e9b8b0552aa64775b40e7ced46166b3ac23748f",
+    "destination_sha256": "5429dfc4732ac80cb2b82826b66d48bd5221e2b82905ab1c65822f1dd485f964"
   },
   {
     "source": "tests/rlt/test_losses.py",
     "destination": "tests/rlt/test_losses.py",
-    "sha256": "e5d6ff6a7af30db15b3463060752d534dbac2f1d7625f0a24938915250627e98"
+    "sha256": "e5d6ff6a7af30db15b3463060752d534dbac2f1d7625f0a24938915250627e98",
+    "destination_sha256": "6b5559de86211297444cd35b0e77223b9b8773f13e172f9c3626563c7c8d63fc"
   },
   {
     "source": "tests/rlt/test_offline_dataset.py",
     "destination": "tests/rlt/test_offline_dataset.py",
-    "sha256": "174e2079cdcf455abfc6810f7d40b3d1ca82132880a1b2691e1c999fd878c910"
+    "sha256": "174e2079cdcf455abfc6810f7d40b3d1ca82132880a1b2691e1c999fd878c910",
+    "destination_sha256": "46e5ae9e87022e5492da531c6299299d29c7bb439a51577af8644c135018c72d"
   },
   {
     "source": "tests/rlt/test_offline_eval.py",
     "destination": "tests/rlt/test_offline_eval.py",
-    "sha256": "be2fa4637ce4ea56f4e25665c7ec38bac3e21ea950bcb7872a622cb81e9082ef"
+    "sha256": "be2fa4637ce4ea56f4e25665c7ec38bac3e21ea950bcb7872a622cb81e9082ef",
+    "destination_sha256": "9963cf55071d1c0412b369a062ca4c90e071eeb89c1454c303cc4976fbf8ce2a"
   },
   {
     "source": "tests/rlt/test_offline_trainer.py",
     "destination": "tests/rlt/test_offline_trainer.py",
-    "sha256": "505e7aa0fb3007c3f903590e053f9e0fb8f0c4e027dc9e973d1a9791cebbdc3a"
+    "sha256": "505e7aa0fb3007c3f903590e053f9e0fb8f0c4e027dc9e973d1a9791cebbdc3a",
+    "destination_sha256": "657b1e2481f980b7803c9beb165e3da848d2c427cc9ac9b132c8d7d6ca0d91a8"
   },
   {
     "source": "tests/rlt/test_online_camera_preview.py",
     "destination": "tests/rlt/test_online_camera_preview.py",
-    "sha256": "3c6fe6568e1e2ca77bca29f7adf4d0554f7c1e9296ae6971c1f603a23310edec"
+    "sha256": "3c6fe6568e1e2ca77bca29f7adf4d0554f7c1e9296ae6971c1f603a23310edec",
+    "destination_sha256": "d79f58a5aedb7a611dd5ec957b4ca1f80836d9cbb431ecb8adc8e5fe30f62dee"
   },
   {
     "source": "tests/rlt/test_online_consistency.py",
     "destination": "tests/rlt/test_online_consistency.py",
-    "sha256": "9330d00eed56131a6848b0968adb5eea629f8d7b8f5df39b10d6d717e9aa10ae"
+    "sha256": "9330d00eed56131a6848b0968adb5eea629f8d7b8f5df39b10d6d717e9aa10ae",
+    "destination_sha256": "c847cf6b7f5930543a093c6ab4c96e69b5b965951b9ae11b46460e105c22312f"
   },
   {
     "source": "tests/rlt/test_online_full_episode.py",
     "destination": "tests/rlt/test_online_full_episode.py",
-    "sha256": "139c01e1d5a95a9e2fca3746aa53e01234eee64db5d7abef82aca207b12185a6"
+    "sha256": "139c01e1d5a95a9e2fca3746aa53e01234eee64db5d7abef82aca207b12185a6",
+    "destination_sha256": "a4cf939afdfa19a0e2e72facc166d4498fd6ddfa4f92a734787c2ec4a418b99c"
   },
   {
     "source": "tests/rlt/test_online_sft_interface.py",
     "destination": "tests/rlt/test_online_sft_interface.py",
-    "sha256": "e5d693193439442eb6398a10560892169d3b8aa6cb2c1a76c1b7a2abd8528f4f"
+    "sha256": "e5d693193439442eb6398a10560892169d3b8aa6cb2c1a76c1b7a2abd8528f4f",
+    "destination_sha256": "010e719bf5df8199cf9150053dea6026e65fc5112066e01bc53f6bfd580fbea6"
   },
   {
     "source": "tests/rlt/test_online_training.py",
     "destination": "tests/rlt/test_online_training.py",
-    "sha256": "c5e3421b72a18f728f593213372d1fc0ed9135051cc4de1a73542046293e1c37"
+    "sha256": "c5e3421b72a18f728f593213372d1fc0ed9135051cc4de1a73542046293e1c37",
+    "destination_sha256": "73ece09da4504fd60d8e25f512df29b92907f5054fd6a40898f5c2d81dca6e77"
   },
   {
     "source": "tests/rlt/test_phase_annotations.py",
     "destination": "tests/rlt/test_phase_annotations.py",
-    "sha256": "ff836a6b644d83ace155868224e510129200aa29eb327a71cd6ce67cfc4f706a"
+    "sha256": "ff836a6b644d83ace155868224e510129200aa29eb327a71cd6ce67cfc4f706a",
+    "destination_sha256": "675e67d47c22e260c7710715b38882abd1d42cd9f1cfaeb89fee7eebc0de609c"
   },
   {
     "source": "tests/rlt/test_pi05_adapter_image_only.py",
     "destination": "tests/rlt/test_pi05_adapter_image_only.py",
-    "sha256": "7bc9eb9f4c8668e6d0df4972645f77af276344cb37c92fb5ad5ea176fd3d889e"
+    "sha256": "7bc9eb9f4c8668e6d0df4972645f77af276344cb37c92fb5ad5ea176fd3d889e",
+    "destination_sha256": "5c47eadd39ede590e1cbfc15c47ba26f80b8e2fe91b10de51e3711700096a9a1"
   },
   {
     "source": "tests/rlt/test_pi05_sft_diagnostics.py",
     "destination": "tests/rlt/test_pi05_sft_diagnostics.py",
-    "sha256": "ab76ea8e6fd973895ed5f19ee0117737418e1e1c2ad5ba29b50b8cea00e5acc9"
+    "sha256": "ab76ea8e6fd973895ed5f19ee0117737418e1e1c2ad5ba29b50b8cea00e5acc9",
+    "destination_sha256": "5feecaeb16d4cca281c0c59523256c5dc4aa3c7d418f8558bf26dc0ed0e2ab84"
   },
   {
     "source": "tests/rlt/test_policy.py",
     "destination": "tests/rlt/test_policy.py",
-    "sha256": "7c6242741ad297f873ba7401aa8fcc425e4c36bf3084b6d69d30635651a86a7d"
+    "sha256": "7c6242741ad297f873ba7401aa8fcc425e4c36bf3084b6d69d30635651a86a7d",
+    "destination_sha256": "d96ee617b9f2489bfdc0ec97fe04f2a12685dd0df048ce295a17bca755efdcaf"
   },
   {
     "source": "tests/rlt/test_pretrained_integration.py",
     "destination": "tests/rlt/test_pretrained_integration.py",
-    "sha256": "a28a066aa4d8885eb0631c67377319e1173dd4a68e781fb410d89b0b26fe225c"
+    "sha256": "a28a066aa4d8885eb0631c67377319e1173dd4a68e781fb410d89b0b26fe225c",
+    "destination_sha256": "c3d546f130ea59b42231025a4317cece80ec6e6652c6d90791f0b2c9ee1fff5b"
   },
   {
     "source": "tests/rlt/test_processor_rlt.py",
     "destination": "tests/rlt/test_processor_rlt.py",
-    "sha256": "c7aff45ffaff1ec77f84e3202334ff59d35465d131e899d5f0d41e81d5ea584b"
+    "sha256": "c7aff45ffaff1ec77f84e3202334ff59d35465d131e899d5f0d41e81d5ea584b",
+    "destination_sha256": "e4bd010d7be973878d600b16a35849963893a4d6b6ccbbc4c2dac61592970614"
   },
   {
     "source": "tests/rlt/test_reaching_env.py",
     "destination": "tests/rlt/test_reaching_env.py",
-    "sha256": "053a77055f44f320732045f1f32884a28188613c1f6acf9ecfc42fdd04984bab"
+    "sha256": "053a77055f44f320732045f1f32884a28188613c1f6acf9ecfc42fdd04984bab",
+    "destination_sha256": "ab41ba0905e22972367b128f301605f25873d9281233a7b867e516452334c773"
   },
   {
     "source": "tests/rlt/test_replay.py",
     "destination": "tests/rlt/test_replay.py",
-    "sha256": "b1a5b00f0aafa8dac418ddf1c5dffa5a83050960c1d79044edbd2ef6868e3176"
+    "sha256": "b1a5b00f0aafa8dac418ddf1c5dffa5a83050960c1d79044edbd2ef6868e3176",
+    "destination_sha256": "6dcf35f468e974977bbd3a1a63aaecbd3920e6c7a2429e866c3be7c58ecf5bdf"
   },
   {
     "source": "tests/rlt/test_resize_lerobot_videos.py",
     "destination": "tests/rlt/test_resize_lerobot_videos.py",
-    "sha256": "1f8406aa8aa25bb603215230d92d6769339a8e5b7a8c28fd33139701f90eddfe"
+    "sha256": "1f8406aa8aa25bb603215230d92d6769339a8e5b7a8c28fd33139701f90eddfe",
+    "destination_sha256": "cea2e55527e43fab4ae92f4bf15f35220ddbffd6c6807816eb0df30df574e64e"
   },
   {
     "source": "tests/rlt/test_rewards.py",
     "destination": "tests/rlt/test_rewards.py",
-    "sha256": "1713aee8d9bc2275d03437b10e8e7d8351b1ccbf9d0a01a621de5ed459f2b2ee"
+    "sha256": "1713aee8d9bc2275d03437b10e8e7d8351b1ccbf9d0a01a621de5ed459f2b2ee",
+    "destination_sha256": "825bd98d67a1c5f6051660a2da6e2a5ee34d82505fd635f9b91245003f0f85e3"
   },
   {
     "source": "tests/rlt/test_rl_token.py",
     "destination": "tests/rlt/test_rl_token.py",
-    "sha256": "57cf8af9979d9f4638219d71bbe55a0e8e749ff5c509703e934331f84b905a8c"
+    "sha256": "57cf8af9979d9f4638219d71bbe55a0e8e749ff5c509703e934331f84b905a8c",
+    "destination_sha256": "182f956a0a9d11e1387d616d3c8bda443655d4307a37f389594a122209f13cec"
   },
   {
     "source": "tests/rlt/test_rlt_ac_rtc.py",
     "destination": "tests/rlt/test_rlt_ac_rtc.py",
-    "sha256": "2c10f64e0cb1cfb960c1b47b31c86a0ab38743a08b932e3db004f445d4225047"
+    "sha256": "2c10f64e0cb1cfb960c1b47b31c86a0ab38743a08b932e3db004f445d4225047",
+    "destination_sha256": "e11fff0a910b6a38b67ad28108937b3e887e66b42bbe0fb1e33902e55cd2066e"
   },
   {
     "source": "tests/rlt/test_rlt_token_franka_interfaces.py",
     "destination": "tests/rlt/test_rlt_token_franka_interfaces.py",
-    "sha256": "7caf80f6db00fb83ec9b89e109020dd20033e6f78a401ac94c7ab113b8b7387e"
+    "sha256": "7caf80f6db00fb83ec9b89e109020dd20033e6f78a401ac94c7ab113b8b7387e",
+    "destination_sha256": "fdcebef77e878468b2e723933b29f071853570bb76e4c8a5bacccc5fcc79e08b"
   },
   {
     "source": "tests/rlt/test_rollout_sft_gamepad.py",
     "destination": "tests/rlt/test_rollout_sft_gamepad.py",
-    "sha256": "cad2e4e34e6b5243012b9552291cfd74bc6ae15949470b57ecd5d1e4bc0df011"
+    "sha256": "cad2e4e34e6b5243012b9552291cfd74bc6ae15949470b57ecd5d1e4bc0df011",
+    "destination_sha256": "3b8c9b1aeef49e688cd2a5e66fd9cd1a9c8b8d5e2f1485536a03bb05b3afc78b"
   },
   {
     "source": "tests/rlt/test_teleop_entrypoints.py",
     "destination": "tests/rlt/test_teleop_entrypoints.py",
-    "sha256": "5acb264c7a1a81c7c2ebe62ed68ae75546f02e57561c33077c3d3c1d3f3888fa"
+    "sha256": "5acb264c7a1a81c7c2ebe62ed68ae75546f02e57561c33077c3d3c1d3f3888fa",
+    "destination_sha256": "be1b7a7d3cf724bf54fce774dd6d7916ee980a1faf40eb47a8d32a404a7cf2ed"
   },
   {
     "source": "tests/rlt/test_train_actor_critic_native.py",
     "destination": "tests/rlt/test_train_actor_critic_native.py",
-    "sha256": "36da422159eb4e8a21a95bdbd86eb911cb47867b2ec02a475fd21688a312a455"
+    "sha256": "36da422159eb4e8a21a95bdbd86eb911cb47867b2ec02a475fd21688a312a455",
+    "destination_sha256": "74807ef3fc946b1a320a6a47994b10ed696423f11fb545d7a4a1bf3d75a23558"
   },
   {
     "source": "tests/rlt/test_train_franka_pi05_sft.py",
     "destination": "tests/rlt/test_train_franka_pi05_sft.py",
-    "sha256": "3fa98690b5f33280f5c6356393b73ae038cfa9ebab995df285a0993b7651bdfd"
+    "sha256": "3fa98690b5f33280f5c6356393b73ae038cfa9ebab995df285a0993b7651bdfd",
+    "destination_sha256": "645644b9580b4a90f624be5a8bcc7d35cac1bd74d473b8f1cf4536b6eecf8296"
   },
   {
     "source": "tests/rlt/test_training_safety.py",
     "destination": "tests/rlt/test_training_safety.py",
-    "sha256": "5782f64f91cc01513d391fbd029c39bccccc019f7421dd94cd4ca5142d3b6d22"
+    "sha256": "5782f64f91cc01513d391fbd029c39bccccc019f7421dd94cd4ca5142d3b6d22",
+    "destination_sha256": "82889a29abdec7047d8ab8e26cccea824137bfb3da9eee89e0a7c5cada2a2d4a"
   },
   {
     "source": "tests/rlt/test_training_schema_config.py",
     "destination": "tests/rlt/test_training_schema_config.py",
-    "sha256": "ac511a2e23aee24af8e746538e2dd1a9d377e68e816b3706b372a1085859d9bd"
+    "sha256": "ac511a2e23aee24af8e746538e2dd1a9d377e68e816b3706b372a1085859d9bd",
+    "destination_sha256": "bb62a6dac4d5863931c817398b6561d0467159d481c75745a5dc4714009f7023"
   },
   {
     "source": "tests/rlt/test_training_step.py",
     "destination": "tests/rlt/test_training_step.py",
-    "sha256": "f39706a1ccef065a1f814ec29dd84fd4fb05ec6f27b1877f0efdf96626b60457"
+    "sha256": "f39706a1ccef065a1f814ec29dd84fd4fb05ec6f27b1877f0efdf96626b60457",
+    "destination_sha256": "fa20e5bf9c9fb21c482bfde13c2e85e4426c6852b8198013207e140962c3ca23"
   },
   {
     "source": "tests/rlt/test_training_upgrade.py",
     "destination": "tests/rlt/test_training_upgrade.py",
-    "sha256": "ed47cdd5c638ce7a7eb147b84269a49fe79e32d604a3ef5537b36bd5ddca1db1"
+    "sha256": "ed47cdd5c638ce7a7eb147b84269a49fe79e32d604a3ef5537b36bd5ddca1db1",
+    "destination_sha256": "739f63af5b657f0d639ba237b73763aefa8191957dc0e95afb58ead2a86e26ab"
   },
   {
     "source": "tests/rlt/test_validate_rl_token_inputs.py",
     "destination": "tests/rlt/test_validate_rl_token_inputs.py",
-    "sha256": "72a207cc3ccf972b96ca83ae532ff0b8a324c59133b47b5dfbd0bda39336269c"
+    "sha256": "72a207cc3ccf972b96ca83ae532ff0b8a324c59133b47b5dfbd0bda39336269c",
+    "destination_sha256": "eea97e4b9a40158fce4e223dfc2986cc5acdea6eb24a928d29fea36fa34fa590"
   },
   {
     "source": "tests/rlt/test_vla_adapter.py",
     "destination": "tests/rlt/test_vla_adapter.py",
-    "sha256": "6b7f457f6ad9e1b8f59eb4cee230c18b912567ed00b0879ad244e5eb016481d6"
+    "sha256": "6b7f457f6ad9e1b8f59eb4cee230c18b912567ed00b0879ad244e5eb016481d6",
+    "destination_sha256": "98e448ba669cf702bad4dee8fafc6e77c6aa5a74e0b31760525e5f8273bf9b6d"
   },
   {
     "source": "tests/test_lerobot_registry_dataset.py",
     "destination": "tests/test_lerobot_registry_dataset.py",
-    "sha256": "b380324b5098dff7dda32498afe413c820b9de4511c8db873ad5a0cca84de02e"
+    "sha256": "b380324b5098dff7dda32498afe413c820b9de4511c8db873ad5a0cca84de02e",
+    "destination_sha256": "9c94d6967eb25a1d416304424512387e4ecd7a046c679cd2dfe73f240f85b4d9"
   },
   {
     "source": "tests/test_processor_tokenizer_path.py",
     "destination": "tests/test_processor_tokenizer_path.py",
-    "sha256": "0f4274b177eaac6e5be18777cfe9479ec7f7e9bb0ddc004f3c03e7c07fda00ea"
+    "sha256": "0f4274b177eaac6e5be18777cfe9479ec7f7e9bb0ddc004f3c03e7c07fda00ea",
+    "destination_sha256": "c0cd2826efca380568b4d67f97992d551db532f8e0a2981316efb543ca5a6010"
   },
   {
     "source": "tests/test_rlt_token_pergroup_lr.py",
     "destination": "tests/test_rlt_token_pergroup_lr.py",
-    "sha256": "87b77113099f893418dbc9575e74f5bf6626a2cdaef0dc2c383801ddcf258cb7"
+    "sha256": "87b77113099f893418dbc9575e74f5bf6626a2cdaef0dc2c383801ddcf258cb7",
+    "destination_sha256": "67a90596a8038bcd6bdf6526b20f25972c6496673f16fd0db56d46caf303314d"
   },
   {
     "source": "tests/test_rlt_token_prefix_capture.py",
     "destination": "tests/test_rlt_token_prefix_capture.py",
-    "sha256": "afd52e991bbcd114fbd4e2ab51cef8635242d70698f3d815b6c888e8ca8893b7"
+    "sha256": "afd52e991bbcd114fbd4e2ab51cef8635242d70698f3d815b6c888e8ca8893b7",
+    "destination_sha256": "2b3ef3a361f99ebf29d884eb5b8540fd32362477cce07222804416d820fbb579"
   },
   {
     "source": "tests/test_rlt_token_save_load_vla.py",
     "destination": "tests/test_rlt_token_save_load_vla.py",
-    "sha256": "d9b8b70b92af630fcb2012f595d2f37620430d7f2c947cf1c36ef5956ff4d2a9"
+    "sha256": "d9b8b70b92af630fcb2012f595d2f37620430d7f2c947cf1c36ef5956ff4d2a9",
+    "destination_sha256": "25f0cd005eee8f8b88be3a64fa48131af3c38c7c51a43444740b30602ae6dd27"
   }
 ]
