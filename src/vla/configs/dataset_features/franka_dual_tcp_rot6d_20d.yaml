@@ -1,0 +1,96 @@
+version: 1
+
+state:
+  source_key: observation.state
+  components:
+    left_tcp_position_xyz: true
+    left_tcp_rot6d: true
+    left_gripper: true
+    left_force_xyz: false
+    left_torque_xyz: false
+    left_linear_velocity_xyz: false
+    left_angular_velocity_xyz: false
+    left_joint_positions: false
+    right_tcp_position_xyz: true
+    right_tcp_rot6d: true
+    right_gripper: true
+    right_force_xyz: false
+    right_torque_xyz: false
+    right_linear_velocity_xyz: false
+    right_angular_velocity_xyz: false
+    right_joint_positions: false
+  component_features:
+    left_tcp_position_xyz: [left_tcp_position_x, left_tcp_position_y, left_tcp_position_z]
+    left_tcp_rot6d:
+      - left_tcp_rot6d_col0_x
+      - left_tcp_rot6d_col0_y
+      - left_tcp_rot6d_col0_z
+      - left_tcp_rot6d_col1_x
+      - left_tcp_rot6d_col1_y
+      - left_tcp_rot6d_col1_z
+    left_gripper: [left_gripper_position]
+    left_force_xyz: [left_base_tcp_force_x, left_base_tcp_force_y, left_base_tcp_force_z]
+    left_torque_xyz: [left_base_tcp_torque_x, left_base_tcp_torque_y, left_base_tcp_torque_z]
+    left_linear_velocity_xyz:
+      - left_base_tcp_linear_velocity_x
+      - left_base_tcp_linear_velocity_y
+      - left_base_tcp_linear_velocity_z
+    left_angular_velocity_xyz:
+      - left_base_tcp_angular_velocity_x
+      - left_base_tcp_angular_velocity_y
+      - left_base_tcp_angular_velocity_z
+    left_joint_positions:
+      - left_joint_position_1
+      - left_joint_position_2
+      - left_joint_position_3
+      - left_joint_position_4
+      - left_joint_position_5
+      - left_joint_position_6
+      - left_joint_position_7
+    right_tcp_position_xyz: [right_tcp_position_x, right_tcp_position_y, right_tcp_position_z]
+    right_tcp_rot6d:
+      - right_tcp_rot6d_col0_x
+      - right_tcp_rot6d_col0_y
+      - right_tcp_rot6d_col0_z
+      - right_tcp_rot6d_col1_x
+      - right_tcp_rot6d_col1_y
+      - right_tcp_rot6d_col1_z
+    right_gripper: [right_gripper_position]
+    right_force_xyz: [right_base_tcp_force_x, right_base_tcp_force_y, right_base_tcp_force_z]
+    right_torque_xyz: [right_base_tcp_torque_x, right_base_tcp_torque_y, right_base_tcp_torque_z]
+    right_linear_velocity_xyz:
+      - right_base_tcp_linear_velocity_x
+      - right_base_tcp_linear_velocity_y
+      - right_base_tcp_linear_velocity_z
+    right_angular_velocity_xyz:
+      - right_base_tcp_angular_velocity_x
+      - right_base_tcp_angular_velocity_y
+      - right_base_tcp_angular_velocity_z
+    right_joint_positions:
+      - right_joint_position_1
+      - right_joint_position_2
+      - right_joint_position_3
+      - right_joint_position_4
+      - right_joint_position_5
+      - right_joint_position_6
+      - right_joint_position_7
+  output_order:
+    - left_tcp_position_xyz
+    - left_tcp_rot6d
+    - left_gripper
+    - left_force_xyz
+    - left_torque_xyz
+    - left_linear_velocity_xyz
+    - left_angular_velocity_xyz
+    - left_joint_positions
+    - right_tcp_position_xyz
+    - right_tcp_rot6d
+    - right_gripper
+    - right_force_xyz
+    - right_torque_xyz
+    - right_linear_velocity_xyz
+    - right_angular_velocity_xyz
+    - right_joint_positions
+
+action:
+  expected_dim: 20

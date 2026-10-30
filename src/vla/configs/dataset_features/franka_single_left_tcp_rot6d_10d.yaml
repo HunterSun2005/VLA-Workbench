@@ -1,0 +1,53 @@
+version: 1
+
+state:
+  source_key: observation.state
+  components:
+    tcp_position_xyz: true
+    tcp_rot6d: true
+    gripper: true
+    force_xyz: false
+    torque_xyz: false
+    linear_velocity_xyz: false
+    angular_velocity_xyz: false
+    joint_positions: false
+  component_features:
+    tcp_position_xyz: [tcp_position_x, tcp_position_y, tcp_position_z]
+    tcp_rot6d:
+      - tcp_rot6d_col0_x
+      - tcp_rot6d_col0_y
+      - tcp_rot6d_col0_z
+      - tcp_rot6d_col1_x
+      - tcp_rot6d_col1_y
+      - tcp_rot6d_col1_z
+    gripper: [gripper_position]
+    force_xyz: [base_tcp_force_x, base_tcp_force_y, base_tcp_force_z]
+    torque_xyz: [base_tcp_torque_x, base_tcp_torque_y, base_tcp_torque_z]
+    linear_velocity_xyz:
+      - base_tcp_linear_velocity_x
+      - base_tcp_linear_velocity_y
+      - base_tcp_linear_velocity_z
+    angular_velocity_xyz:
+      - base_tcp_angular_velocity_x
+      - base_tcp_angular_velocity_y
+      - base_tcp_angular_velocity_z
+    joint_positions:
+      - joint_position_1
+      - joint_position_2
+      - joint_position_3
+      - joint_position_4
+      - joint_position_5
+      - joint_position_6
+      - joint_position_7
+  output_order:
+    - tcp_position_xyz
+    - tcp_rot6d
+    - gripper
+    - force_xyz
+    - torque_xyz
+    - linear_velocity_xyz
+    - angular_velocity_xyz
+    - joint_positions
+
+action:
+  expected_dim: 10

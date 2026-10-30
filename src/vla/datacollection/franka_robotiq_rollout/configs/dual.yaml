@@ -1,0 +1,99 @@
+version: 1
+backend: ros2
+
+dataset:
+  root: datasets/rollout_dataset_dual
+  task: Complete the bimanual manipulation task.
+  # Optional multi-task prompts; each saved episode selects one prompt.
+  tasks: []
+  fps: 30
+  image_size: [224, 224]
+  # Optional ordered stage labels. Tab advances the annotation during recording;
+  # prompt, critical phase and episode reward remain unchanged.
+  subtasks: []
+
+transport:
+  socket_path: /tmp/vla_franka_dual.sock
+
+control:
+  sync_tolerance_ms: 100
+  policy_timeout_s: 30.0
+  damping: 0.05
+  max_linear_velocity: 0.04
+  max_angular_velocity: 0.30
+  velocity_tracking_tau_s: 0.15
+  target_smoothing_alpha: 0.25
+  velocity_smoothing: 0.30
+  smooth_angular_velocity: true
+  max_joint_speed: 0.30
+  joint_limit_margin: 0.05
+  gamepad_control_rate: 100
+  gamepad_joy_timeout_s: 0.20
+  gamepad_state_timeout_s: 0.50
+  gamepad_deadzone: 0.08
+  gamepad_xy_speed: 0.02
+  gamepad_z_speed: 0.01
+  gamepad_joint7_speed: 0.30
+  gamepad_gripper_speed: 0.40
+  policy_gripper_speed: 1.0
+  gamepad_gripper_trigger_deadzone: 0.05
+  gamepad_position_gain: 8.0
+  gamepad_orientation_gain: 3.0
+  gamepad_max_angular_speed: 0.30
+  min_control_command_success_rate: 0.90
+  low_success_rate_samples: 3
+
+arms:
+  - name: left
+    robot_state_topic: /left/franka_robot_state_broadcaster/robot_state
+    measured_joint_topic: /left/franka_robot_state_broadcaster/measured_joint_states
+    gripper_state_topic: /left/gripper/joint_state_broadcaster_robotiq/joint_states
+    gamepad:
+      joy_topic: /left/gamepad/joy
+      joint7_button_sign: -1.0
+      left_stick_x_sign: 1.0
+      left_stick_y_sign: 1.0
+    command_joint_topic: /left/teleop/joint_states
+    command_gripper_topic: /left/teleop/gripper_action_width_percent
+    gripper_action_topic: /left/gripper/robotiq_gripper_controller/gripper_cmd
+    gripper_speed_topic: /left/gripper/left_gripper_speed_controller/commands
+    gripper_open_position: 0.0
+    gripper_closed_position: 0.8
+    gripper_max_effort: 50.0
+    robot_state_publisher: /left/robot_state_publisher
+    base_link: left_fr3_link0
+    tip_link: left_fr3_link8
+    gripper_joint_name: robotiq_85_left_knuckle_joint
+    workspace_min: [0.20, -0.45, 0.05]
+    workspace_max: [0.75, 0.45, 0.75]
+  - name: right
+    robot_state_topic: /right/franka_robot_state_broadcaster/robot_state
+    measured_joint_topic: /right/franka_robot_state_broadcaster/measured_joint_states
+    gripper_state_topic: /right/gripper/joint_state_broadcaster_robotiq/joint_states
+    gamepad:
+      joy_topic: /right/gamepad/joy
+      joint7_button_sign: -1.0
+      left_stick_x_sign: 1.0
+      left_stick_y_sign: 1.0
+    command_joint_topic: /right/teleop/joint_states
+    command_gripper_topic: /right/teleop/gripper_action_width_percent
+    gripper_action_topic: /right/gripper/robotiq_gripper_controller/gripper_cmd
+    gripper_speed_topic: /right/gripper/right_gripper_speed_controller/commands
+    gripper_open_position: 0.0
+    gripper_closed_position: 0.8
+    gripper_max_effort: 50.0
+    robot_state_publisher: /right/robot_state_publisher
+    base_link: right_fr3_link0
+    tip_link: right_fr3_link8
+    # The right namespaced driver publishes the same URDF joint name as the left driver.
+    gripper_joint_name: robotiq_85_left_knuckle_joint
+    workspace_min: [0.20, -0.45, 0.05]
+    workspace_max: [0.75, 0.45, 0.75]
+
+cameras:
+  - name: base
+    serial: "260722303785"
+  - name: left_wrist
+    serial: "346222073620"
+  - name: right_wrist
+    serial: "346122070471"

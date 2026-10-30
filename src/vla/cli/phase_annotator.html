@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VLA Phase Annotator</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #151617;
+      color: #f2f2f0;
+      letter-spacing: 0;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: #151617; }
+    button, select, input { font: inherit; letter-spacing: 0; }
+    button:focus-visible, select:focus-visible, input:focus-visible, canvas:focus-visible {
+      outline: 2px solid #f0b44d;
+      outline-offset: 2px;
+    }
+    header {
+      min-height: 58px;
+      padding: 9px 16px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      border-bottom: 1px solid #393a3b;
+      background: #1c1d1e;
+    }
+    .identity { min-width: 205px; }
+    h1 { margin: 0; font-size: 16px; line-height: 20px; font-weight: 650; }
+    .output { color: #9d9e9f; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+    .episode-nav { display: flex; align-items: center; gap: 8px; flex: 1; }
+    label { color: #b9b9b6; font-size: 12px; }
+    select, input[type="number"] {
+      height: 34px;
+      border: 1px solid #4a4b4c;
+      border-radius: 4px;
+      color: #f3f3ef;
+      background: #272829;
+      padding: 0 9px;
+    }
+    select { min-width: 150px; }
+    .progress { margin-left: auto; text-align: right; min-width: 112px; }
+    .progress strong { display: block; font-size: 13px; }
+    .progress span { color: #a4a5a3; font-size: 11px; }
+    main { min-height: calc(100vh - 58px); display: flex; flex-direction: column; }
+    .video-grid {
+      flex: 1;
+      min-height: 280px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      align-items: center;
+      background: #090a0a;
+      border-bottom: 1px solid #393a3b;
+    }
+    .video-view { min-width: 0; position: relative; background: #090a0a; }
+    video { display: block; width: 100%; max-height: calc(100vh - 288px); object-fit: contain; background: #090a0a; }
+    .camera-name {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 4px 7px;
+      border-radius: 3px;
+      background: rgba(12, 12, 12, 0.78);
+      color: #f5f5f2;
+      font-size: 12px;
+      pointer-events: none;
+    }
+    .workbench { padding: 12px 16px 14px; background: #1c1d1e; }
+    .status-row { min-height: 30px; display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+    .readout { font-variant-numeric: tabular-nums; font-size: 13px; min-width: 240px; }
+    .phase { font-size: 12px; font-weight: 700; color: #b9bab8; }
+    .phase.critical { color: #ff746b; }
+    .review { font-size: 12px; color: #e0a93f; }
+    .review.reviewed { color: #66c78a; }
+    .message { margin-left: auto; color: #a8aaa7; font-size: 12px; text-align: right; }
+    .message.error { color: #ff746b; }
+    .timeline-wrap { position: relative; width: 100%; height: 42px; margin-bottom: 10px; }
+    canvas { width: 100%; height: 42px; display: block; cursor: crosshair; }
+    .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+    .controls .group { display: flex; gap: 5px; padding-right: 10px; margin-right: 3px; border-right: 1px solid #3c3d3e; }
+    button {
+      height: 34px;
+      min-width: 34px;
+      border: 1px solid #4a4b4c;
+      border-radius: 4px;
+      color: #ecece8;
+      background: #292a2b;
+      padding: 0 10px;
+      cursor: pointer;
+    }
+    button:hover { background: #363738; border-color: #626364; }
+    button:disabled { opacity: 0.42; cursor: default; }
+    button.command { min-width: 104px; }
+    button.primary { background: #a83d36; border-color: #d15b53; color: #fff; }
+    button.primary:hover { background: #bc4941; }
+    button.confirm { background: #286b47; border-color: #438d64; color: #fff; }
+    button.confirm:hover { background: #327c55; }
+    .frame-input { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    input[type="number"] { width: 96px; font-variant-numeric: tabular-nums; }
+    .stopped {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(12, 13, 13, 0.92);
+      z-index: 5;
+      font-size: 18px;
+    }
+    .stopped.visible { display: grid; }
+    @media (max-width: 760px) {
+      header { align-items: flex-start; flex-wrap: wrap; }
+      .identity { width: 100%; }
+      .output { max-width: 100%; }
+      .video-grid { grid-template-columns: 1fr; }
+      video { max-height: 38vh; }
+      .status-row { align-items: flex-start; flex-wrap: wrap; }
+      .message { width: 100%; margin-left: 0; text-align: left; }
+      .frame-input { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="identity">
+      <h1>VLA Critical Phase Annotator</h1>
+      <div id="output" class="output"></div>
+    </div>
+    <div class="episode-nav">
+      <label for="episode">Episode</label>
+      <select id="episode"></select>
+      <div class="progress">
+        <strong id="progress-count">0 / 0 reviewed</strong>
+        <span id="progress-percent">0%</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="videos" class="video-grid" aria-label="Synchronized episode cameras"></section>
+    <section class="workbench">
+      <div class="status-row">
+        <div id="readout" class="readout">Frame 0 / 0</div>
+        <div id="phase" class="phase">VLA PHASE</div>
+        <div id="review" class="review">UNREVIEWED</div>
+        <div id="message" class="message">Loading dataset...</div>
+      </div>
+      <div class="timeline-wrap">
+        <canvas id="timeline" tabindex="0" aria-label="Episode phase timeline"></canvas>
+      </div>
+      <div class="controls">
+        <div class="group">
+          <button id="prev" title="Previous episode (P)" aria-label="Previous episode">|&lt;</button>
+          <button id="play" title="Play or pause (Space)" aria-label="Play or pause">&#9654;</button>
+          <button id="next" title="Next episode" aria-label="Next episode">&gt;|</button>
+        </div>
+        <div class="group">
+          <button id="jump-back" title="Jump backward (J)" aria-label="Jump backward">-1s</button>
+          <button id="frame-back" title="Previous frame (A)" aria-label="Previous frame">&lt;</button>
+          <button id="frame-forward" title="Next frame (D)" aria-label="Next frame">&gt;</button>
+          <button id="jump-forward" title="Jump forward (L)" aria-label="Jump forward">+1s</button>
+        </div>
+        <div class="group">
+          <button id="mark-start" class="command primary" title="Mark critical start (I)">Critical start</button>
+          <button id="mark-end" class="command primary" title="Mark critical end (O)">Critical end</button>
+          <button id="delete" class="command" title="Delete interval under cursor (X)">Delete interval</button>
+          <button id="clear" title="Clear episode intervals (R)">Clear</button>
+        </div>
+        <div class="group">
+          <button id="confirm" class="command confirm" title="Confirm and advance (V)">Confirm + next</button>
+          <button id="quit" title="Save and stop server (Q)">Quit</button>
+        </div>
+        <div class="frame-input">
+          <label for="frame">Frame</label>
+          <input id="frame" type="number" min="0" step="1" value="0">
+        </div>
+      </div>
+    </section>
+  </main>
+  <div id="stopped" class="stopped">Annotations saved. The server has stopped.</div>
+
+  <script>
+    "use strict";
+    const ui = Object.fromEntries([
+      "output", "episode", "progress-count", "progress-percent", "videos", "readout",
+      "phase", "review", "message", "timeline", "prev", "play", "next", "jump-back",
+      "frame-back", "frame-forward", "jump-forward", "mark-start", "mark-end", "delete",
+      "clear", "confirm", "quit", "frame", "stopped"
+    ].map(id => [id, document.getElementById(id)]));
+
+    let bootstrap = null;
+    let position = 0;
+    let episode = null;
+    let intervals = [];
+    let reviewed = false;
+    let pendingStart = null;
+    let currentFrame = 0;
+    let playing = false;
+    let videoViews = [];
+    let animationId = null;
+
+    function setMessage(text, error = false) {
+      ui.message.textContent = text;
+      ui.message.classList.toggle("error", error);
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, options);
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.error || `Request failed: ${response.status}`);
+      return value;
+    }
+
+    function isCritical(frame = currentFrame) {
+      return intervals.some(([start, end]) => start <= frame && frame < end);
+    }
+
+    function dirty() {
+      reviewed = false;
+      bootstrap.episodes[position].reviewed = false;
+      updateStatus();
+    }
+
+    function updateProgress() {
+      const count = bootstrap.episodes.filter(item => item.reviewed).length;
+      const total = bootstrap.episodes.length;
+      ui["progress-count"].textContent = `${count} / ${total} reviewed`;
+      ui["progress-percent"].textContent = `${Math.round(100 * count / total)}%`;
+      for (const option of ui.episode.options) {
+        const item = bootstrap.episodes[Number(option.value)];
+        option.textContent = `${item.reviewed ? "[reviewed]" : "[pending]"} episode ${item.episode_id}`;
+      }
+    }
+
+    function updateStatus() {
+      if (!episode) return;
+      const seconds = currentFrame / bootstrap.fps;
+      ui.readout.textContent = `Frame ${currentFrame} / ${episode.length - 1}  |  ${seconds.toFixed(2)} s`;
+      ui.frame.value = currentFrame;
+      ui.frame.max = episode.length - 1;
+      const critical = isCritical();
+      ui.phase.textContent = critical ? "CRITICAL PHASE" : "VLA PHASE";
+      ui.phase.classList.toggle("critical", critical);
+      ui.review.textContent = reviewed ? "REVIEWED" : "UNREVIEWED";
+      ui.review.classList.toggle("reviewed", reviewed);
+      ui.play.innerHTML = playing ? "&#10074;&#10074;" : "&#9654;";
+      ui.prev.disabled = position === 0;
+      ui.next.disabled = position === bootstrap.episodes.length - 1;
+      drawTimeline();
+      updateProgress();
+    }
+
+    function drawTimeline() {
+      if (!episode) return;
+      const canvas = ui.timeline;
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(rect.width * ratio));
+      canvas.height = Math.max(1, Math.round(rect.height * ratio));
+      const ctx = canvas.getContext("2d");
+      ctx.scale(ratio, ratio);
+      const width = rect.width;
+      const height = rect.height;
+      ctx.fillStyle = "#3b3c3d";
+      ctx.fillRect(0, 10, width, height - 20);
+      ctx.fillStyle = "#bd4942";
+      for (const [start, end] of intervals) {
+        ctx.fillRect(width * start / episode.length, 10, Math.max(2, width * (end - start) / episode.length), height - 20);
+      }
+      if (pendingStart !== null) {
+        ctx.fillStyle = "#e0a93f";
+        const x = width * pendingStart / episode.length;
+        ctx.fillRect(x - 1, 5, 3, height - 10);
+      }
+      ctx.fillStyle = "#f5f5f1";
+      const cursor = width * currentFrame / Math.max(episode.length - 1, 1);
+      ctx.fillRect(cursor - 1, 3, 3, height - 6);
+    }
+
+    function pause() {
+      playing = false;
+      for (const view of videoViews) view.video.pause();
+      if (animationId !== null) cancelAnimationFrame(animationId);
+      animationId = null;
+      updateStatus();
+    }
+
+    function seekFrame(frame) {
+      if (!episode) return;
+      pause();
+      currentFrame = Math.max(0, Math.min(episode.length - 1, Math.round(frame)));
+      for (const view of videoViews) {
+        view.video.currentTime = view.fromTimestamp + currentFrame / bootstrap.fps;
+      }
+      updateStatus();
+    }
+
+    function animate() {
+      if (!playing || videoViews.length === 0) return;
+      const primary = videoViews[0];
+      const localTime = Math.max(0, primary.video.currentTime - primary.fromTimestamp);
+      currentFrame = Math.min(episode.length - 1, Math.round(localTime * bootstrap.fps));
+      for (const view of videoViews.slice(1)) {
+        const target = view.fromTimestamp + localTime;
+        if (Math.abs(view.video.currentTime - target) > 0.08) view.video.currentTime = target;
+      }
+      if (currentFrame >= episode.length - 1) {
+        pause();
+        return;
+      }
+      updateStatus();
+      animationId = requestAnimationFrame(animate);
+    }
+
+    async function togglePlay() {
+      if (playing) {
+        pause();
+        return;
+      }
+      if (currentFrame >= episode.length - 1) seekFrame(0);
+      try {
+        await Promise.all(videoViews.map(view => view.video.play()));
+        playing = true;
+        updateStatus();
+        animationId = requestAnimationFrame(animate);
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    }
+
+    async function saveCurrent(forceReviewed = reviewed) {
+      if (!episode) return;
+      const result = await api("/api/episode", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          episode_id: episode.episode_id,
+          length: episode.length,
+          intervals,
+          reviewed: forceReviewed
+        })
+      });
+      reviewed = forceReviewed;
+      bootstrap.episodes[position].reviewed = forceReviewed;
+      setMessage(`Saved ${intervals.length} critical interval${intervals.length === 1 ? "" : "s"}`);
+      updateProgress();
+      return result;
+    }
+
+    async function loadPosition(nextPosition) {
+      pause();
+      position = Math.max(0, Math.min(bootstrap.episodes.length - 1, nextPosition));
+      const summary = bootstrap.episodes[position];
+      episode = await api(`/api/episode?episode=${summary.episode_id}`);
+      intervals = episode.intervals.map(interval => [...interval]);
+      reviewed = episode.reviewed;
+      pendingStart = null;
+      currentFrame = 0;
+      ui.episode.value = String(position);
+      ui.videos.replaceChildren();
+      videoViews = episode.videos.map(item => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "video-view";
+        const video = document.createElement("video");
+        video.src = item.url;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = "auto";
+        const label = document.createElement("div");
+        label.className = "camera-name";
+        label.textContent = item.camera_key;
+        wrapper.append(video, label);
+        ui.videos.append(wrapper);
+        video.addEventListener("loadedmetadata", () => {
+          video.currentTime = item.from_timestamp;
+        }, {once: true});
+        return {video, fromTimestamp: item.from_timestamp};
+      });
+      setMessage(`Episode ${episode.episode_id} loaded`);
+      updateStatus();
+    }
+
+    function markStart() {
+      pendingStart = currentFrame;
+      dirty();
+      setMessage(`Critical start set at frame ${currentFrame}`);
+    }
+
+    function markEnd() {
+      if (pendingStart === null) {
+        setMessage("Set a critical start first", true);
+        return;
+      }
+      if (currentFrame < pendingStart) {
+        setMessage("Critical end cannot precede its start", true);
+        return;
+      }
+      const candidate = [pendingStart, currentFrame + 1];
+      if (intervals.some(([start, end]) => candidate[0] < end && start < candidate[1])) {
+        setMessage("Critical interval overlaps an existing interval", true);
+        return;
+      }
+      intervals.push(candidate);
+      intervals.sort((left, right) => left[0] - right[0]);
+      pendingStart = null;
+      dirty();
+      setMessage(`Critical interval [${candidate[0]}, ${candidate[1]}) added`);
+    }
+
+    function deleteInterval() {
+      const next = intervals.filter(([start, end]) => !(start <= currentFrame && currentFrame < end));
+      if (next.length === intervals.length) {
+        setMessage("Move the cursor inside an interval to delete it", true);
+        return;
+      }
+      intervals = next;
+      dirty();
+      setMessage("Critical interval deleted");
+    }
+
+    async function changeEpisode(nextPosition) {
+      try {
+        await saveCurrent(reviewed);
+        await loadPosition(nextPosition);
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    }
+
+    async function confirmAndNext() {
+      if (pendingStart !== null) {
+        setMessage("Close or clear the pending critical interval before confirming", true);
+        return;
+      }
+      try {
+        await saveCurrent(true);
+        if (position < bootstrap.episodes.length - 1) await loadPosition(position + 1);
+        else setMessage("All available episodes have been reached");
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    }
+
+    async function quit() {
+      try {
+        pendingStart = null;
+        await saveCurrent(reviewed);
+        await api("/api/quit", {method: "POST"});
+        pause();
+        ui.stopped.classList.add("visible");
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    }
+
+    function bind() {
+      ui.play.addEventListener("click", togglePlay);
+      ui["frame-back"].addEventListener("click", () => seekFrame(currentFrame - 1));
+      ui["frame-forward"].addEventListener("click", () => seekFrame(currentFrame + 1));
+      ui["jump-back"].addEventListener("click", () => seekFrame(currentFrame - bootstrap.jump_seconds * bootstrap.fps));
+      ui["jump-forward"].addEventListener("click", () => seekFrame(currentFrame + bootstrap.jump_seconds * bootstrap.fps));
+      ui["mark-start"].addEventListener("click", markStart);
+      ui["mark-end"].addEventListener("click", markEnd);
+      ui.delete.addEventListener("click", deleteInterval);
+      ui.clear.addEventListener("click", () => {
+        intervals = [];
+        pendingStart = null;
+        dirty();
+        setMessage("Episode intervals cleared");
+      });
+      ui.confirm.addEventListener("click", confirmAndNext);
+      ui.prev.addEventListener("click", () => changeEpisode(position - 1));
+      ui.next.addEventListener("click", () => changeEpisode(position + 1));
+      ui.quit.addEventListener("click", quit);
+      ui.episode.addEventListener("change", () => changeEpisode(Number(ui.episode.value)));
+      ui.frame.addEventListener("change", () => seekFrame(Number(ui.frame.value)));
+      ui.timeline.addEventListener("click", event => {
+        const rect = ui.timeline.getBoundingClientRect();
+        seekFrame((event.clientX - rect.left) / rect.width * (episode.length - 1));
+      });
+      window.addEventListener("resize", drawTimeline);
+      window.addEventListener("keydown", event => {
+        if (["INPUT", "SELECT"].includes(document.activeElement.tagName)) return;
+        const key = event.key.toLowerCase();
+        if (key === " ") { event.preventDefault(); togglePlay(); }
+        else if (key === "a" || key === "arrowleft") seekFrame(currentFrame - 1);
+        else if (key === "d" || key === "arrowright") seekFrame(currentFrame + 1);
+        else if (key === "j") seekFrame(currentFrame - bootstrap.jump_seconds * bootstrap.fps);
+        else if (key === "l") seekFrame(currentFrame + bootstrap.jump_seconds * bootstrap.fps);
+        else if (key === "i") markStart();
+        else if (key === "o") markEnd();
+        else if (key === "x") deleteInterval();
+        else if (key === "r") ui.clear.click();
+        else if (key === "v") confirmAndNext();
+        else if (key === "p") changeEpisode(position - 1);
+        else if (key === "q" || key === "escape") quit();
+      });
+    }
+
+    async function init() {
+      try {
+        bootstrap = await api("/api/bootstrap");
+        ui.output.textContent = bootstrap.output;
+        bootstrap.episodes.forEach((item, index) => {
+          const option = document.createElement("option");
+          option.value = index;
+          ui.episode.append(option);
+        });
+        bind();
+        updateProgress();
+        await loadPosition(bootstrap.start_position);
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    }
+    init();
+  </script>
+</body>
+</html>

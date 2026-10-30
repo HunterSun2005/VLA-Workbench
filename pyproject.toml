@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=71", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vla"
+version = "0.1.0"
+description = "VLA: RL Token wrapper and LeRobot integration for real-world robot RL"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "torch>=2.2",
+    "numpy>=1.23",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+lerobot = [
+    "lerobot[pi] @ https://github.com/huggingface/lerobot/archive/refs/tags/v0.5.1.tar.gz",
+    "safetensors>=0.4.3",
+    "packaging>=24.0",
+    "evdev>=1.7",
+]
+franka = [
+    "franky-control==1.1.4",
+    "pymodbus>=3.8,<4",
+    "pyrealsense2>=2.54.2; python_version >= '3.12'",
+]
+test = ["pytest>=8.1", "pytest-timeout>=2.4"]
+dev = ["vla[lerobot,test]", "ruff>=0.6"]
+
+[project.scripts]
+vla-annotate-phases = "vla.cli.annotate_phases:main"
+vla-build-handover-cache = "vla.cli.build_handover_cache:main"
+vla-build-transition-cache-v2 = "vla.cli.build_transition_cache_v2:main"
+vla-compute-token-variance = "vla.cli.compute_token_variance:main"
+vla-extract-dataset-features = "vla.cli.extract_dataset_features:main"
+vla-merge-transition-caches = "vla.cli.merge_transition_caches:main"
+vla-merge-franka-datasets = "vla.cli.merge_franka_datasets:main"
+vla-prepare-mix-buckets = "vla.cli.prepare_mix_buckets:main"
+vla-prepare-franka-sft-split = "vla.cli.prepare_franka_sft_split:main"
+vla-rescale-cache-reward = "vla.cli.rescale_cache_reward:main"
+vla-train-actor-critic = "vla.cli.train_actor_critic_native:main"
+vla-train-franka-pi05-sft = "vla.cli.train_franka_pi05_sft:main"
+vla-train-handover = "vla.cli.train_handover:main"
+vla-train-rl-token = "vla.cli.train_rl_token:main"
+vla-validate-rl-token-inputs = "vla.cli.validate_rl_token_inputs:main"
+vla-validate-transition-cache = "vla.cli.validate_transition_cache:main"
+vla-serve-franka-rollout = "vla.cli.serve_franka_rollout:main"
+vla-deploy-franka-pi05-rtc = "vla.cli.deploy_franka_pi05_rtc:main"
+vla-diagnose-franka-pi05-sft = "vla.cli.diagnose_franka_pi05_sft:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vla = [
+    "core/configs/*.yaml",
+    "configs/dataset_features/*.yaml",
+    "configs/deployment/*.yaml",
+    "cli/*.html",
+    "datacollection/**/*.yaml",
+    "datacollection/**/*.sh",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110

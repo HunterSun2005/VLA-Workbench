@@ -1,0 +1,1232 @@
+[
+  {
+    "source": "datacollection/__init__.py",
+    "destination": "src/vla/datacollection/__init__.py",
+    "sha256": "236bf43a6fd7c4b544ff00b4c62d0a2f8eb11545185f82993c90e4cda737a2fc"
+  },
+  {
+    "source": "datacollection/franka_robotiq_dual/__init__.py",
+    "destination": "src/vla/datacollection/franka_robotiq_dual/__init__.py",
+    "sha256": "8914082c9b85aa038f784e644a4003716302315bf9a1d8717a25d03513418f13"
+  },
+  {
+    "source": "datacollection/franka_robotiq_dual/auto_record.py",
+    "destination": "src/vla/datacollection/franka_robotiq_dual/auto_record.py",
+    "sha256": "9e869372999850e4fba3507d4e6e085646cf92c5487c671fd6e74bf8e185645f"
+  },
+  {
+    "source": "datacollection/franka_robotiq_dual/gamepad_record.py",
+    "destination": "src/vla/datacollection/franka_robotiq_dual/gamepad_record.py",
+    "sha256": "5a1f2e67c2912b13ba2dde3a9dbf2740410bf94f037523afe5ddbb2229324dcd"
+  },
+  {
+    "source": "datacollection/franka_robotiq_dual/report.py",
+    "destination": "src/vla/datacollection/franka_robotiq_dual/report.py",
+    "sha256": "20652094d3078551068c3d7d4865e88b96404050cab0bdd7c2927dfcae60206e"
+  },
+  {
+    "source": "datacollection/franka_robotiq_dual/schema.py",
+    "destination": "src/vla/datacollection/franka_robotiq_dual/schema.py",
+    "sha256": "cf4218bf7a696ded9f3f643f8eac71ad6052aa271e66c6430e583b24ce55ade3"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/__init__.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/__init__.py",
+    "sha256": "b9956fa45d61b5d8baf89d23de3434d0a80a367860c05964178f3b069b08f917"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/collect.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/collect.py",
+    "sha256": "493fde328e6fe50b46c2c74286e6e0882de2533862d58b031ca4570db9a3d846"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/collect_franky.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/collect_franky.py",
+    "sha256": "2c5d723236fac1ce8cadd1497738f7013644c0b421d6145689ea2d96eedb8a44"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/collect_ros.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/collect_ros.py",
+    "sha256": "72b11eb52ad5f21dcf80a151414ea14fd54812878aaeb3c270d1f042c121ab25"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/common.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/common.py",
+    "sha256": "c9822d144742bb40d8ff1f2149c15de6b2f00a4766a9b91c21827c3ff08eeaeb"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/config.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/config.py",
+    "sha256": "e5c42cdc1e88548648be495e40076d22b73b0c244553a8a8596688f79741bd90"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/configs/dual.yaml",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/configs/dual.yaml",
+    "sha256": "8022bbf101acea8131ae648b17227d811ec5883c1ffafede800ad01bf2a93371"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/configs/single_left.yaml",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/configs/single_left.yaml",
+    "sha256": "be2f94e40727c7459bdff3e80a56e7b2117096224e5c8689ebc4a60b0d628ae5"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/configs/single_left_31d.yaml",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/configs/single_left_31d.yaml",
+    "sha256": "a2cdc730df0ad1008f38dee6230d139d8d1479b68a112e5d1aeb9c4930432d89"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/configs/single_left_sft_takeover.yaml",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/configs/single_left_sft_takeover.yaml",
+    "sha256": "18e7522721a1a6aea5df85ce937ea22f4858f21c82fda6dc52376a1b5ab53ff0"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/gamepad.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/gamepad.py",
+    "sha256": "026cbefbee260e30da0dce19dda1954d12600e731359fd7a9f15305d6a7c3b77"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/joy_bridge.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/joy_bridge.py",
+    "sha256": "11ae86143bcca217163c8f9608dbb771768dc751b9928ba9c2d2fa5aad2aa1b3"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/joy_transport.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/joy_transport.py",
+    "sha256": "1dccda5bfcdd42cf36d5241632ea1fee61b10e503cfc42ce4cdcc602f57b5ad2"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/policy_client.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/policy_client.py",
+    "sha256": "af5be3379142436f7137ed7d2327f4e4182e5a988803fa19a5fca77e3a43ecdc"
+  },
+  {
+    "source": "datacollection/franka_robotiq_rollout/safety.py",
+    "destination": "src/vla/datacollection/franka_robotiq_rollout/safety.py",
+    "sha256": "2aacca455ff02cedbdb56786576e494f5ba26f5eaff7db6c601e23818f3fd88b"
+  },
+  {
+    "source": "datacollection/franka_robotiq_single_left/__init__.py",
+    "destination": "src/vla/datacollection/franka_robotiq_single_left/__init__.py",
+    "sha256": "c1bfc348640c6c9d5eb65cf4f5e6239633b8606ec8708695abf98b35ffc46535"
+  },
+  {
+    "source": "datacollection/franka_robotiq_single_left/auto_record.py",
+    "destination": "src/vla/datacollection/franka_robotiq_single_left/auto_record.py",
+    "sha256": "f6f53c868b592cefd3292c14f5439d5f8246f8f7828352e91b0d84e54afb4d97"
+  },
+  {
+    "source": "datacollection/franka_robotiq_single_left/check_31d_collection.py",
+    "destination": "src/vla/datacollection/franka_robotiq_single_left/check_31d_collection.py",
+    "sha256": "0e36b28730e4ad657ba58251feaa788c51fe10d9a2dc0b15debca8b0babab9e7"
+  },
+  {
+    "source": "datacollection/franka_robotiq_single_left/schema.py",
+    "destination": "src/vla/datacollection/franka_robotiq_single_left/schema.py",
+    "sha256": "080bc782fbba8c7e431fae49e51742e0ca67a97934e7cf8461bf78d1d319d27b"
+  },
+  {
+    "source": "datacollection/franka_robotiq_single_left/schema_31d.py",
+    "destination": "src/vla/datacollection/franka_robotiq_single_left/schema_31d.py",
+    "sha256": "2268827b489bf6d9605bc25add53a5f45e27ff79e394119e548ecf809377fa7f"
+  },
+  {
+    "source": "datacollection/franka_robotiq_single_left/v30_writer.py",
+    "destination": "src/vla/datacollection/franka_robotiq_single_left/v30_writer.py",
+    "sha256": "1fa95bc858f882ed0df5bb912d3b1d0ae3234a24448949fe279a7b4bd72520f3"
+  },
+  {
+    "source": "datacollection/resize_lerobot_videos.py",
+    "destination": "src/vla/datacollection/resize_lerobot_videos.py",
+    "sha256": "9d766539ee7c6315fc6e719d6104b55c3cdd2f7b7f5ed90f556e9c05695da8d3"
+  },
+  {
+    "source": "datacollection/start_teleop/check_controller_state.py",
+    "destination": "src/vla/datacollection/start_teleop/check_controller_state.py",
+    "sha256": "f7b323d3092c67fad38a6f1d899ad24c27e4374261722d1437da3abef14e704d"
+  },
+  {
+    "source": "datacollection/start_teleop/clean_teleop.sh",
+    "destination": "src/vla/datacollection/start_teleop/clean_teleop.sh",
+    "sha256": "e49d0ad8bdd35e3e26c88fd0f05c53dd3e0aa93a048ee76031b187f0ae4d8fc1"
+  },
+  {
+    "source": "datacollection/start_teleop/configs/single_left_gamepad.yaml",
+    "destination": "src/vla/datacollection/start_teleop/configs/single_left_gamepad.yaml",
+    "sha256": "98875a5f1a2cbd26be91c18b196d628c12820c3a482471d66c9bd2e976e453aa"
+  },
+  {
+    "source": "datacollection/start_teleop/configs/single_left_gamepad_31d.yaml",
+    "destination": "src/vla/datacollection/start_teleop/configs/single_left_gamepad_31d.yaml",
+    "sha256": "1ed363a640c57ad81cabdd3351711630d2e42a9eb6b81d54cb382dfcf10775df"
+  },
+  {
+    "source": "datacollection/start_teleop/configs/single_left_gamepad_record.yaml",
+    "destination": "src/vla/datacollection/start_teleop/configs/single_left_gamepad_record.yaml",
+    "sha256": "c2bdd7ed0be5d821eff79e1a830520ec0b84267ee894e2d6516fbc2a4b0cb055"
+  },
+  {
+    "source": "datacollection/start_teleop/fine_teleop.py",
+    "destination": "src/vla/datacollection/start_teleop/fine_teleop.py",
+    "sha256": "4e4425904496dba597c7f14338c4225fc1120ee9e41e27d1464d569fb0b5685e"
+  },
+  {
+    "source": "datacollection/start_teleop/fr3_duo_teleop.launch.py",
+    "destination": "src/vla/datacollection/start_teleop/fr3_duo_teleop.launch.py",
+    "sha256": "73f393660bcdfc92e2fe426bfa20932aaa1d743c81fe4c5235f6e594577df448"
+  },
+  {
+    "source": "datacollection/start_teleop/franka_kinematics.py",
+    "destination": "src/vla/datacollection/start_teleop/franka_kinematics.py",
+    "sha256": "2bb06b3f773b71ece641a84928e00f84df59467fb4f6780c50d2d11e55009a84"
+  },
+  {
+    "source": "datacollection/start_teleop/gamepad_config.py",
+    "destination": "src/vla/datacollection/start_teleop/gamepad_config.py",
+    "sha256": "425a5a68b068869e7586726105f34daff4013fa61925cf4e2596d9f8090db096"
+  },
+  {
+    "source": "datacollection/start_teleop/gamepad_preview.py",
+    "destination": "src/vla/datacollection/start_teleop/gamepad_preview.py",
+    "sha256": "f1d6b6c32271dbb9b8789999deb5eeec71284df55d2f72ad5b61cca49e9542ea"
+  },
+  {
+    "source": "datacollection/start_teleop/gamepad_record.py",
+    "destination": "src/vla/datacollection/start_teleop/gamepad_record.py",
+    "sha256": "53a75a321b1970cadbd8fd2a246b14f8ce6d02bc4c91d19d36e6d6bfacf8ff20"
+  },
+  {
+    "source": "datacollection/start_teleop/gamepad_record_31d.py",
+    "destination": "src/vla/datacollection/start_teleop/gamepad_record_31d.py",
+    "sha256": "6082ef64d558a8f9182995dc8840571535091eef4b2b54bf17d45887511226de"
+  },
+  {
+    "source": "datacollection/start_teleop/gamepad_recording.py",
+    "destination": "src/vla/datacollection/start_teleop/gamepad_recording.py",
+    "sha256": "f58f928304c87ebb87a67f0e039639bf59f2afa69133d0412f870bc90aaced37"
+  },
+  {
+    "source": "datacollection/start_teleop/gamepad_recording_31d.py",
+    "destination": "src/vla/datacollection/start_teleop/gamepad_recording_31d.py",
+    "sha256": "6e0b29ac2ff18a63bb7549631573b6fe0e918ef4c494e0ac4b7afd4e43cdc08a"
+  },
+  {
+    "source": "datacollection/start_teleop/gamepad_teleop.py",
+    "destination": "src/vla/datacollection/start_teleop/gamepad_teleop.py",
+    "sha256": "867a94d47e0139f7e126a1bf880740147d4eae9be8bacd2535ee6f3b1e302321"
+  },
+  {
+    "source": "datacollection/start_teleop/gello_duo_fine.launch.py",
+    "destination": "src/vla/datacollection/start_teleop/gello_duo_fine.launch.py",
+    "sha256": "412cc3681d5ca341fabc74ce679763a84b0ffcf97332c81d5ed5a2a114b33fe1"
+  },
+  {
+    "source": "datacollection/start_teleop/lib/controllers.sh",
+    "destination": "src/vla/datacollection/start_teleop/lib/controllers.sh",
+    "sha256": "bf143b7ee9ec73fa4c6e8f30e8ce1fbc9f1947c615cfae799c79ca8748f53867"
+  },
+  {
+    "source": "datacollection/start_teleop/lib/environment.sh",
+    "destination": "src/vla/datacollection/start_teleop/lib/environment.sh",
+    "sha256": "22edd7554c4124529f4bb704c11453e4a5c00b344ab83f6f963287b794d10813"
+  },
+  {
+    "source": "datacollection/start_teleop/lib/keyboard.sh",
+    "destination": "src/vla/datacollection/start_teleop/lib/keyboard.sh",
+    "sha256": "280436258a94395cefe453ec9073e9c5b5830020a87c618bb21b9742b24177ce"
+  },
+  {
+    "source": "datacollection/start_teleop/lib/processes.sh",
+    "destination": "src/vla/datacollection/start_teleop/lib/processes.sh",
+    "sha256": "49e3b28c505255ee1e39599164c8b6be2bdd2868fa2060e70211ca1f9ad797eb"
+  },
+  {
+    "source": "datacollection/start_teleop/prepare_runtime_configs.py",
+    "destination": "src/vla/datacollection/start_teleop/prepare_runtime_configs.py",
+    "sha256": "b361a7f5886089d53791b901c34f32391392bf8294f25df754d7c7071ed14a7a"
+  },
+  {
+    "source": "datacollection/start_teleop/robot_31d.py",
+    "destination": "src/vla/datacollection/start_teleop/robot_31d.py",
+    "sha256": "51ae866d234dfaa3fc3750df0951a9cadabb4e287bf7d1ae69192a7066d92dd0"
+  },
+  {
+    "source": "datacollection/start_teleop/robotiq_duo_teleop.launch.py",
+    "destination": "src/vla/datacollection/start_teleop/robotiq_duo_teleop.launch.py",
+    "sha256": "b9f9db35c966835545aa29cb2c25332bf51a7dcae01a9e06982105ed50b1e542"
+  },
+  {
+    "source": "datacollection/start_teleop/rollout_gamepad.py",
+    "destination": "src/vla/datacollection/start_teleop/rollout_gamepad.py",
+    "sha256": "6ac8c5b9c1231fbbb88901b649d0753419833a1d3f6df696f98da22f49b332a4"
+  },
+  {
+    "source": "datacollection/start_teleop/start_gamepad_record_dual.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_gamepad_record_dual.sh",
+    "sha256": "719f2ed1f72d2063b8a25b49415de9f6433bd2f77e4ca70a2f17157fd109f3c6"
+  },
+  {
+    "source": "datacollection/start_teleop/start_gamepad_record_sft_single_left.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_gamepad_record_sft_single_left.sh",
+    "sha256": "bbe8d06227fe97a044331d05e9d921c78acbed660dd84a357196dfc3d76ec563"
+  },
+  {
+    "source": "datacollection/start_teleop/start_gamepad_record_single_left.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_gamepad_record_single_left.sh",
+    "sha256": "9aed61b7474d72a68e486b5eec5bf31f75ec34da8561c004b36477755fab6ca2"
+  },
+  {
+    "source": "datacollection/start_teleop/start_gamepad_record_single_left_31d.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_gamepad_record_single_left_31d.sh",
+    "sha256": "c13597f4b6eb78c56bb9e02a161893ea72c0ca4af15410ee27ff9fe5f67968e2"
+  },
+  {
+    "source": "datacollection/start_teleop/start_gamepad_single_left.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_gamepad_single_left.sh",
+    "sha256": "680947e5d047ab4b3708c705ee55cb81afeab2ba60fc9b628b3d314acb73bfef"
+  },
+  {
+    "source": "datacollection/start_teleop/start_pi05_gamepad_takeover_single_left.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_pi05_gamepad_takeover_single_left.sh",
+    "sha256": "7a7e28fe9f221ea4801f350db685effc63db3a4f4e0ea8accb8adcaa024d12bd"
+  },
+  {
+    "source": "datacollection/start_teleop/start_rollout_duo.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_rollout_duo.sh",
+    "sha256": "196eef57b4bdc91d7d0754167dc32d701e61f968b2d86942032c8554bafc5dba"
+  },
+  {
+    "source": "datacollection/start_teleop/start_rollout_single_left.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_rollout_single_left.sh",
+    "sha256": "a0219991a90296cae44498fcf079f6c97828740d159bdb8e4a6ebf1b4223f39b"
+  },
+  {
+    "source": "datacollection/start_teleop/start_teleop.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_teleop.sh",
+    "sha256": "97a77dd9367e0678a1ed699e66927d1f99493ff0a6ce4ecb2897c6c081184844"
+  },
+  {
+    "source": "datacollection/start_teleop/start_teleop_duo.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_teleop_duo.sh",
+    "sha256": "9d4b913385deb20d7e7cc19615e8331457651c8400b0a680eef5b8d4059a9778"
+  },
+  {
+    "source": "datacollection/start_teleop/start_teleop_single_left.sh",
+    "destination": "src/vla/datacollection/start_teleop/start_teleop_single_left.sh",
+    "sha256": "565408da4d9a32e2304328173f81f1c5f4d493588c0ec45ee47aca0b6feb1768"
+  },
+  {
+    "source": "pyproject.toml",
+    "destination": "pyproject.toml",
+    "sha256": "989a61b4e16cf71f73f0b4de05b774c9aec8e01cbdf6b2cf7309944d7bd6d04c"
+  },
+  {
+    "source": "scripts/cleanup_franka_pi05_rtc.sh",
+    "destination": "scripts/franka/cleanup_franka_pi05_rtc.sh",
+    "sha256": "f2ab40a4ee343793f6664b77276bc3763bd29b9ff4a20a99245af45d2ecd8734"
+  },
+  {
+    "source": "scripts/rollback_franka_realtime_cpus.sh",
+    "destination": "scripts/franka/rollback_franka_realtime_cpus.sh",
+    "sha256": "896a2ad786139d4d2efd2372f80198217924cff37fab077a09ca55632e348398"
+  },
+  {
+    "source": "scripts/setup_franka_realtime_cpus.sh",
+    "destination": "scripts/franka/setup_franka_realtime_cpus.sh",
+    "sha256": "0b021d71f9898c5619e2056262fb37872d4905b247104805e5bb0408c6284b97"
+  },
+  {
+    "source": "scripts/system/configure_franka_realtime_runtime.sh",
+    "destination": "scripts/system/configure_franka_realtime_runtime.sh",
+    "sha256": "a4883e798f004263a979225e5538b0d37d69062b84150dd3d0f3fe2c1f572a6e"
+  },
+  {
+    "source": "scripts/system/franka-realtime-runtime.service",
+    "destination": "scripts/system/franka-realtime-runtime.service",
+    "sha256": "e4d1da6737920a9a69ee971e8d523afbe6047467781903886c30668fd1caa73f"
+  },
+  {
+    "source": "scripts/system/franka-xhci-irq.service",
+    "destination": "scripts/system/franka-xhci-irq.service",
+    "sha256": "fc4cc7b8994ada966f082405414e1eee73d8d374c3c89ee6b5ea94678cf80a61"
+  },
+  {
+    "source": "scripts/system/set_franka_xhci_irq.sh",
+    "destination": "scripts/system/set_franka_xhci_irq.sh",
+    "sha256": "c15419eda6bcc147f1161bbf093b82a6235c001c1b09fb45549ca29e46c5c24b"
+  },
+  {
+    "source": "scripts/train_franka_pi05_sft_screens.sh",
+    "destination": "scripts/franka/train_franka_pi05_sft_screens.sh",
+    "sha256": "8de81695119eb1aba2edd5175ddd0dd1552c93906eb4283cbe66a1f49cb7ccb0"
+  },
+  {
+    "source": "scripts/verify_franka_realtime_cpus.sh",
+    "destination": "scripts/franka/verify_franka_realtime_cpus.sh",
+    "sha256": "89d347dc9865ce82d03d5cc3975e06b4cbb38ab81e9eb7389d062cc374931ec1"
+  },
+  {
+    "source": "src/evo_rlt/__init__.py",
+    "destination": "src/vla/__init__.py",
+    "sha256": "2dae1a6f3a170e3e48d5b047cf63c77d654fd9fbfce454637f43270b72641ce1"
+  },
+  {
+    "source": "src/evo_rlt/adapters/__init__.py",
+    "destination": "src/vla/adapters/__init__.py",
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/__init__.py",
+    "destination": "src/vla/adapters/lerobot/__init__.py",
+    "sha256": "06a0e1e7885fc6d2f6598d773afd41eaff93e7a2cfe070fd4205e738997daa8a"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/checkpoint_contract.py",
+    "destination": "src/vla/adapters/lerobot/checkpoint_contract.py",
+    "sha256": "1f6ec70340e5eae1054bc33eb01432ba7563999b6234e12798f0388c7b4809de"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/convert_checkpoint.py",
+    "destination": "src/vla/adapters/lerobot/convert_checkpoint.py",
+    "sha256": "731e5d3c677dd4a1062203d1b60c8814b0f94757c21ae3c07d450cf9d277723f"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/demo_loader.py",
+    "destination": "src/vla/adapters/lerobot/demo_loader.py",
+    "sha256": "300b8f204909925e507427c2acc4d1c1da09f591e2f0d002501f5107c6b8af87"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/offline_dataset.py",
+    "destination": "src/vla/adapters/lerobot/offline_dataset.py",
+    "sha256": "7b1597f9df56b881e910d35f881fe1ccfa154474dca4eeaf32c232930c719673"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/pi05_adapter.py",
+    "destination": "src/vla/adapters/lerobot/pi05_adapter.py",
+    "sha256": "8a5a08502c28dd08c19e330eb230f979790205db34209e027f988e365febee20"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/__init__.py",
+    "destination": "src/vla/adapters/lerobot/policies/__init__.py",
+    "sha256": "2a05f64df68a3dbf292ba825615dc5fc74c8c068715f4f7095088db622a44f58"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/action_modifier.py",
+    "destination": "src/vla/adapters/lerobot/policies/action_modifier.py",
+    "sha256": "76aa9f2ccbc3fb7a1b80fd3e3422cd7fcdc7f12c8676ffa1271bc8efbcabb522"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/cache_manifest.py",
+    "destination": "src/vla/adapters/lerobot/policies/cache_manifest.py",
+    "sha256": "0e09964a7146adff6864e6b7a4edb6d9f14498adb59b8f02552e97356f3e15d6"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/configuration_rlt.py",
+    "destination": "src/vla/adapters/lerobot/policies/configuration_rlt.py",
+    "sha256": "e1616146c9cae08123338d728839af5f551cba2636d8c3a4a7d70e00e7006268"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/configuration_rlt_ac.py",
+    "destination": "src/vla/adapters/lerobot/policies/configuration_rlt_ac.py",
+    "sha256": "85aeba9a6db20e912f444e334b5c537daee162c7257ec67a878c0a999d448026"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/configuration_rlt_token.py",
+    "destination": "src/vla/adapters/lerobot/policies/configuration_rlt_token.py",
+    "sha256": "cfece788141e23321125e55e934756c93102e84e9885be18c02386a7b5c83963"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/configuration_schema.py",
+    "destination": "src/vla/adapters/lerobot/policies/configuration_schema.py",
+    "sha256": "3899db45bc924fbf8216191c6579cc19556e22d1c3ac588e2852171f88abfb3e"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/dataset_rlt_ac.py",
+    "destination": "src/vla/adapters/lerobot/policies/dataset_rlt_ac.py",
+    "sha256": "b4e9f039dd76fa3fb107898aee03fb3ca058f46be8aa6fdaece50c29811402a9"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/modeling_rlt.py",
+    "destination": "src/vla/adapters/lerobot/policies/modeling_rlt.py",
+    "sha256": "1d808ab5a70f651ff9ef5511b2aa30ed30e16100b7130a74e035879727671f8a"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/modeling_rlt_ac.py",
+    "destination": "src/vla/adapters/lerobot/policies/modeling_rlt_ac.py",
+    "sha256": "31fa91e9204371aaa11d8241aafba7abf399515c3fa1d2ebce4c9b07f73fb660"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/modeling_rlt_token.py",
+    "destination": "src/vla/adapters/lerobot/policies/modeling_rlt_token.py",
+    "sha256": "6c958eb57fef8527c2f551536a42c700ae137f0557e2716279a3b10988ba0b4b"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/processor_rlt_ac.py",
+    "destination": "src/vla/adapters/lerobot/policies/processor_rlt_ac.py",
+    "sha256": "90b28afd818335aaa23d4014acfc5b6abf7d795664417573b242383b9ca450a7"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/processor_rlt_common.py",
+    "destination": "src/vla/adapters/lerobot/policies/processor_rlt_common.py",
+    "sha256": "38b5c2af2f864cc264a7a6e2fb72741d558be9fd9aecd893ec18a2ed484053f2"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/policies/processor_rlt_token.py",
+    "destination": "src/vla/adapters/lerobot/policies/processor_rlt_token.py",
+    "sha256": "7643eaf6c1d923841f41f21658bd644450740edba3862303204474db2930e779"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/recording.py",
+    "destination": "src/vla/adapters/lerobot/recording.py",
+    "sha256": "c8c842c851082d54e5af70bf1672d9d1ea871a79ec3979592d2915a5fc27085e"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/registry.py",
+    "destination": "src/vla/adapters/lerobot/registry.py",
+    "sha256": "8d7eedaee0eb8945c5bc742041e7691e8cce5b24c417cc732134dfb0b5a18a8a"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/train_utils.py",
+    "destination": "src/vla/adapters/lerobot/train_utils.py",
+    "sha256": "6de1d16e5f99c50c1809d394e1bbca78bf44661c370e681d3f21edec9e06d9d6"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/training_config.py",
+    "destination": "src/vla/adapters/lerobot/training_config.py",
+    "sha256": "6a95528485f1bbf3bcdde1dc444db19e86ce08ce5d91746b99299d50ca00d379"
+  },
+  {
+    "source": "src/evo_rlt/cli/__init__.py",
+    "destination": "src/vla/cli/__init__.py",
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+  },
+  {
+    "source": "src/evo_rlt/cli/annotate_phases.py",
+    "destination": "src/vla/cli/annotate_phases.py",
+    "sha256": "732cad77a2fc0a9d2276432bd01dd7f14b4c5b33409f603624bf1fb52bb93b8e"
+  },
+  {
+    "source": "src/evo_rlt/cli/build_bucket_cache.py",
+    "destination": "src/vla/cli/build_bucket_cache.py",
+    "sha256": "3f63106f35710103428b7ff3f705ce11ae24f925dc5842eb82670fb06bbe8c76"
+  },
+  {
+    "source": "src/evo_rlt/cli/build_handover_cache.py",
+    "destination": "src/vla/cli/build_handover_cache.py",
+    "sha256": "37036a1d489237b18aafe6dd31682283f8adfd67dd4dcb0dec0b32809a8dfc42"
+  },
+  {
+    "source": "src/evo_rlt/cli/build_transition_cache.py",
+    "destination": "src/vla/cli/build_transition_cache.py",
+    "sha256": "aa18ab85bd2ab40527dbbdb1d1c7f30f78dc9d7bb12fbc5e62b3ac4962ca9fc2"
+  },
+  {
+    "source": "src/evo_rlt/cli/build_transition_cache_v2.py",
+    "destination": "src/vla/cli/build_transition_cache_v2.py",
+    "sha256": "c2049ef5f0223cf32b67664256f08d4ca0643d170f2a51300a747265bfb4204d"
+  },
+  {
+    "source": "src/evo_rlt/cli/common.py",
+    "destination": "src/vla/cli/common.py",
+    "sha256": "cd79f18a830783dbf79ec91edc64e05e7197eab091d6ab2cfd8e5f3981a5bf45"
+  },
+  {
+    "source": "src/evo_rlt/cli/compute_token_variance.py",
+    "destination": "src/vla/cli/compute_token_variance.py",
+    "sha256": "14dee910e4dc87a10b7fed96071af93e6562f21567201e32733aca4ee3f9796c"
+  },
+  {
+    "source": "src/evo_rlt/cli/deploy_franka_pi05_rtc.py",
+    "destination": "src/vla/cli/deploy_franka_pi05_rtc.py",
+    "sha256": "3f1356ca11fb1822d28d8ba2ab1cbbc36f2067c3030422e19533ac0f45107013"
+  },
+  {
+    "source": "src/evo_rlt/cli/diagnose_franka_pi05_sft.py",
+    "destination": "src/vla/cli/diagnose_franka_pi05_sft.py",
+    "sha256": "44483c59e323152029b7cc4a097fa1a8c894146570534b601f17c82de8420a24"
+  },
+  {
+    "source": "src/evo_rlt/cli/extract_dataset_features.py",
+    "destination": "src/vla/cli/extract_dataset_features.py",
+    "sha256": "11e5fd9de275b5083f1adbce2e437c8e7ce1e185cde19002af26442460afba82"
+  },
+  {
+    "source": "src/evo_rlt/cli/merge_franka_datasets.py",
+    "destination": "src/vla/cli/merge_franka_datasets.py",
+    "sha256": "db5ef8a31af30941ef2f7a1114b40d000f59de724e6f59fb4e8d2e2ae6d9edf7"
+  },
+  {
+    "source": "src/evo_rlt/cli/merge_transition_caches.py",
+    "destination": "src/vla/cli/merge_transition_caches.py",
+    "sha256": "1334e2e910b64c76dcd426e35d3595d03671fdc82f9ff3bdb48f21dabf6c9d7b"
+  },
+  {
+    "source": "src/evo_rlt/cli/phase_annotation_web.py",
+    "destination": "src/vla/cli/phase_annotation_web.py",
+    "sha256": "6463d69f41a9d278b8906a55ebdcc638565cd2e6e0b5ac22a503b17115a8a1e7"
+  },
+  {
+    "source": "src/evo_rlt/cli/phase_annotator.html",
+    "destination": "src/vla/cli/phase_annotator.html",
+    "sha256": "25b7f7a38c3bf1d3814cb6b27033da5dba0815378632ffdaa703ae3ee20cd44d"
+  },
+  {
+    "source": "src/evo_rlt/cli/prepare_franka_sft_split.py",
+    "destination": "src/vla/cli/prepare_franka_sft_split.py",
+    "sha256": "8e116465dd44a0baf1d6857a1bacc6a536299a39b8d491e9256ae8b0405a9824"
+  },
+  {
+    "source": "src/evo_rlt/cli/prepare_mix_buckets.py",
+    "destination": "src/vla/cli/prepare_mix_buckets.py",
+    "sha256": "20adb7ac3b60869962e380189d57e599c676a82c69d8f54b0b2d243db3fe2671"
+  },
+  {
+    "source": "src/evo_rlt/cli/rescale_cache_reward.py",
+    "destination": "src/vla/cli/rescale_cache_reward.py",
+    "sha256": "733058ed0d144e9c4f97c20425c2f4e2ce11fd11c1e93659c4fd143f74054f69"
+  },
+  {
+    "source": "src/evo_rlt/cli/serve_franka_rollout.py",
+    "destination": "src/vla/cli/serve_franka_rollout.py",
+    "sha256": "d55009c28157385afff6590e0672a14d8fc0685be863e91f6c0ddb3971b6cdd1"
+  },
+  {
+    "source": "src/evo_rlt/cli/serve_franka_sft.py",
+    "destination": "src/vla/cli/serve_franka_sft.py",
+    "sha256": "9b1dc0f8b4e5646b5fb5cb61b13d9b34ccbf50ff732bf735cdbc86214bcab0a8"
+  },
+  {
+    "source": "src/evo_rlt/cli/train_actor_critic_native.py",
+    "destination": "src/vla/cli/train_actor_critic_native.py",
+    "sha256": "511ac4adbdfdf117fe4f9641e7b7dc1b2abceca081e33ad841d637b7ed47cf41"
+  },
+  {
+    "source": "src/evo_rlt/cli/train_chunk_actor_critic.py",
+    "destination": "src/vla/cli/train_chunk_actor_critic.py",
+    "sha256": "f06e1a6b41caf4408f48d43f023a0fbdbcf537d13e2fe00ce1305eefbeb68b32"
+  },
+  {
+    "source": "src/evo_rlt/cli/train_franka_pi05_sft.py",
+    "destination": "src/vla/cli/train_franka_pi05_sft.py",
+    "sha256": "5157272a5a0e8148009d4816656fbf75be17cff38b33aa328e8f8958f48e9f80"
+  },
+  {
+    "source": "src/evo_rlt/cli/train_handover.py",
+    "destination": "src/vla/cli/train_handover.py",
+    "sha256": "480c86bb3ed5c3e91610948e85ab144b68840b69f276a58c0a3a66bb641b87c9"
+  },
+  {
+    "source": "src/evo_rlt/cli/train_rl_token.py",
+    "destination": "src/vla/cli/train_rl_token.py",
+    "sha256": "6c46a0c46957cefb02bfcd2a325a9d9dea005c1e5433ff86e3b845e08e8cac95"
+  },
+  {
+    "source": "src/evo_rlt/cli/upgrade_rlt_training.py",
+    "destination": "src/vla/cli/upgrade_rlt_training.py",
+    "sha256": "b4bd63465fdfb85d0aa397375964a6960a99568cb92b704df9269cf06befdc75"
+  },
+  {
+    "source": "src/evo_rlt/cli/validate_rl_token_inputs.py",
+    "destination": "src/vla/cli/validate_rl_token_inputs.py",
+    "sha256": "3e80a1e5b5a4c95e9c2e5331da7a263a5db19d5c12f1f9121e02a190e1d727ed"
+  },
+  {
+    "source": "src/evo_rlt/cli/validate_transition_cache.py",
+    "destination": "src/vla/cli/validate_transition_cache.py",
+    "sha256": "89c69814581f86d6971b89598eee10fb7403fb0da318a6ea1614a91d5948397c"
+  },
+  {
+    "source": "src/evo_rlt/configs/dataset_features/franka_dual_tcp_rot6d_20d.yaml",
+    "destination": "src/vla/configs/dataset_features/franka_dual_tcp_rot6d_20d.yaml",
+    "sha256": "1a45bca6286118e592390be147d969c3639fde6a0456690253690181197b8ab1"
+  },
+  {
+    "source": "src/evo_rlt/configs/dataset_features/franka_single_left_tcp_rot6d_10d.yaml",
+    "destination": "src/vla/configs/dataset_features/franka_single_left_tcp_rot6d_10d.yaml",
+    "sha256": "2d9399c8a4f4f9a532a0deff556d6f099a903c2a67cb6ae574f109a4f4712ed0"
+  },
+  {
+    "source": "src/evo_rlt/configs/dataset_features/franka_single_left_tcp_rot6d_22d.yaml",
+    "destination": "src/vla/configs/dataset_features/franka_single_left_tcp_rot6d_22d.yaml",
+    "sha256": "8652615b3da0c2fb6ec0dd11d278286497e9c85f8f3aca942967313e75e6627d"
+  },
+  {
+    "source": "src/evo_rlt/configs/deployment/franka_single_left_pi05_rtc.yaml",
+    "destination": "src/vla/configs/deployment/franka_single_left_pi05_rtc.yaml",
+    "sha256": "b796e01d22f8027b89ab715e38ea6d1944fc3aebfeef91d8bd2366694b53beca"
+  },
+  {
+    "source": "src/evo_rlt/configs/deployment/franka_single_left_pi05_sft_takeover.yaml",
+    "destination": "src/vla/configs/deployment/franka_single_left_pi05_sft_takeover.yaml",
+    "sha256": "7f7e2b050e55d826187a40518ab99371c892b0f90778d9bc04b890c1936403f6"
+  },
+  {
+    "source": "src/evo_rlt/core/__init__.py",
+    "destination": "src/vla/core/__init__.py",
+    "sha256": "9296cd5de2e82ca0fd5d2cac6974727c51e25d4cccba5553ebdf56321bf47a93"
+  },
+  {
+    "source": "src/evo_rlt/core/actor.py",
+    "destination": "src/vla/core/actor.py",
+    "sha256": "0c738dfeee44f7a6131553b2e4a3713f731ff34350a9dc23854edd183bf3f3fb"
+  },
+  {
+    "source": "src/evo_rlt/core/algorithm.py",
+    "destination": "src/vla/core/algorithm.py",
+    "sha256": "e7fb5f7eb718755b552208c7cd10a6134e609719892761ff1cc14d228102c4e3"
+  },
+  {
+    "source": "src/evo_rlt/core/collector.py",
+    "destination": "src/vla/core/collector.py",
+    "sha256": "fd0cdabbb1fa9efffaec800541a106cbcec040ad2448597304fd473e8fb57d3a"
+  },
+  {
+    "source": "src/evo_rlt/core/config.py",
+    "destination": "src/vla/core/config.py",
+    "sha256": "c736dd4dff6b53868079c0825f176beb61fbd01e046cc4d2d4cd3623f5bda949"
+  },
+  {
+    "source": "src/evo_rlt/core/configs/ac_best_v3.yaml",
+    "destination": "src/vla/core/configs/ac_best_v3.yaml",
+    "sha256": "d2541ad5402b19c03b2ca04b8507c864e1713d054fefae078d3e9476a3d14526"
+  },
+  {
+    "source": "src/evo_rlt/core/configs/ac_paper_screw.yaml",
+    "destination": "src/vla/core/configs/ac_paper_screw.yaml",
+    "sha256": "f8342487ed42602da213d42b491188e17de3968857962115cfb3ebcfe3c792e9"
+  },
+  {
+    "source": "src/evo_rlt/core/configs/base.yaml",
+    "destination": "src/vla/core/configs/base.yaml",
+    "sha256": "30dd5879eca4e991e55d4cf00c0d03df90fc2103cb1dce73d6f42bf79f052110"
+  },
+  {
+    "source": "src/evo_rlt/core/configs/pi05_rlt.yaml",
+    "destination": "src/vla/core/configs/pi05_rlt.yaml",
+    "sha256": "5608ccde9fa4a190805bfe3abab2687d2ad49b4089c78a797e94857cc174b241"
+  },
+  {
+    "source": "src/evo_rlt/core/configs/pi05_rlt_cp_best.yaml",
+    "destination": "src/vla/core/configs/pi05_rlt_cp_best.yaml",
+    "sha256": "37a8fa9d554b698801555e41618d18dacbc602337f26af78740525b17fe82989"
+  },
+  {
+    "source": "src/evo_rlt/core/critic.py",
+    "destination": "src/vla/core/critic.py",
+    "sha256": "781bfc2be7f0f3edb4b1dddd924649b88ce960f02aed6592f0438fbea240f809"
+  },
+  {
+    "source": "src/evo_rlt/core/envs/__init__.py",
+    "destination": "src/vla/core/envs/__init__.py",
+    "sha256": "d80412c2d10e74f2f47049e8946d04a736b86f2156071b10456102a80d1938ec"
+  },
+  {
+    "source": "src/evo_rlt/core/envs/reaching.py",
+    "destination": "src/vla/core/envs/reaching.py",
+    "sha256": "5afd28e3ebcd86c7ad9eb747362214a565799b88ca801ea4eb89df979b35d22e"
+  },
+  {
+    "source": "src/evo_rlt/core/evaluator.py",
+    "destination": "src/vla/core/evaluator.py",
+    "sha256": "2ced39c43ad97c0c00ab7f6fa2e8a1feae59bc2ec0363e120650c302d013e0b8"
+  },
+  {
+    "source": "src/evo_rlt/core/handover_checkpoint.py",
+    "destination": "src/vla/core/handover_checkpoint.py",
+    "sha256": "a8568dcf477cfba226b3ea4ca810b240c406b92677507653f214f7b990064868"
+  },
+  {
+    "source": "src/evo_rlt/core/interfaces.py",
+    "destination": "src/vla/core/interfaces.py",
+    "sha256": "d4acaf7a8c8de8d9a19e8d4c1496f8c60a61aebbfae626d6f9c02c194ffc0383"
+  },
+  {
+    "source": "src/evo_rlt/core/losses.py",
+    "destination": "src/vla/core/losses.py",
+    "sha256": "e3e474f48119877381c93570ca19afee525c630877cf19dec1e26860376a157b"
+  },
+  {
+    "source": "src/evo_rlt/core/mix_dataset.py",
+    "destination": "src/vla/core/mix_dataset.py",
+    "sha256": "948ced5900f673b9f29e707f2ff0adff1673c0e778f6610a34a1e5c864eb4033"
+  },
+  {
+    "source": "src/evo_rlt/core/obs_bridge.py",
+    "destination": "src/vla/core/obs_bridge.py",
+    "sha256": "b72cbca084d3b5bb1e4df774808f6004199bbed24a923dd6837921fc0538e8f9"
+  },
+  {
+    "source": "src/evo_rlt/core/online_contract.py",
+    "destination": "src/vla/core/online_contract.py",
+    "sha256": "9e1576a253e7136d37a56f41cd8dd6eb4910f0ac4562fd3319a2380f5111b2ae"
+  },
+  {
+    "source": "src/evo_rlt/core/online_replay.py",
+    "destination": "src/vla/core/online_replay.py",
+    "sha256": "e1cd6d8b83eae7c6abceb8b1fd5f413af2ad1847f419fb7a8628beea0fc01daa"
+  },
+  {
+    "source": "src/evo_rlt/core/online_training.py",
+    "destination": "src/vla/core/online_training.py",
+    "sha256": "e88d75fa505c27cb48dcbacf9c5a02677e50003f210955265f4733d873abb388"
+  },
+  {
+    "source": "src/evo_rlt/core/phase_annotations.py",
+    "destination": "src/vla/core/phase_annotations.py",
+    "sha256": "f6a494f71033215afec6bcbcf897dcce0ef215ba198b3fa88c357cf944ef39df"
+  },
+  {
+    "source": "src/evo_rlt/core/phase_controller.py",
+    "destination": "src/vla/core/phase_controller.py",
+    "sha256": "c3a3a4a74346a55229efd6694c3908497a644f1dae906724f8404befaf9ebc1b"
+  },
+  {
+    "source": "src/evo_rlt/core/policy.py",
+    "destination": "src/vla/core/policy.py",
+    "sha256": "556fc7c7c8c2f3207d5e60df6bf6ff2740bf84cd10eb0de464cb6cc358019987"
+  },
+  {
+    "source": "src/evo_rlt/core/replay_buffer.py",
+    "destination": "src/vla/core/replay_buffer.py",
+    "sha256": "7dafceee0239f577bec97762756c7b62213966df7254629cc9ee1c1c5dae3529"
+  },
+  {
+    "source": "src/evo_rlt/core/rewards.py",
+    "destination": "src/vla/core/rewards.py",
+    "sha256": "3adb90c2f5081814a60910b692f43a004373f326288df02e9db9d1eb6b105b27"
+  },
+  {
+    "source": "src/evo_rlt/core/rl_token.py",
+    "destination": "src/vla/core/rl_token.py",
+    "sha256": "5eca6071c51a42ae91b29dccc55ad22add95ef50ca86eb22f056b9fced165765"
+  },
+  {
+    "source": "src/evo_rlt/core/trainer.py",
+    "destination": "src/vla/core/trainer.py",
+    "sha256": "be1422b0a38cc02edc93a77018e1f0197acbce5007ea41c0cc6a8354ac5ce431"
+  },
+  {
+    "source": "src/evo_rlt/core/training_contract.py",
+    "destination": "src/vla/core/training_contract.py",
+    "sha256": "49dbe7c9e6aef3edd366510df9cc3489155b028b6ad5cebcfa4502a90da36b95"
+  },
+  {
+    "source": "src/evo_rlt/core/utils.py",
+    "destination": "src/vla/core/utils.py",
+    "sha256": "70fa9d422a5976b9917cdffc10cd265959e43cb159ce4c0f373ea633fa6e757d"
+  },
+  {
+    "source": "src/evo_rlt/core/vla_adapter.py",
+    "destination": "src/vla/core/vla_adapter.py",
+    "sha256": "f58235da548a39c6fb5e88a399c9b54562b29eaed2a5fb241ba5ade541a00a0e"
+  },
+  {
+    "source": "src/evo_rlt/core/writer_lock.py",
+    "destination": "src/vla/core/writer_lock.py",
+    "sha256": "0c4d457b8c15550da9e1856893edc3ed2d7b960598d133b19878ad1cbee58c38"
+  },
+  {
+    "source": "src/evo_rlt/deployment/__init__.py",
+    "destination": "src/vla/deployment/__init__.py",
+    "sha256": "4d2295c0e0357058870d4c0999548b7d229e346285bbc0e35197c3c75fd33570"
+  },
+  {
+    "source": "src/evo_rlt/deployment/franka_pi05_rtc.py",
+    "destination": "src/vla/deployment/franka_pi05_rtc.py",
+    "sha256": "2f730e2664c632997499af870bca7aeb54ec1e37ac6620bebec8e4890bf8106e"
+  },
+  {
+    "source": "src/evo_rlt/diagnostics/__init__.py",
+    "destination": "src/vla/diagnostics/__init__.py",
+    "sha256": "7f8192407921eebddf572b8f004b25caeb45915b044cc6d59c1eb742083b4754"
+  },
+  {
+    "source": "src/evo_rlt/diagnostics/franka_sft_split.py",
+    "destination": "src/vla/diagnostics/franka_sft_split.py",
+    "sha256": "0380d31970f7d4006526e0d809cf58b13c917e479b1a26bd2cfc816a896eb005"
+  },
+  {
+    "source": "src/evo_rlt/diagnostics/pi05_sft.py",
+    "destination": "src/vla/diagnostics/pi05_sft.py",
+    "sha256": "0387d05261c7a34b103e34ec4c38eda39efe4c586a77a00be77a29c82e58de41"
+  },
+  {
+    "source": "src/evo_rlt/experimental/__init__.py",
+    "destination": "src/vla/experimental/__init__.py",
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+  },
+  {
+    "source": "src/evo_rlt/experimental/model_path_resolution.py",
+    "destination": "src/vla/experimental/model_path_resolution.py",
+    "sha256": "7814f20de5cfa50b293ede3626da169c1eec40b3f45af2f7a01be1c058f08e48"
+  },
+  {
+    "source": "src/evo_rlt/experimental/visualize_rlt_warmup_compare.py",
+    "destination": "src/vla/experimental/visualize_rlt_warmup_compare.py",
+    "sha256": "3a7be93c3df7768570a2175634961fabc9a02456a0fbb46e424a9d6fd0f9b2d6"
+  },
+  {
+    "source": "src/evo_rlt/robots/__init__.py",
+    "destination": "src/vla/robots/__init__.py",
+    "sha256": "4e302593f5be958f5ea962e29db09dbbd7e0455b15c43d7e0203a9cc613eb14d"
+  },
+  {
+    "source": "src/evo_rlt/robots/franka_robotiq/__init__.py",
+    "destination": "src/vla/robots/franka_robotiq/__init__.py",
+    "sha256": "9ac1cbc6588e819f0a8485a4e53c1f27ed01da2348f39cfb09113752ea1d64c0"
+  },
+  {
+    "source": "src/evo_rlt/robots/franka_robotiq/camera.py",
+    "destination": "src/vla/robots/franka_robotiq/camera.py",
+    "sha256": "8372f18691c7ac267def9e3ee26663338a58ccd59d39b2bc9f17febd67647d0d"
+  },
+  {
+    "source": "src/evo_rlt/robots/franka_robotiq/config.py",
+    "destination": "src/vla/robots/franka_robotiq/config.py",
+    "sha256": "2f2dae8bad483543671264e12801eb352400005ab42061b8f2f0ac412cd80d63"
+  },
+  {
+    "source": "src/evo_rlt/robots/franka_robotiq/gripper.py",
+    "destination": "src/vla/robots/franka_robotiq/gripper.py",
+    "sha256": "bf7e0079420ba6c0851a81e688eecd7937ad0e4cf0e38507a5330d511fde87c3"
+  },
+  {
+    "source": "src/evo_rlt/robots/franka_robotiq/resource_lock.py",
+    "destination": "src/vla/robots/franka_robotiq/resource_lock.py",
+    "sha256": "2c7fb2ec81b16648cd8b9d087642d25d4942aecef9ca34a3c7857bfe1ff45caa"
+  },
+  {
+    "source": "src/evo_rlt/robots/franka_robotiq/robot.py",
+    "destination": "src/vla/robots/franka_robotiq/robot.py",
+    "sha256": "656ee6507bfed3959eb87552f415c57fed5240419fbcf1b2473c18391b02d49d"
+  },
+  {
+    "source": "src/evo_rlt_rollout_protocol/__init__.py",
+    "destination": "src/vla_rollout_protocol/__init__.py",
+    "sha256": "55129dfdc37223e5e79141bdefda4238dabddaa74cc75dd472dfc5f6adca9f33"
+  },
+  {
+    "source": "src/evo_rlt_rollout_protocol/protocol.py",
+    "destination": "src/vla_rollout_protocol/protocol.py",
+    "sha256": "337d9cca1f6e55b8e2e675f2a51fc904d054155ec081593929b2b86a9a3748b3"
+  },
+  {
+    "source": "tests/__init__.py",
+    "destination": "tests/__init__.py",
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+  },
+  {
+    "source": "tests/rlt/__init__.py",
+    "destination": "tests/rlt/__init__.py",
+    "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f"
+  },
+  {
+    "source": "tests/rlt/helpers.py",
+    "destination": "tests/rlt/helpers.py",
+    "sha256": "39e659d285d788539305963c9b9b88bd897ce9ed5154af57793ec86de6c3864d"
+  },
+  {
+    "source": "tests/rlt/test_actor_critic.py",
+    "destination": "tests/rlt/test_actor_critic.py",
+    "sha256": "4bc5a3be682250d434ced5da9e6872dfaeac42141e9686482014ff8ab1bc0807"
+  },
+  {
+    "source": "tests/rlt/test_algorithm.py",
+    "destination": "tests/rlt/test_algorithm.py",
+    "sha256": "f7f21a803eaa061915b53f5e42d174f300bcb4750d5a161cade293731e39659f"
+  },
+  {
+    "source": "tests/rlt/test_build_transition_cache_v2.py",
+    "destination": "tests/rlt/test_build_transition_cache_v2.py",
+    "sha256": "6baa681900a78513a729edc9a8389f4ef8871becced385d04598a993cc2f33a5"
+  },
+  {
+    "source": "tests/rlt/test_cache_manifest_ac.py",
+    "destination": "tests/rlt/test_cache_manifest_ac.py",
+    "sha256": "5c82cb6451515b996810432253211e11f02b942856ab560a16ff63b32aa78a27"
+  },
+  {
+    "source": "tests/rlt/test_cartesian_gamepad.py",
+    "destination": "tests/rlt/test_cartesian_gamepad.py",
+    "sha256": "317288dbae19bb27b7ff320e41e0615d93cacd305420a893d2dbe4a0b5fdf491"
+  },
+  {
+    "source": "tests/rlt/test_checkpoint_visualization_metadata.py",
+    "destination": "tests/rlt/test_checkpoint_visualization_metadata.py",
+    "sha256": "4d875e51327e4d50c10dc95c8816fc377c32ea2b2b9b01506caf4d80ced90155"
+  },
+  {
+    "source": "tests/rlt/test_collector.py",
+    "destination": "tests/rlt/test_collector.py",
+    "sha256": "8b996972b62c80c9e56ff73939aa51f3b9f63de6fc9e267cf27c34f85850ed69"
+  },
+  {
+    "source": "tests/rlt/test_demo_loader_success.py",
+    "destination": "tests/rlt/test_demo_loader_success.py",
+    "sha256": "317e611e6aa9f8f701cfd6c8919c541a6db700e245d633aa2e3da641fe3d65f5"
+  },
+  {
+    "source": "tests/rlt/test_dual_gamepad_record.py",
+    "destination": "tests/rlt/test_dual_gamepad_record.py",
+    "sha256": "998e3dcead6f1f5262a03b414055fa15f6c84ca9f92532e378c06a04be8ab37e"
+  },
+  {
+    "source": "tests/rlt/test_extract_dataset_features.py",
+    "destination": "tests/rlt/test_extract_dataset_features.py",
+    "sha256": "1390b6dc68fd39fce0f6f1b78227ab391cdbe99f9eac6fa8f0a1d036cb4fe099"
+  },
+  {
+    "source": "tests/rlt/test_franka_absolute_recorder.py",
+    "destination": "tests/rlt/test_franka_absolute_recorder.py",
+    "sha256": "67790ae7e75e2f1b297074fda22754e4e97aa54d4797e8d9f86e112761263a3d"
+  },
+  {
+    "source": "tests/rlt/test_franka_dual_sft_recorder.py",
+    "destination": "tests/rlt/test_franka_dual_sft_recorder.py",
+    "sha256": "ece37ef1cee9316456871dabd50017f6ef1b796eb216eadab031b2e0f80429e0"
+  },
+  {
+    "source": "tests/rlt/test_franka_pi05_robot.py",
+    "destination": "tests/rlt/test_franka_pi05_robot.py",
+    "sha256": "9889f225892bceac016ea676845f15d0f412e91db77ab35a98802317432bcfa8"
+  },
+  {
+    "source": "tests/rlt/test_franka_pi05_rtc_deployment.py",
+    "destination": "tests/rlt/test_franka_pi05_rtc_deployment.py",
+    "sha256": "81ff99cdfa8865a22cbf03cd95c6f90bfadfe2bc597ea7dc9bc187761eeca1c6"
+  },
+  {
+    "source": "tests/rlt/test_franka_rollout_collection.py",
+    "destination": "tests/rlt/test_franka_rollout_collection.py",
+    "sha256": "d9ded9841511d9acd337093cfe2cdcbd64c6b4054781beac39d7c164427f1629"
+  },
+  {
+    "source": "tests/rlt/test_franka_sft_server.py",
+    "destination": "tests/rlt/test_franka_sft_server.py",
+    "sha256": "27bd7a45ec27063e69bf0884782b26d48e69c1a6cbb21aba8b7d955bf0f66756"
+  },
+  {
+    "source": "tests/rlt/test_franka_sft_split.py",
+    "destination": "tests/rlt/test_franka_sft_split.py",
+    "sha256": "6fefc6d1ba47b38a0f7546430764031078f6ec14519f3bf5954f45085332ef3d"
+  },
+  {
+    "source": "tests/rlt/test_gamepad_preview.py",
+    "destination": "tests/rlt/test_gamepad_preview.py",
+    "sha256": "e9de55bb1e8d26bd765f27ad5b5339edac5f164f3e96b5e44a10427c030ffef9"
+  },
+  {
+    "source": "tests/rlt/test_gamepad_recording.py",
+    "destination": "tests/rlt/test_gamepad_recording.py",
+    "sha256": "5d505c86650e91db11eb792d8808e4578f66c0daf0eedfdbcebf45f24709e8e6"
+  },
+  {
+    "source": "tests/rlt/test_gamepad_teleop.py",
+    "destination": "tests/rlt/test_gamepad_teleop.py",
+    "sha256": "75c24bc571f421fba3d11c658a0c6e148d151f704d6b28f017b34c830c3220e1"
+  },
+  {
+    "source": "tests/rlt/test_handover.py",
+    "destination": "tests/rlt/test_handover.py",
+    "sha256": "587bb24daf4fef0056aad2452e4c3d3b22281f9c780a80b578681436e2579084"
+  },
+  {
+    "source": "tests/rlt/test_interfaces.py",
+    "destination": "tests/rlt/test_interfaces.py",
+    "sha256": "870eb27d5050bc1a9b8dd3c4fc023596fa0308771f04f126c944bd7bda39dd9c"
+  },
+  {
+    "source": "tests/rlt/test_intervention_blend.py",
+    "destination": "tests/rlt/test_intervention_blend.py",
+    "sha256": "ab504116c902dbf38470469e660bf891c89495232e36049adf3619c4d135300d"
+  },
+  {
+    "source": "tests/rlt/test_load_joint_checkpoint.py",
+    "destination": "tests/rlt/test_load_joint_checkpoint.py",
+    "sha256": "49a5148742455b879bf45dc55e9b8b0552aa64775b40e7ced46166b3ac23748f"
+  },
+  {
+    "source": "tests/rlt/test_losses.py",
+    "destination": "tests/rlt/test_losses.py",
+    "sha256": "e5d6ff6a7af30db15b3463060752d534dbac2f1d7625f0a24938915250627e98"
+  },
+  {
+    "source": "tests/rlt/test_offline_dataset.py",
+    "destination": "tests/rlt/test_offline_dataset.py",
+    "sha256": "174e2079cdcf455abfc6810f7d40b3d1ca82132880a1b2691e1c999fd878c910"
+  },
+  {
+    "source": "tests/rlt/test_offline_eval.py",
+    "destination": "tests/rlt/test_offline_eval.py",
+    "sha256": "be2fa4637ce4ea56f4e25665c7ec38bac3e21ea950bcb7872a622cb81e9082ef"
+  },
+  {
+    "source": "tests/rlt/test_offline_trainer.py",
+    "destination": "tests/rlt/test_offline_trainer.py",
+    "sha256": "505e7aa0fb3007c3f903590e053f9e0fb8f0c4e027dc9e973d1a9791cebbdc3a"
+  },
+  {
+    "source": "tests/rlt/test_online_camera_preview.py",
+    "destination": "tests/rlt/test_online_camera_preview.py",
+    "sha256": "3c6fe6568e1e2ca77bca29f7adf4d0554f7c1e9296ae6971c1f603a23310edec"
+  },
+  {
+    "source": "tests/rlt/test_online_consistency.py",
+    "destination": "tests/rlt/test_online_consistency.py",
+    "sha256": "9330d00eed56131a6848b0968adb5eea629f8d7b8f5df39b10d6d717e9aa10ae"
+  },
+  {
+    "source": "tests/rlt/test_online_full_episode.py",
+    "destination": "tests/rlt/test_online_full_episode.py",
+    "sha256": "139c01e1d5a95a9e2fca3746aa53e01234eee64db5d7abef82aca207b12185a6"
+  },
+  {
+    "source": "tests/rlt/test_online_sft_interface.py",
+    "destination": "tests/rlt/test_online_sft_interface.py",
+    "sha256": "e5d693193439442eb6398a10560892169d3b8aa6cb2c1a76c1b7a2abd8528f4f"
+  },
+  {
+    "source": "tests/rlt/test_online_training.py",
+    "destination": "tests/rlt/test_online_training.py",
+    "sha256": "c5e3421b72a18f728f593213372d1fc0ed9135051cc4de1a73542046293e1c37"
+  },
+  {
+    "source": "tests/rlt/test_phase_annotations.py",
+    "destination": "tests/rlt/test_phase_annotations.py",
+    "sha256": "ff836a6b644d83ace155868224e510129200aa29eb327a71cd6ce67cfc4f706a"
+  },
+  {
+    "source": "tests/rlt/test_pi05_adapter_image_only.py",
+    "destination": "tests/rlt/test_pi05_adapter_image_only.py",
+    "sha256": "7bc9eb9f4c8668e6d0df4972645f77af276344cb37c92fb5ad5ea176fd3d889e"
+  },
+  {
+    "source": "tests/rlt/test_pi05_sft_diagnostics.py",
+    "destination": "tests/rlt/test_pi05_sft_diagnostics.py",
+    "sha256": "ab76ea8e6fd973895ed5f19ee0117737418e1e1c2ad5ba29b50b8cea00e5acc9"
+  },
+  {
+    "source": "tests/rlt/test_policy.py",
+    "destination": "tests/rlt/test_policy.py",
+    "sha256": "7c6242741ad297f873ba7401aa8fcc425e4c36bf3084b6d69d30635651a86a7d"
+  },
+  {
+    "source": "tests/rlt/test_pretrained_integration.py",
+    "destination": "tests/rlt/test_pretrained_integration.py",
+    "sha256": "a28a066aa4d8885eb0631c67377319e1173dd4a68e781fb410d89b0b26fe225c"
+  },
+  {
+    "source": "tests/rlt/test_processor_rlt.py",
+    "destination": "tests/rlt/test_processor_rlt.py",
+    "sha256": "c7aff45ffaff1ec77f84e3202334ff59d35465d131e899d5f0d41e81d5ea584b"
+  },
+  {
+    "source": "tests/rlt/test_reaching_env.py",
+    "destination": "tests/rlt/test_reaching_env.py",
+    "sha256": "053a77055f44f320732045f1f32884a28188613c1f6acf9ecfc42fdd04984bab"
+  },
+  {
+    "source": "tests/rlt/test_replay.py",
+    "destination": "tests/rlt/test_replay.py",
+    "sha256": "b1a5b00f0aafa8dac418ddf1c5dffa5a83050960c1d79044edbd2ef6868e3176"
+  },
+  {
+    "source": "tests/rlt/test_resize_lerobot_videos.py",
+    "destination": "tests/rlt/test_resize_lerobot_videos.py",
+    "sha256": "1f8406aa8aa25bb603215230d92d6769339a8e5b7a8c28fd33139701f90eddfe"
+  },
+  {
+    "source": "tests/rlt/test_rewards.py",
+    "destination": "tests/rlt/test_rewards.py",
+    "sha256": "1713aee8d9bc2275d03437b10e8e7d8351b1ccbf9d0a01a621de5ed459f2b2ee"
+  },
+  {
+    "source": "tests/rlt/test_rl_token.py",
+    "destination": "tests/rlt/test_rl_token.py",
+    "sha256": "57cf8af9979d9f4638219d71bbe55a0e8e749ff5c509703e934331f84b905a8c"
+  },
+  {
+    "source": "tests/rlt/test_rlt_ac_rtc.py",
+    "destination": "tests/rlt/test_rlt_ac_rtc.py",
+    "sha256": "2c10f64e0cb1cfb960c1b47b31c86a0ab38743a08b932e3db004f445d4225047"
+  },
+  {
+    "source": "tests/rlt/test_rlt_token_franka_interfaces.py",
+    "destination": "tests/rlt/test_rlt_token_franka_interfaces.py",
+    "sha256": "7caf80f6db00fb83ec9b89e109020dd20033e6f78a401ac94c7ab113b8b7387e"
+  },
+  {
+    "source": "tests/rlt/test_rollout_sft_gamepad.py",
+    "destination": "tests/rlt/test_rollout_sft_gamepad.py",
+    "sha256": "cad2e4e34e6b5243012b9552291cfd74bc6ae15949470b57ecd5d1e4bc0df011"
+  },
+  {
+    "source": "tests/rlt/test_teleop_entrypoints.py",
+    "destination": "tests/rlt/test_teleop_entrypoints.py",
+    "sha256": "5acb264c7a1a81c7c2ebe62ed68ae75546f02e57561c33077c3d3c1d3f3888fa"
+  },
+  {
+    "source": "tests/rlt/test_train_actor_critic_native.py",
+    "destination": "tests/rlt/test_train_actor_critic_native.py",
+    "sha256": "36da422159eb4e8a21a95bdbd86eb911cb47867b2ec02a475fd21688a312a455"
+  },
+  {
+    "source": "tests/rlt/test_train_franka_pi05_sft.py",
+    "destination": "tests/rlt/test_train_franka_pi05_sft.py",
+    "sha256": "3fa98690b5f33280f5c6356393b73ae038cfa9ebab995df285a0993b7651bdfd"
+  },
+  {
+    "source": "tests/rlt/test_training_safety.py",
+    "destination": "tests/rlt/test_training_safety.py",
+    "sha256": "5782f64f91cc01513d391fbd029c39bccccc019f7421dd94cd4ca5142d3b6d22"
+  },
+  {
+    "source": "tests/rlt/test_training_schema_config.py",
+    "destination": "tests/rlt/test_training_schema_config.py",
+    "sha256": "ac511a2e23aee24af8e746538e2dd1a9d377e68e816b3706b372a1085859d9bd"
+  },
+  {
+    "source": "tests/rlt/test_training_step.py",
+    "destination": "tests/rlt/test_training_step.py",
+    "sha256": "f39706a1ccef065a1f814ec29dd84fd4fb05ec6f27b1877f0efdf96626b60457"
+  },
+  {
+    "source": "tests/rlt/test_training_upgrade.py",
+    "destination": "tests/rlt/test_training_upgrade.py",
+    "sha256": "ed47cdd5c638ce7a7eb147b84269a49fe79e32d604a3ef5537b36bd5ddca1db1"
+  },
+  {
+    "source": "tests/rlt/test_validate_rl_token_inputs.py",
+    "destination": "tests/rlt/test_validate_rl_token_inputs.py",
+    "sha256": "72a207cc3ccf972b96ca83ae532ff0b8a324c59133b47b5dfbd0bda39336269c"
+  },
+  {
+    "source": "tests/rlt/test_vla_adapter.py",
+    "destination": "tests/rlt/test_vla_adapter.py",
+    "sha256": "6b7f457f6ad9e1b8f59eb4cee230c18b912567ed00b0879ad244e5eb016481d6"
+  },
+  {
+    "source": "tests/test_lerobot_registry_dataset.py",
+    "destination": "tests/test_lerobot_registry_dataset.py",
+    "sha256": "b380324b5098dff7dda32498afe413c820b9de4511c8db873ad5a0cca84de02e"
+  },
+  {
+    "source": "tests/test_processor_tokenizer_path.py",
+    "destination": "tests/test_processor_tokenizer_path.py",
+    "sha256": "0f4274b177eaac6e5be18777cfe9479ec7f7e9bb0ddc004f3c03e7c07fda00ea"
+  },
+  {
+    "source": "tests/test_rlt_token_pergroup_lr.py",
+    "destination": "tests/test_rlt_token_pergroup_lr.py",
+    "sha256": "87b77113099f893418dbc9575e74f5bf6626a2cdaef0dc2c383801ddcf258cb7"
+  },
+  {
+    "source": "tests/test_rlt_token_prefix_capture.py",
+    "destination": "tests/test_rlt_token_prefix_capture.py",
+    "sha256": "afd52e991bbcd114fbd4e2ab51cef8635242d70698f3d815b6c888e8ca8893b7"
+  },
+  {
+    "source": "tests/test_rlt_token_save_load_vla.py",
+    "destination": "tests/test_rlt_token_save_load_vla.py",
+    "sha256": "d9b8b70b92af630fcb2012f595d2f37620430d7f2c947cf1c36ef5956ff4d2a9"
+  }
+]

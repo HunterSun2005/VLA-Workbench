@@ -1,0 +1,14 @@
+[Unit]
+Description=Configure CPU and Ethernet latency settings for Franka FCI
+After=systemd-udev-settle.service power-profiles-daemon.service network.target
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+Environment="FRANKA_RT_CPUS=5 6 7"
+Environment="FRANKA_NETWORK_INTERFACES=enp129s0f0 enp129s0f1"
+ExecStart=/usr/local/sbin/vla-configure-franka-realtime-runtime
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

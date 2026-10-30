@@ -1,0 +1,186 @@
+[
+  {
+    "source": ".agents/skills/evo-rlt-env-doctor/SKILL.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": ".agents/skills/evo-rlt-env-doctor/agents/openai.yaml",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": ".agents/skills/evo-rlt-env-doctor/scripts/env_doctor.sh",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": ".gitignore",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": ".vscode/settings.json",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "AGENTS.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "README.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "datacollection/DUAL_GAMEPAD_RLT.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "datacollection/ONLINE_RLT_C20_MANUAL.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "datacollection/README.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "datacollection/SCRIPTS.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "datacollection/franka_robotiq_single_left/COLLECT_31D.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "datacollection/start_teleop/README.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "deployment/logs/smooth_both.log",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "docs/MIGRATION.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "docs/franka_rotation_trace.md",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "patches/lerobot-0.4.4/pi05-forward-with-prefix.patch",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "scripts/tmp_auto_annotate_eef_phases.py",
+    "reason": "machine-specific experiment/hardware script"
+  },
+  {
+    "source": "serials.txt",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/online_collector.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/__init__.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/__main__.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/acp_tags.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/annotations.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/backend.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/cli.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/common.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/hil.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/loop.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/pedal_listener.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/robot_config.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "src/evo_rlt/adapters/lerobot/record/runner.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "tests/fr3_pi05_single.py",
+    "reason": "machine-specific experiment/hardware script"
+  },
+  {
+    "source": "tests/rlt/test_record_entrypoint.py",
+    "reason": "SO recording stack and disconnected legacy collector"
+  },
+  {
+    "source": "uv.lock",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/images/evomind1.png",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/images/rlgroup.jpg",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/images/rlt_collect_human_demonstrations.gif",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/images/rlt_pipeline.png",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/images/rlt_rollout.gif",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/images/rlt_rollout_human_intervention.gif",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/images/sjtu.png",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/videos/human_intervention.mp4",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/videos/rlt_rollout.mp4",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/videos/rollout.mp4",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  },
+  {
+    "source": "website/assets/videos/teleop.mp4",
+    "reason": "outside code extraction (historical docs/assets/configuration)"
+  }
+]

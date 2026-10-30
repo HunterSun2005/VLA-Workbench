@@ -1,0 +1,14 @@
+[Unit]
+Description=Pin the Franka/RealSense xHCI IRQ to its dedicated CPU
+After=irqbalance.service
+Wants=irqbalance.service
+
+[Service]
+Type=oneshot
+Environment=XHCI_PCI_ADDRESS=0000:80:14.0
+Environment=XHCI_IRQ_CPU=5
+ExecStart=/usr/local/sbin/vla-set-franka-xhci-irq
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

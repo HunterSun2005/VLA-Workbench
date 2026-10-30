@@ -1,0 +1,75 @@
+robot:
+  id: fr3-left-gamepad-record
+  robot_ip: 172.16.0.2
+  cameras_enabled: true
+  automatic_motion_recovery: false
+  human_angular_velocity_control: true
+  human_linear_velocity_control: true
+  human_gripper_immediate_hold: true
+  human_max_vertical_velocity: null
+  cameras:
+    base:
+      serial: '260722303785'
+    left_wrist:
+      serial: '346222073620'
+  camera_width: 640
+  camera_height: 480
+  camera_fps: 30
+  image_size: 224
+  camera_max_pair_skew_s: 0.025
+  observation_max_image_age_s: 0.075
+  gripper:
+    port: /dev/serial/by-id/usb-FTDI_USB_TO_RS-485_DABC0KC0-if00-port0
+    baudrate: 115200
+    device_id: 9
+    speed: 128
+    force: 128
+    command_timeout_s: 0.10
+  workspace:
+    min: [0.10, -0.55, 0.05]
+    max: [0.80, 0.50, 0.75]
+  control_frequency: 100.0
+  dynamics_factor: 0.10
+  max_linear_velocity: 0.16
+  max_angular_velocity: 0.30
+  velocity_motion_duration_ms: 100
+  realtime_cpu: 8
+joy_device_id: 0
+speed_modes:
+  toggle_button: 4
+  high_multiplier: 5.0
+  transition_time_s: 0.3
+pose_shortcuts:
+  view_button: 6
+  menu_button: 7
+  position_tolerance_m: 0.0005
+  slowdown_distance_m: 0.08
+  final_approach_distance_m: 0.01
+  final_approach_speed_m_s: 0.005
+  orientation_tolerance_deg: 2.0
+  timeout_s: 30.0
+mapping:
+  joy_topic: /left/gamepad_teleop/joy
+  right_stick_x_axis: 3
+  right_stick_y_axis: 4
+  right_stick_x_sign: -1.0
+  right_stick_y_sign: 1.0
+  tool_roll_button_sign: -1.0
+  right_stick_rotation_deg: -45.0
+control:
+  control_rate: 100.0
+  joy_timeout_s: 0.20
+  state_timeout_s: 0.50
+  discontinuity_timeout_s: 0.10
+  gamepad_xy_speed: 0.02
+  gamepad_z_speed: 0.01
+  gamepad_tilt_speed: 0.15
+  gamepad_roll_speed: 0.30
+  gamepad_max_angular_speed: 0.30
+  gripper_speed_scale: 0.40
+recording:
+  fps: 30
+  critical_button: 5
+  queue_size: 256
+  min_frames: 12
+  max_duration_s: 600
