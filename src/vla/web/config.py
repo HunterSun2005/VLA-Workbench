@@ -111,7 +111,13 @@ def preflight(config, *, demo=False, root=None):
         else:
             try:
                 from .processes import hardware_environment
-                hardware_environment(json.loads(Path(config.ros_config).expanduser().read_text()))
+                hardware = hardware_environment(json.loads(Path(config.ros_config).expanduser().read_text()))
+                for arm in (('LEFT','RIGHT') if config.arms == 'dual' else ('LEFT',)):
+                    for key in (f'{arm}_ROBOT_IP', f'{arm}_ROBOTIQ_PORT'):
+                        if not hardware.get(key):
+                            errors.append(f'ROS 硬件配置缺少 {key}')
+                if config.source == 'gello' and not hardware.get('GELLO_CONFIG'):
+                    errors.append('GELLO 采集需要显式 GELLO_CONFIG 配置路径')
             except (ValueError, OSError, TypeError) as error:
                 errors.append(str(error))
     if config.workflow == 'deploy':

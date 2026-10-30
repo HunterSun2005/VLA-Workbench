@@ -82,8 +82,11 @@ def _clamp_norm(values: np.ndarray, maximum: float) -> np.ndarray:
 
 
 class FineTeleopNode(Node):
-    def __init__(self) -> None:
-        super().__init__("left_fine_teleop")
+    def __init__(self, *, managed=False, **node_options) -> None:
+        super().__init__("left_fine_teleop", **node_options)
+        self.managed = managed
+        self.managed_enabled = not managed
+        self.managed_fault = None
 
         self._declare_parameters()
         self.control_rate = float(self.get_parameter("control_rate").value)
@@ -195,8 +198,9 @@ class FineTeleopNode(Node):
             raise RuntimeError(
                 f"Robotiq action server {gripper_action_topic!r} is unavailable"
             )
-        signal.signal(signal.SIGUSR1, self._request_fine_from_signal)
-        signal.signal(signal.SIGUSR2, self._request_gello_from_signal)
+        if not managed:
+            signal.signal(signal.SIGUSR1, self._request_fine_from_signal)
+            signal.signal(signal.SIGUSR2, self._request_gello_from_signal)
         self.create_service(SetBool, "~/set_fine_mode", self._set_fine_mode)
         self.create_timer(1.0 / self.control_rate, self._control_tick)
         self._publish_gripper_speed(self.gripper_return_speed)
@@ -383,6 +387,8 @@ class FineTeleopNode(Node):
         self._pending_mode_request = False
 
     def _request_mode(self, fine_enabled: bool) -> tuple[bool, str]:
+        if getattr(self, "managed", False) and not self.managed_enabled:
+            return False, "Enable managed teleoperation first"
         if fine_enabled:
             if self.mode == Mode.FINE:
                 return True, "Fine mode is already active"
@@ -442,7 +448,44 @@ class FineTeleopNode(Node):
         )
         return None
 
+    def managed_enable(self):
+        now = time.monotonic()
+        if self.managed_fault:
+            raise RuntimeError(self.managed_fault)
+        if any(value is None or now - stamp > self.source_timeout for value, stamp in (
+            (self.measured_joints, self.measured_joint_time), (self.raw_gello_joints, self.raw_gello_time),
+            (self.measured_gripper, self.measured_gripper_time), (self.raw_gripper, self.raw_gripper_time),
+        )):
+            raise RuntimeError("GELLO or measured state is unavailable/stale")
+        self.command_joints = self.measured_joints.copy()
+        self.command_gripper = self.measured_gripper
+        self.managed_enabled = True
+        self.mode = Mode.FINE
+        ok, reason = self._request_mode(False)
+        if not ok:
+            self.managed_enabled = False
+            raise RuntimeError(reason)
+
+    def managed_pause(self):
+        self.managed_enabled = False
+        self._pending_mode_request = None
+        self._stop_fine_gripper()
+        self.command_joints = None if self.measured_joints is None else self.measured_joints.copy()
+        self.command_gripper = self.measured_gripper
+        self.mode = Mode.GELLO
+
     def _control_tick(self) -> None:
+        if getattr(self, "managed", False):
+            if self.managed_enabled:
+                now = time.monotonic()
+                if (now - self.measured_joint_time > self.source_timeout
+                        or now - self.measured_gripper_time > self.source_timeout
+                        or (self.mode != Mode.FINE and (now - self.raw_gello_time > self.source_timeout
+                                                      or now - self.raw_gripper_time > self.source_timeout))):
+                    self.managed_fault = "Managed teleoperation input/state became stale"
+                    self.managed_pause()
+            if not self.managed_enabled:
+                return
         pending_mode_request = self._pending_mode_request
         if pending_mode_request is not None:
             self._pending_mode_request = None

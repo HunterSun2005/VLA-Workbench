@@ -44,6 +44,11 @@ package_share() {
 config_source_path() {
   local package="$1"
   local config="$2"
+  if [[ "$config" == /* ]]; then
+    require_file "$config"
+    printf '%s\n' "$config"
+    return
+  fi
   local source_path="$ROS2_WS/src/$package/config/$config"
   if [[ -f "$source_path" ]]; then
     printf '%s\n' "$source_path"

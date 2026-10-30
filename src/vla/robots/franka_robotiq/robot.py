@@ -451,7 +451,9 @@ class FrankaRobotiqRobot(Robot):
         """Read health-checked arm state without depending on camera observations."""
         self.check_health()
         with self._arm_lock:
-            return self._arm.state
+            state = self._arm.state
+            self._telemetry_state = state
+            return state
 
     def recover_motion_fault(self) -> None:
         """Explicit, bounded recovery; never establishes a new human target."""
@@ -536,6 +538,7 @@ class FrankaRobotiqRobot(Robot):
         gripper_open_fraction = self._gripper.position()
         with self._arm_lock:
             robot_state = self._arm.state
+            self._telemetry_state = robot_state
             pose = pose_matrix(robot_state.O_T_EE)
             joint_positions = np.asarray(robot_state.q, dtype=np.float64).reshape(-1).copy()
             base_wrench = np.asarray(

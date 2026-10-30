@@ -563,6 +563,7 @@ class DirectLeRobotRecorder(Node):
     def _on_camera_frame(self, role: str, timestamp_ns: int, rgb: np.ndarray) -> None:
         rgb = prepare_image(rgb)
         if role == "base":
+            self._store_latest(role, rgb, timestamp_ns)
             self._on_base_image(rgb, timestamp_ns)
         else:
             self._store_latest(role, rgb, timestamp_ns)

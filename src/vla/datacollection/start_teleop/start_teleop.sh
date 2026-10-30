@@ -217,6 +217,9 @@ main() {
     log "Single-left FR3 teleoperation stack is ready."
   fi
   log "Logs: $LOG_DIR"
+  if [[ -n "${VLA_WEB_READY_FILE:-}" ]]; then
+    printf '%s\n' "$$" >"$VLA_WEB_READY_FILE"
+  fi
   if [[ "$CONTROL_OWNER" == "rollout" ]]; then
     monitor_rollout_hardware
   else
