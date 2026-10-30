@@ -777,6 +777,19 @@ class RolloutCollector(Node):
             self._annotations["complementary_info.subtask_index"].append([self._subtask_index])
         self._frame_times.append(now_ns)
 
+    def set_control_mode(self, mode: str) -> None:
+        """Called on the coordinator thread, between command ticks."""
+        self.policy_client.set_control_mode(mode)
+        self._web_mode = mode
+        self._web_switch_pending = True
+        self._latest_policy_result = None
+        self._reset_policy_on_request = True
+        self._policy_action = None
+        self._reset_servo_tracking()
+        if not self._intervention and self._recording:
+            self._republish_arm_hold()
+            self._stop_grippers_at_measured_position()
+
     def _consume_policy_result(self) -> None:
         if self.policy_client is None:
             return
@@ -785,7 +798,10 @@ class RolloutCollector(Node):
             return
         if self._intervention:
             return
-        if result.requested_phase != self._phase:
+        managed = getattr(result, "control_mode", None) is not None
+        if managed and result.mode_version != self.policy_client.mode_version:
+            return
+        if not managed and result.requested_phase != self._phase:
             print(
                 "Discarded policy response after local phase change "
                 f"id={result.request_id} requested_phase={result.requested_phase} "
@@ -794,13 +810,13 @@ class RolloutCollector(Node):
             )
             return
         returned_phase = "rl" if result.phase > 0.5 else "vla"
-        if returned_phase != result.requested_phase:
+        if getattr(result, "control_mode", None) != "auto" and returned_phase != result.requested_phase:
             raise RuntimeError(
                 "policy phase mismatch: "
                 f"id={result.request_id} requested={result.requested_phase} "
                 f"returned={returned_phase} source_type={result.source_type}"
             )
-        if result.requested_phase == "vla" and result.source_type > 0.5:
+        if getattr(result, "control_mode", None) != "auto" and result.requested_phase == "vla" and result.source_type > 0.5:
             raise RuntimeError(
                 "policy source mismatch: "
                 f"id={result.request_id} requested=vla but source_type={result.source_type}"
@@ -818,6 +834,8 @@ class RolloutCollector(Node):
             ],
         )
         self._latest_policy_result = result
+        if managed:
+            self._web_switch_pending = False
         self._policy_action = action
 
     def _publish_policy(self, values: dict[str, object], dt: float) -> bool:

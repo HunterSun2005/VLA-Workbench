@@ -700,6 +700,17 @@ class ChunkACPolicy(PreTrainedPolicy):
             # configured deploy phase so always_rl survives episode resets.
             self._apply_phase_mode(self.modifier.phase_ctrl)
 
+    def set_control_mode(self, mode: str) -> None:
+        """Managed inference override; all weights/classifiers must already be loaded."""
+        if mode not in {"vla", "rlt", "auto"}:
+            raise ValueError("unknown control mode")
+        ctrl = self._ensure_modifier().phase_ctrl
+        if mode == "auto" and ctrl.classifier is None:
+            raise ValueError("automatic control requires a preloaded handover classifier")
+        self.config.phase_mode = {"vla": "always_vla", "rlt": "always_rl", "auto": "learned"}[mode]
+        ctrl.mode = "learned" if mode == "auto" else "manual"
+        self.reset()
+
     def set_rl_mode(self) -> None:
         if self._rtc_runtime_enabled:
             self._reset_rtc_runtime()

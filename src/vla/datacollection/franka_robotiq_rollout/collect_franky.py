@@ -446,11 +446,27 @@ class FrankyRolloutCollector:
             observed_at_ns=snapshot.observed_at_ns,
         )
 
+    def set_control_mode(self, mode: str) -> None:
+        """Called on the coordinator thread, between command ticks."""
+        self.policy_client.set_control_mode(mode)
+        self._web_mode = mode
+        self._web_switch_pending = True
+        self._latest_policy_result = None
+        self._reset_policy_on_request = True
+        self._latest_policy_action = None
+        self._command = None
+        if not self._intervention and self._episode_active:
+            self.robot.stop()
+            self._priming = True
+
     def _consume_policy_result(self) -> bool:
         result = self.policy_client.poll_latest()
         if result is None:
             return False
-        if self._intervention or result.requested_phase != self._phase:
+        managed = getattr(result, "control_mode", None) is not None
+        if managed and result.mode_version != self.policy_client.mode_version:
+            return False
+        if self._intervention or (not managed and result.requested_phase != self._phase):
             print(
                 "Discarded policy response after source change "
                 f"id={result.request_id} requested={result.requested_phase}",
@@ -458,12 +474,12 @@ class FrankyRolloutCollector:
             )
             return False
         returned_phase = "rl" if result.phase > 0.5 else "vla"
-        if returned_phase != result.requested_phase:
+        if getattr(result, "control_mode", None) != "auto" and returned_phase != result.requested_phase:
             raise RuntimeError(
                 f"policy phase mismatch: requested={result.requested_phase}, "
                 f"returned={returned_phase}"
             )
-        if result.requested_phase == "vla" and result.source_type > 0.5:
+        if getattr(result, "control_mode", None) != "auto" and result.requested_phase == "vla" and result.source_type > 0.5:
             raise RuntimeError(
                 "policy returned RLT actor output for requested VLA phase"
             )
@@ -476,6 +492,8 @@ class FrankyRolloutCollector:
             )
         rot6d_to_matrix(action[3:9])
         self._latest_policy_result = result
+        if managed:
+            self._web_switch_pending = False
         self._latest_policy_action = action
         return True
 

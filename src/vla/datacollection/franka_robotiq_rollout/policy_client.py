@@ -76,6 +76,9 @@ class PolicyResult:
     checkpoint_fingerprint: str
     latency_s: float
     received_at: float
+    control_mode: str | None = None
+    mode_version: int = -1
+    probability: float | None = None
 
 
 class AsyncPolicyClient:
@@ -93,12 +96,22 @@ class AsyncPolicyClient:
         self._pending = False
         self._closed = False
         self._next_request_id = 0
+        self.control_mode = None
+        self.mode_version = -1
         self._min_valid_request_id = 0
         self.contract = self._health_check()
         self._thread = threading.Thread(
             target=self._worker, name="franka-policy-client", daemon=True
         )
         self._thread.start()
+
+    def set_control_mode(self, mode: str) -> None:
+        if mode not in self.contract.get("control_modes", []):
+            raise ValueError("policy does not support the requested runtime mode")
+        with self._lock:
+            self._min_valid_request_id = self._next_request_id
+            self.control_mode = mode
+            self.mode_version += 1
 
     def _connect(self) -> socket.socket:
         connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -135,11 +148,16 @@ class AsyncPolicyClient:
             request_id = self._next_request_id
             self._next_request_id += 1
             self._pending = True
+            managed = ({"control_mode": self.control_mode, "mode_version": self.mode_version}
+                       if self.control_mode is not None else {})
+            if self.control_mode in ("vla", "rlt"):
+                phase = "rl" if self.control_mode == "rlt" else "vla"
         arrays = {"observation.state": np.asarray(state, dtype=np.float32), **images}
         self._requests.put(
             (
                 {
                     "kind": "infer",
+                    **managed,
                     "request_id": request_id,
                     "task": task,
                     "phase": phase,
@@ -178,6 +196,11 @@ class AsyncPolicyClient:
                     "checkpoint_fingerprint"
                 ):
                     raise RuntimeError("policy server checkpoint fingerprint changed")
+                if "control_mode" in header and (
+                    response.get("control_mode") != header["control_mode"]
+                    or response.get("mode_version") != header["mode_version"]
+                ):
+                    raise RuntimeError("policy control mode acknowledgement mismatch")
                 action = np.asarray(response_arrays.get("action"), dtype=np.float32)
                 received_at = time.monotonic()
                 self._results.put(
@@ -191,6 +214,9 @@ class AsyncPolicyClient:
                         checkpoint_fingerprint=str(response["checkpoint_fingerprint"]),
                         latency_s=received_at - submitted_at,
                         received_at=received_at,
+                        control_mode=response.get("control_mode"),
+                        mode_version=int(response.get("mode_version", -1)),
+                        probability=response.get("probability"),
                     )
                 )
                 with self._lock:

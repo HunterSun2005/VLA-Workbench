@@ -199,6 +199,9 @@ class FrankaRolloutPolicyServer:
         self.fingerprint = _checkpoint_fingerprint(self.policy_path)
         config = ChunkACConfig.from_pretrained(self.policy_path)
         config.device = args.device
+        if getattr(args, "handover_path", None):
+            config.handover_pretrained_path = args.handover_path
+            config.phase_mode = "learned"
         if args.tokenizer_path is not None:
             config.tokenizer_path = args.tokenizer_path
         self.policy = (
@@ -283,6 +286,9 @@ class FrankaRolloutPolicyServer:
         self.use_amp = bool(config.use_amp)
         self.phase = "rl" if config.phase_mode == "always_rl" else "vla"
         self.phase_mode = str(config.phase_mode)
+        self.control_mode = None
+        self.mode_version = -1
+        self.control_modes = ["vla", "rlt"] + (["auto"] if config.phase_mode == "learned" else [])
         self._infer_count = 0
         self.online_session = None
         self.online_timeout_s = float(getattr(args, "online_timeout_s", 3600.0))
@@ -380,6 +386,8 @@ class FrankaRolloutPolicyServer:
             "actions_stored_as": self.actions_stored_as,
             "use_relative_actions": self.use_relative_actions,
             "phase_mode": self.phase_mode,
+            "control_modes": getattr(self, "control_modes", []),
+            "control_mode_protocol": 1,
             "rtc_enabled": self.rtc_enabled,
             "rtc_profile_path": (
                 None if self.rtc_profile_path is None else str(self.rtc_profile_path)
@@ -507,10 +515,25 @@ class FrankaRolloutPolicyServer:
         phase_before = self.phase
         if reset_episode:
             self.policy.reset()
-        self._set_phase(
-            requested_phase,
-            force=reset_episode,
-        )
+        managed_mode = header.get("control_mode")
+        if managed_mode is not None:
+            if getattr(self, "online_session", None) is not None:
+                raise ValueError("managed control modes are inference-only")
+            version = int(header.get("mode_version", -1))
+            if managed_mode not in getattr(self, "control_modes", []):
+                raise ValueError("requested control mode is not available")
+            if version < 0 or version < self.mode_version:
+                raise ValueError("stale control mode version")
+            if version == self.mode_version and managed_mode != self.control_mode:
+                raise ValueError("control mode changed without a new version")
+            if version != self.mode_version or reset_episode:
+                self.policy.set_control_mode(managed_mode)
+                self.control_mode, self.mode_version = managed_mode, version
+            requested_phase = "rl" if managed_mode == "rlt" else "vla" if managed_mode == "vla" else requested_phase
+            if managed_mode != "auto":
+                self.phase = requested_phase
+        else:
+            self._set_phase(requested_phase, force=reset_episode)
         self._infer_count += 1
         log_every = getattr(self, "log_inference_every", 0)
         trace_request = log_every > 0 and self._infer_count % log_every == 0
@@ -578,12 +601,14 @@ class FrankaRolloutPolicyServer:
                 f"id={request_id} phase={phase_value} source_type={source_type}"
             )
         returned_phase = "rl" if phase_value > 0.5 else "vla"
-        if returned_phase != requested_phase:
+        if managed_mode is not None:
+            self.phase = returned_phase
+        if managed_mode != "auto" and returned_phase != requested_phase:
             raise RuntimeError(
                 "policy metadata phase mismatch: "
                 f"id={request_id} requested={requested_phase} returned={returned_phase}"
             )
-        if requested_phase == "vla" and source_type > 0.5:
+        if managed_mode != "auto" and requested_phase == "vla" and source_type > 0.5:
             raise RuntimeError(
                 "policy metadata source mismatch: "
                 f"id={request_id} requested=vla but source_type={source_type}"
@@ -612,6 +637,9 @@ class FrankaRolloutPolicyServer:
                 "requested_phase": requested_phase,
                 "source_type": source_type,
                 "phase": phase_value,
+                **({"control_mode": managed_mode, "mode_version": self.mode_version,
+                    "probability": self.policy._ensure_modifier().phase_ctrl.last_probability}
+                   if managed_mode is not None else {}),
             },
             {"action": action_array},
         )
