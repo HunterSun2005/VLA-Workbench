@@ -19,13 +19,13 @@ def test_register_loads_chunk_transition_dataset_from_cache_dir(tmp_path):
         cache_dir / "chunk_transitions_train.pt",
     )
 
-    import lerobot.datasets.factory as dataset_factory
+    from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
 
-    registry._REGISTERED = False
     registry.register()
 
-    cfg = SimpleNamespace(dataset=SimpleNamespace(repo_id=str(cache_dir)))
-    dataset = dataset_factory.make_dataset(cfg)
+    cfg = SimpleNamespace(policy=ChunkACConfig(device="cpu"), dataset=SimpleNamespace(repo_id=str(cache_dir), eval_split=0))
+    dataset, eval_dataset = registry.make_train_eval_datasets(cfg)
+    assert eval_dataset is None
 
     assert isinstance(dataset, ChunkTransitionDataset)
     assert len(dataset) == 1

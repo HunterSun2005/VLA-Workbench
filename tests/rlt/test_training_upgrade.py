@@ -169,7 +169,7 @@ def test_offline_cache_upgrade_allows_only_supervision_change():
 
 def test_native_cache_guard_requires_explicit_upgrade_and_records_it(tmp_path, monkeypatch):
     from vla.cli.train_actor_critic_native import install_cache_guard
-    from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
+    from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
 
     current = cache_contract()
     old = copy.deepcopy(current)
@@ -178,21 +178,22 @@ def test_native_cache_guard_requires_explicit_upgrade_and_records_it(tmp_path, m
     cache, checkpoint = tmp_path / "new_cache", tmp_path / "old_run" / "pretrained_model"
     durable_json(cache / "cache_manifest.json", {"format_version": 1, "status": "complete", "contract": current})
     durable_json(checkpoint / "config.json", {"cache_contract": old})
-    policy = object.__new__(ChunkACPolicyConfig)
+    policy = object.__new__(ChunkACConfig)
     policy.cache_contract, policy.pretrained_path = old, checkpoint
     calls = []
-    monkeypatch.setattr(ChunkACPolicyConfig, "_apply_cache_contract", lambda self: calls.append(self.cache_contract))
+    monkeypatch.setattr(ChunkACConfig, "_apply_cache_contract", lambda self: calls.append(self.cache_contract))
     cfg = SimpleNamespace(policy=policy, dataset=SimpleNamespace(repo_id=str(cache)), output_dir=tmp_path / "new_run")
-    trainer = SimpleNamespace(make_dataset=lambda cfg: "dataset")
+    monkeypatch.setattr("vla.adapters.lerobot.registry.make_train_eval_datasets", lambda cfg: ("dataset", None))
+    trainer = SimpleNamespace(make_train_eval_datasets=lambda cfg: "dataset")
     install_cache_guard(trainer)
     with pytest.raises(ValueError, match="accept-training"):
-        trainer.make_dataset(cfg)
+        trainer.make_train_eval_datasets(cfg)
     assert not cfg.output_dir.exists()
     install_cache_guard(trainer, accept_upgrade=True)
-    assert trainer.make_dataset(cfg) == "dataset"
+    assert trainer.make_train_eval_datasets(cfg) == ("dataset", None)
     assert calls == [current]
     assert policy.cache_contract == current
     assert json.loads((cfg.output_dir / "training_semantics_upgrade.json").read_text())["previous_contract"] == old
     cfg.output_dir = checkpoint.parent
     with pytest.raises(ValueError, match="separate output"):
-        trainer.make_dataset(cfg)
+        trainer.make_train_eval_datasets(cfg)

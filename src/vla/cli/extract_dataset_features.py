@@ -126,8 +126,8 @@ def load_feature_config(path: str | Path) -> FeatureSelectionConfig:
 
 def _load_info(root: Path) -> dict[str, Any]:
     from vla.core.online_contract import reject_unaligned_offline_dataset
-    with (root / "meta/info.json").open(encoding="utf-8") as stream:
-        info = json.load(stream)
+    from vla.dataset_metadata import load_info
+    info = load_info(root)
     reject_unaligned_offline_dataset(info)
     return info
 
@@ -331,7 +331,7 @@ def _update_metadata(
         "shape": [len(config.selected_names)],
         "names": list(config.selected_names),
     }
-    info.setdefault("vla", {}).update(
+    info.setdefault("evo_rlt", {}).update(
         {
             "action_stats": action_stats,
             "action_chunk_size": chunk_size,
@@ -348,6 +348,8 @@ def _update_metadata(
         tasks.to_parquet(temporary)
         os.replace(temporary, tasks_path)
     _write_json(root / "meta/info.json", info)
+    from vla.dataset_metadata import write_metadata_sidecar
+    write_metadata_sidecar(root, info)
     stats_path = root / "meta/stats.json"
     existing = {}
     if stats_path.exists():

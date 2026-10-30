@@ -60,6 +60,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def _load_json(path: Path) -> dict[str, Any]:
+    if path.name == "info.json" and path.parent.name == "meta":
+        from vla.dataset_metadata import load_info
+        return load_info(path.parent.parent)
     if not path.is_file():
         raise FileNotFoundError(f"required file does not exist: {path}")
     with path.open(encoding="utf-8") as stream:
@@ -205,7 +208,7 @@ def validate_rl_token_inputs(
             "SFT config and preprocessor disagree on use_relative_actions: "
             f"config={use_relative_actions}, processor={processor_relative}"
         )
-    vla_metadata = info.get("vla", {})
+    vla_metadata = info.get("evo_rlt", {})
     if not isinstance(vla_metadata, dict):
         raise ValueError("dataset vla metadata must be a mapping")
     action_stats = vla_metadata.get("action_stats")
@@ -217,7 +220,7 @@ def validate_rl_token_inputs(
         )
     if action_stats is None:
         logger.warning(
-            "dataset has no vla.action_stats marker; cannot prove %s stats match the SFT processor",
+            "dataset has no evo_rlt.action_stats marker; cannot prove %s stats match the SFT processor",
             expected_stats,
         )
 
@@ -230,7 +233,7 @@ def validate_rl_token_inputs(
             )
     else:
         logger.warning(
-            "dataset has no vla.action_chunk_size marker; cannot prove its action stats "
+            "dataset has no evo_rlt.action_chunk_size marker; cannot prove its action stats "
             "use the SFT chunk size"
         )
 
@@ -242,7 +245,7 @@ def validate_rl_token_inputs(
         )
     if actions_stored_as is None:
         logger.warning(
-            "dataset has no vla.actions_stored_as marker; cannot prove parquet actions are absolute"
+            "dataset has no evo_rlt.actions_stored_as marker; cannot prove parquet actions are absolute"
         )
 
     stats = _load_json(dataset_root / "meta/stats.json")

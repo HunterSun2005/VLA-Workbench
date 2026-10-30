@@ -17,7 +17,7 @@ from vla.adapters.lerobot.policies.configuration_schema import (
 
 
 @dataclass
-class ChunkACPolicyConfig(PreTrainedConfig):
+class ChunkACConfig(PreTrainedConfig):
     """Config for the chunk-level TD3+BC actor-critic policy on top of RL Token.
 
     Train via vla-train-actor-critic with a ChunkTransitionDataset; deploy via
@@ -107,7 +107,8 @@ class ChunkACPolicyConfig(PreTrainedConfig):
     def ensure_registered(cls) -> None:
         import lerobot.policies  # noqa: F401
 
-        PreTrainedConfig._choice_registry["rlt_ac"] = cls
+        if "rlt_ac" not in PreTrainedConfig.get_known_choices():
+            PreTrainedConfig.register_subclass("rlt_ac")(cls)
 
     @classmethod
     def from_pretrained(cls, pretrained_name_or_path, **kwargs):
@@ -210,3 +211,6 @@ class ChunkACPolicyConfig(PreTrainedConfig):
     @property
     def reward_delta_indices(self) -> None:
         return None
+
+
+ChunkACConfig.ensure_registered()

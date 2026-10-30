@@ -30,7 +30,7 @@ from vla.adapters.lerobot.policies.cache_manifest import (
     load_cache_manifest,
     new_cache_manifest,
 )
-from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenConfig
 from vla.adapters.lerobot.policies.modeling_rlt_token import RLTokenPolicy
 from vla.adapters.lerobot.policies.processor_rlt_token import make_rlt_token_pre_post_processors
 from vla.core.rewards import build_reward_seq
@@ -114,6 +114,9 @@ def _log(message: str) -> None:
 
 
 def _load_json(path: pathlib.Path) -> dict[str, Any]:
+    if path.name == "info.json" and path.parent.name == "meta":
+        from vla.dataset_metadata import load_info
+        return load_info(path.parent.parent)
     import json
 
     value = json.loads(path.read_text(encoding="utf-8"))
@@ -333,7 +336,8 @@ def load_episode_frame_annotations(
     available = columns.intersection({FRAME_INTERVENTION_KEY, FRAME_PHASE_KEY, FRAME_COLLECTOR_KEY})
     if not available:
         return None
-    info = getattr(getattr(dataset, "meta", None), "info", {})
+    from vla.dataset_metadata import dataset_info
+    info = dataset_info(dataset)
     contract = info.get("recording_contract", {})
     phase_only_demo = (
         available == {FRAME_PHASE_KEY}
@@ -459,8 +463,8 @@ def _atomic_torch_save(value: Any, path: pathlib.Path) -> None:
 
 
 def _load_policy(args: argparse.Namespace) -> tuple[RLTokenPolicy, dict[str, Any], dict[str, Any]]:
-    RLTokenPolicyConfig.ensure_registered()
-    config = RLTokenPolicyConfig.from_pretrained(args.rl_token_policy_path)
+    RLTokenConfig.ensure_registered()
+    config = RLTokenConfig.from_pretrained(args.rl_token_policy_path)
     config.device = args.device
     if args.sft_path is not None:
         config.vla_pretrained_path = str(pathlib.Path(args.sft_path).expanduser().resolve())
@@ -483,7 +487,7 @@ def _load_policy(args: argparse.Namespace) -> tuple[RLTokenPolicy, dict[str, Any
 def _build_contract(
     *,
     args: argparse.Namespace,
-    config: RLTokenPolicyConfig,
+    config: RLTokenConfig,
     dataset_info: dict[str, Any],
     episode_splits: dict[str, list[int]],
     sft_contract: dict[str, Any],
@@ -498,7 +502,7 @@ def _build_contract(
         for key in features
         if key.startswith("observation.images.")
     ]
-    vla = dataset_info.get("vla", {})
+    vla = dataset_info.get("evo_rlt", {})
     if int(state["shape"][0]) != config.proprio_dim:
         raise ValueError(
             f"dataset state_dim={state['shape'][0]} does not match RL Token {config.proprio_dim}"
@@ -513,7 +517,7 @@ def _build_contract(
         )
     if vla.get("actions_stored_as") != "absolute":
         raise ValueError(
-            "transition cache requires vla.actions_stored_as='absolute' in dataset metadata"
+            "transition cache requires evo_rlt.actions_stored_as='absolute' in dataset metadata"
         )
     sft_config = _load_json(pathlib.Path(config.vla_pretrained_path) / "config.json")
     use_relative_actions = bool(sft_config.get("use_relative_actions", False))

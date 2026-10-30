@@ -20,7 +20,7 @@ class Server:
         from lerobot.configs.policies import PreTrainedConfig
         from lerobot.policies.pi05.modeling_pi05 import PI05Policy
         from lerobot.policies.factory import make_pre_post_processors
-        from lerobot.utils.control_utils import prepare_observation_for_inference
+        from lerobot.policies.utils import prepare_observation_for_inference
         import torch
         torch.set_num_threads(1)
         torch.set_num_interop_threads(1)

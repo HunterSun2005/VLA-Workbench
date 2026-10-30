@@ -76,7 +76,7 @@ def test_extractor_selects_state_and_official_lerobot_loads_video(
     info = json.loads((output / "meta/info.json").read_text())
     assert info["features"]["observation.state"]["shape"] == [expected_dim]
     assert info["features"]["action"]["shape"] == [10]
-    assert info["vla"] == {
+    assert info["evo_rlt"] == {
         "action_stats": "absolute",
         "action_chunk_size": 50,
         "actions_stored_as": "absolute",
@@ -110,7 +110,7 @@ def test_relative_stats_are_chunk_based_and_keep_parquet_absolute(tmp_path: Path
     np.testing.assert_allclose(actions[:, :9] - states[:, :9], 0.2, atol=2e-6)
     stats = json.loads((output / "meta/stats.json").read_text())["action"]
     info = json.loads((output / "meta/info.json").read_text())
-    assert info["vla"]["action_stats"] == "relative"
+    assert info["evo_rlt"]["action_stats"] == "relative"
     episode_indices = data["episode_index"].to_numpy()
     relative_chunks = []
     for episode_index in np.unique(episode_indices):

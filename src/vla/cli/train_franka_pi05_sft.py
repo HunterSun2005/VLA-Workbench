@@ -223,6 +223,10 @@ def main() -> None:
     if split_manifest_value is not None:
         split_manifest_path = Path(split_manifest_value).expanduser().resolve()
         split_contract, output_dir = validate_split_training_args(forwarded_args, split_manifest_path)
+    if not any(arg.startswith("--dataset.eval_split=") for arg in forwarded_args):
+        forwarded_args.append("--dataset.eval_split=0")
+    elif "--dataset.eval_split=0" not in forwarded_args and "--dataset.eval_split=0.0" not in forwarded_args:
+        raise ValueError("Franka SFT uses external splits; set dataset.eval_split=0")
     sys.argv[1:] = forwarded_args
 
     from lerobot.scripts import lerobot_train

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from lerobot.policies.common.vla_utils import prepare_attention_masks_4d
+
 import json
 import logging
 import os
@@ -18,7 +20,7 @@ from lerobot.policies.pi05.configuration_pi05 import PI05Config
 from lerobot.policies.pi05.modeling_pi05 import PI05Policy, make_att_2d_masks
 from lerobot.policies.pretrained import ActionSelectKwargs, PreTrainedPolicy
 from lerobot.utils.constants import OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TOKENS
-from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenConfig
 from vla.adapters.lerobot.checkpoint_contract import (
     assert_same_fingerprint,
     fingerprint_sft_checkpoint,
@@ -46,7 +48,7 @@ def extract_pi05_prefix_hidden(pi05: PI05Policy, batch: dict[str, Tensor]) -> Te
         token_masks,
     )
     attention = make_att_2d_masks(prefix_pad_masks, prefix_att_masks)
-    attention = model._prepare_attention_masks_4d(attention)
+    attention = prepare_attention_masks_4d(attention)
     position_ids = torch.cumsum(prefix_pad_masks, dim=1) - 1
     model.paligemma_with_expert.paligemma.model.language_model.config._attn_implementation = (
         "eager"
@@ -117,19 +119,19 @@ class RLTokenPolicy(PreTrainedPolicy):
     deploy is handled by ChunkACPolicy; this policy raises on inference paths.
     """
 
-    config_class = RLTokenPolicyConfig
+    config_class = RLTokenConfig
     name = "rlt_token"
 
     def __init__(
         self,
-        config: RLTokenPolicyConfig,
+        config: RLTokenConfig,
         dataset_stats: dict[str, dict[str, Tensor]] | None = None,
         *args,
         **kwargs,
     ) -> None:
         super().__init__(config, *args, **kwargs)
         config.validate_features()
-        self.config: RLTokenPolicyConfig = config
+        self.config: RLTokenConfig = config
 
         self.rl_token = RLTokenModule(
             token_dim=config.rl_token_dim,

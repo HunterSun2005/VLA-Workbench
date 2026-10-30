@@ -182,13 +182,13 @@ class FrankaRolloutPolicyServer:
 
         register()
         from vla.adapters.lerobot.policies.configuration_rlt_ac import (
-            ChunkACPolicyConfig,
+            ChunkACConfig,
         )
         from vla.adapters.lerobot.policies.modeling_rlt_ac import ChunkACPolicy
         from vla.adapters.lerobot.policies.processor_rlt_ac import (
             make_rlt_ac_pre_post_processors,
         )
-        from lerobot.utils.control_utils import predict_action
+        from vla.adapters.lerobot.inference import predict_action
         from lerobot.utils.device_utils import get_safe_torch_device
 
         self._predict_action = predict_action
@@ -197,7 +197,7 @@ class FrankaRolloutPolicyServer:
         self.log_inference_every = int(args.log_inference_every)
         self.policy_path = pathlib.Path(args.policy_path).expanduser().resolve()
         self.fingerprint = _checkpoint_fingerprint(self.policy_path)
-        config = ChunkACPolicyConfig.from_pretrained(self.policy_path)
+        config = ChunkACConfig.from_pretrained(self.policy_path)
         config.device = args.device
         if args.tokenizer_path is not None:
             config.tokenizer_path = args.tokenizer_path

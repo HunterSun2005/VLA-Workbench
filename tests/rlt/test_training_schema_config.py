@@ -6,8 +6,8 @@ import pytest
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.configs.types import FeatureType, PolicyFeature
 
-from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
-from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
+from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenConfig
 from vla.cli.common import load_training_config
 
 
@@ -43,7 +43,7 @@ def test_common_loader_preserves_yaml_schema(tmp_path: Path) -> None:
     ]
 
 
-@pytest.mark.parametrize("config_cls", [RLTokenPolicyConfig, ChunkACPolicyConfig])
+@pytest.mark.parametrize("config_cls", [RLTokenConfig, ChunkACConfig])
 def test_policy_schema_can_be_loaded_from_rlt_yaml(config_cls, tmp_path: Path) -> None:
     config_path = tmp_path / "franka.yaml"
     _write_schema(config_path)
@@ -65,7 +65,7 @@ def test_policy_schema_can_be_loaded_from_rlt_yaml(config_cls, tmp_path: Path) -
 def test_resolved_schema_checkpoint_does_not_depend_on_yaml(tmp_path: Path) -> None:
     config_path = tmp_path / "franka.yaml"
     _write_schema(config_path)
-    config = RLTokenPolicyConfig(rlt_config_path=str(config_path), device="cpu")
+    config = RLTokenConfig(rlt_config_path=str(config_path), device="cpu")
     config.validate_features()
     checkpoint_dir = tmp_path / "policy"
     config.save_pretrained(checkpoint_dir)
@@ -82,7 +82,7 @@ def test_resolved_schema_checkpoint_does_not_depend_on_yaml(tmp_path: Path) -> N
     ]
 
 
-@pytest.mark.parametrize("config_cls", [RLTokenPolicyConfig, ChunkACPolicyConfig])
+@pytest.mark.parametrize("config_cls", [RLTokenConfig, ChunkACConfig])
 def test_concrete_config_loader_accepts_saved_type_discriminator(config_cls, tmp_path: Path) -> None:
     checkpoint_dir = tmp_path / config_cls.__name__
     config = config_cls(
@@ -117,7 +117,7 @@ def test_rl_token_schema_is_inferred_from_dataset_features() -> None:
     output_features = {
         "action": PolicyFeature(type=FeatureType.ACTION, shape=(16,)),
     }
-    config = RLTokenPolicyConfig(
+    config = RLTokenConfig(
         input_features=input_features,
         output_features=output_features,
         device="cpu",
@@ -131,7 +131,7 @@ def test_rl_token_schema_is_inferred_from_dataset_features() -> None:
 
 
 def test_explicit_schema_mismatch_is_rejected() -> None:
-    config = RLTokenPolicyConfig(
+    config = RLTokenConfig(
         action_dim=12,
         proprio_dim=30,
         camera_keys=["camera_base"],

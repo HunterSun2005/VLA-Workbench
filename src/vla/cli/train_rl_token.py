@@ -11,6 +11,9 @@ def main() -> None:
 
     from lerobot.scripts.lerobot_train import main as lerobot_train_main
 
+    import sys
+    if not any(arg.startswith("--dataset.eval_split=") for arg in sys.argv):
+        sys.argv.append("--dataset.eval_split=0")
     lerobot_train_main()
 
 

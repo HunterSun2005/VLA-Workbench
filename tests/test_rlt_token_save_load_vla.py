@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenConfig
 from vla.adapters.lerobot.policies.modeling_rlt_token import (
     VLA_SAFETENSORS_FILE,
     RLTokenPolicy,
@@ -26,7 +26,7 @@ def _make_policy(monkeypatch, vla_ft_weight: float) -> RLTokenPolicy:
     monkeypatch.setattr(RLTokenPolicy, "_load_pi05_backbone", lambda self: mock_pi05)
     monkeypatch.setattr(RLTokenPolicy, "_compute_num_image_tokens", lambda self, pi05: 0)
 
-    cfg = RLTokenPolicyConfig(
+    cfg = RLTokenConfig(
         device="cpu",
         rl_token_dim=16,
         rl_token_nhead=2,

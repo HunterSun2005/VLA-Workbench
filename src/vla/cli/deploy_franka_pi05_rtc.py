@@ -731,7 +731,7 @@ def main(argv: list[str] | None = None) -> int:
     from lerobot.processor import PolicyProcessorPipeline
     from lerobot.processor.converters import policy_action_to_transition, transition_to_policy_action
     from lerobot.utils.constants import POLICY_POSTPROCESSOR_DEFAULT_NAME, POLICY_PREPROCESSOR_DEFAULT_NAME
-    from lerobot.utils.control_utils import prepare_observation_for_inference
+    from lerobot.policies.utils import prepare_observation_for_inference
 
     # Read through LeRobot after strict JSON validation so incompatible local
     # installations fail before any hardware connection is attempted.

@@ -291,20 +291,20 @@ def choose_validation_episode_ids(
 
 
 def _load_info(root: Path) -> dict[str, Any]:
-    with (root / "meta/info.json").open("r", encoding="utf-8") as stream:
-        return json.load(stream)
+    from vla.dataset_metadata import load_info
+    return load_info(root)
 
 
 def validated_absolute_action_metadata(info: dict[str, Any]) -> dict[str, Any]:
-    metadata = info.get("vla")
+    metadata = info.get("evo_rlt")
     if not isinstance(metadata, dict):
-        raise ValueError("SFT source metadata must contain an vla object")
+        raise ValueError("SFT source metadata must contain an evo_rlt object")
     if metadata.get("actions_stored_as") != "absolute":
-        raise ValueError("SFT source vla.actions_stored_as must be 'absolute'")
+        raise ValueError("SFT source evo_rlt.actions_stored_as must be 'absolute'")
     if metadata.get("action_stats") != "absolute":
-        raise ValueError("SFT source vla.action_stats must be 'absolute'")
+        raise ValueError("SFT source evo_rlt.action_stats must be 'absolute'")
     if metadata.get("action_chunk_size") != 50:
-        raise ValueError("SFT source vla.action_chunk_size must be 50")
+        raise ValueError("SFT source evo_rlt.action_chunk_size must be 50")
     return deepcopy(metadata)
 
 
@@ -313,11 +313,13 @@ def inherit_vla_metadata(source_info: dict[str, Any], split_root: Path) -> None:
     source_metadata = validated_absolute_action_metadata(source_info)
     split_root = Path(split_root)
     split_info = _load_info(split_root)
-    existing = split_info.get("vla")
+    existing = split_info.get("evo_rlt")
     if existing is not None and existing != source_metadata:
         raise ValueError(f"materialized split has conflicting vla metadata: {split_root}")
-    split_info["vla"] = source_metadata
+    split_info["evo_rlt"] = source_metadata
     write_json_atomic(split_root / "meta/info.json", split_info)
+    from vla.dataset_metadata import write_metadata_sidecar
+    write_metadata_sidecar(split_root, split_info)
 
 
 def _feature_names(info: dict[str, Any], key: str) -> tuple[str, ...]:

@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 import yaml
+from vla.paths import resource, workspace
 
 
 def main() -> None:
@@ -13,14 +14,12 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path(
-            "datacollection/franka_robotiq_rollout/configs/single_left_31d.yaml"
-        ),
+        default=resource("datacollection/franka_robotiq_rollout/configs/single_left_31d.yaml"),
     )
     args = parser.parse_args()
     config_path = args.config.expanduser().resolve()
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    root = (config_path.parents[3] / config["dataset"]["root"]).resolve()
+    root = (workspace() / config["dataset"]["root"]).resolve()
     print(f"config={config_path}")
     print(f"backend={config['backend']}")
     print(f"dataset_root={root}")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from vla.dataset_metadata import load_info, write_metadata_sidecar
+
 import json
 import os
 from pathlib import Path
@@ -173,7 +175,7 @@ def make_info(
         "splits": {},
         "data_path": DATA_PATH,
         "video_path": VIDEO_PATH,
-        "vla": {
+        "evo_rlt": {
             "action_stats": "absolute",
             "action_chunk_size": 50,
             "actions_stored_as": "absolute",
@@ -350,8 +352,7 @@ class V30DatasetWriter:
     def _load_or_initialize_info(self) -> dict[str, Any]:
         path = self.root / "meta/info.json"
         if path.exists():
-            with path.open(encoding="utf-8") as stream:
-                return json.load(stream)
+            return load_info(self.root)
         info = make_info(
             self.fps,
             self.camera_keys,
@@ -364,6 +365,7 @@ class V30DatasetWriter:
             info_metadata=self.info_metadata,
         )
         atomic_json(path, info)
+        write_metadata_sidecar(self.root, info)
         return info
 
     def _validate_info(self) -> None:
@@ -511,6 +513,7 @@ class V30DatasetWriter:
             splits={"train": f"0:{len(rows)}"} if len(rows) else {},
         )
         atomic_json(self.root / "meta/info.json", self.info)
+        write_metadata_sidecar(self.root, self.info)
         self._rebuild_global_stats(rows)
 
     def _rebuild_global_stats(self, rows: pd.DataFrame) -> None:

@@ -447,11 +447,11 @@ def test_policy_client_streams_training_progress_in_collector(
     assert "actor_updates=5" in output
 
 
-def test_rollout_server_uses_lerobot_051_predict_action_location() -> None:
+def test_rollout_server_uses_vla_inference_adapter() -> None:
     source = (
         Path(__file__).parents[2] / "src/vla/cli/serve_franka_rollout.py"
     ).read_text()
-    assert "from lerobot.utils.control_utils import predict_action" in source
+    assert "from vla.adapters.lerobot.inference import predict_action" in source
     assert "from lerobot.policies.utils import predict_action" not in source
     assert 'parser.add_argument(\n        "--tokenizer-path"' in source
     assert "config.tokenizer_path = args.tokenizer_path" in source

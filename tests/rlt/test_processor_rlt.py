@@ -6,8 +6,8 @@ import pathlib
 import pytest
 import torch
 
-from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
-from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
+from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenConfig
 from vla.adapters.lerobot.policies.processor_rlt_ac import (
     _BypassOnChunkTransitionPipeline,
     make_rlt_ac_pre_post_processors,
@@ -56,7 +56,7 @@ def test_load_sft_pi05_processors_overrides_tokenizer():
 
 @requires_sft
 def test_rlt_token_factory_yields_pi05_pipeline():
-    cfg = RLTokenPolicyConfig(
+    cfg = RLTokenConfig(
         vla_pretrained_path=str(_SFT_PI05_DIR),
         action_dim=12,
         proprio_dim=12,
@@ -76,7 +76,7 @@ def test_rlt_token_factory_yields_pi05_pipeline():
 
 @requires_sft
 def test_rlt_ac_factory_returns_bypass_pipeline_with_pi05_steps():
-    cfg = ChunkACPolicyConfig(
+    cfg = ChunkACConfig(
         vla_pretrained_path=str(_SFT_PI05_DIR),
         rl_token_pretrained_path="/dummy",
         action_dim=12,
@@ -91,7 +91,7 @@ def test_rlt_ac_factory_returns_bypass_pipeline_with_pi05_steps():
 
 @requires_sft
 def test_bypass_short_circuits_on_state_vec_dict():
-    cfg = ChunkACPolicyConfig(
+    cfg = ChunkACConfig(
         vla_pretrained_path=str(_SFT_PI05_DIR),
         rl_token_pretrained_path="/dummy",
         action_dim=12,

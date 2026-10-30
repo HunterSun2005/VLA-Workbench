@@ -76,7 +76,7 @@ def test_resize_dataset_videos_is_transactional_and_preserves_timing(tmp_path: P
     assert output_info["features"]["observation.images.base"]["shape"] == [20, 24, 3]
     assert output_info["features"]["observation.images.base"]["info"]["video.height"] == 20
     assert output_info["features"]["observation.images.base"]["info"]["video.width"] == 24
-    assert output_info["vla"]["video_resize"]["target_size"] == [20, 24]
+    assert output_info["evo_rlt"]["video_resize"]["target_size"] == [20, 24]
 
     output_video = output / source_video.relative_to(source)
     before = _probe_video(source_video)

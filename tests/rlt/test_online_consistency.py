@@ -501,9 +501,9 @@ def test_recovery_progress_uses_one_line():
 
 
 def test_warmup_and_initialization_contract_is_readable_without_models(tmp_path):
-    from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
+    from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
     from dataclasses import asdict
-    config = ChunkACPolicyConfig()
+    config = ChunkACConfig()
     run = bind_run(tmp_path / "dataset", {"policy": asdict(config)}, resume=False)
     assert bind_run(tmp_path / "dataset", {"policy": asdict(config)}, resume=True) == run
 

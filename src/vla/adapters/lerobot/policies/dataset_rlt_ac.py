@@ -21,6 +21,11 @@ class _EpisodeIndexShim:
     dataset_from_index: list[int]
     dataset_to_index: list[int]
 
+    def __getitem__(self, key: str):
+        if key not in ("dataset_from_index", "dataset_to_index"):
+            raise KeyError(key)
+        return getattr(self, key)
+
 
 @dataclass
 class _MetaShim:
@@ -28,6 +33,11 @@ class _MetaShim:
     episodes: _EpisodeIndexShim
     fps: float
     features: dict = field(default_factory=dict)
+    has_language_columns: bool = False
+
+    @property
+    def camera_keys(self):
+        return [key for key in self.features if key.startswith("observation.images.")]
 
 
 class ChunkTransitionDataset(Dataset):
@@ -52,6 +62,9 @@ class ChunkTransitionDataset(Dataset):
             self._init_manifest_cache(manifest_path)
         else:
             self._init_legacy_cache()
+        # Local transition indices already form contiguous episode ranges.
+        self.episodes = list(range(self.num_episodes))
+        self.absolute_to_relative_idx = None
 
     def _init_manifest_cache(self, manifest_path: pathlib.Path) -> None:
         manifest = load_cache_manifest(manifest_path)

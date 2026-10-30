@@ -10,16 +10,17 @@ import sys
 
 
 def install_cache_guard(trainer, *, accept_upgrade=False) -> None:
-    original = getattr(trainer.make_dataset, "_vla_original", trainer.make_dataset)
+    boundary = "make_train_eval_datasets"
+    original = getattr(getattr(trainer, boundary), "_vla_original", getattr(trainer, boundary))
 
     @functools.wraps(original)
     def make_dataset(cfg):
-        from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
+        from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
         from vla.adapters.lerobot.policies.cache_manifest import load_cache_manifest
         from vla.core.training_contract import validate_cache_upgrade, validate_training_cache
         from vla.core.online_contract import durable_json
 
-        if isinstance(cfg.policy, ChunkACPolicyConfig):
+        if isinstance(cfg.policy, ChunkACConfig):
             manifest_path = Path(cfg.dataset.repo_id).expanduser().resolve() / "cache_manifest.json"
             manifest = load_cache_manifest(manifest_path)
             if manifest.get("status") != "complete":
@@ -53,10 +54,13 @@ def install_cache_guard(trainer, *, accept_upgrade=False) -> None:
             cfg.policy.cache_contract = current
             cfg.policy.cache_manifest_path = str(manifest_path)
             cfg.policy._apply_cache_contract()
+        if isinstance(cfg.policy, ChunkACConfig):
+            from vla.adapters.lerobot.registry import make_train_eval_datasets
+            return make_train_eval_datasets(cfg)
         return original(cfg)
 
     make_dataset._vla_original = original
-    trainer.make_dataset = make_dataset
+    setattr(trainer, boundary, make_dataset)
 
 
 def install_ac_update_hook(trainer) -> None:
@@ -83,6 +87,24 @@ def install_ac_update_hook(trainer) -> None:
     trainer.update_policy = update_policy
 
 
+def install_ac_processor_hook(trainer) -> None:
+    original = trainer.make_pre_post_processors
+    if getattr(original, "_vla_ac_processor", False):
+        return
+
+    @functools.wraps(original)
+    def processors(policy_cfg, *args, **kwargs):
+        from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
+        from vla.adapters.lerobot.policies.processor_rlt_ac import _BypassOnChunkTransitionPipeline
+        pre, post = original(policy_cfg, *args, **kwargs)
+        if isinstance(policy_cfg, ChunkACConfig) and not isinstance(pre, _BypassOnChunkTransitionPipeline):
+            pre = _BypassOnChunkTransitionPipeline(steps=list(pre.steps), name=pre.name)
+        return pre, post
+
+    processors._vla_ac_processor = True
+    trainer.make_pre_post_processors = processors
+
+
 def main() -> None:
     from vla.adapters.lerobot import register
 
@@ -91,10 +113,13 @@ def main() -> None:
     from lerobot.scripts import lerobot_train
 
     install_ac_update_hook(lerobot_train)
+    install_ac_processor_hook(lerobot_train)
     flag = "--accept-training-semantics-upgrade"
     accept_upgrade = flag in sys.argv
     sys.argv[:] = [arg for arg in sys.argv if arg != flag]
     install_cache_guard(lerobot_train, accept_upgrade=accept_upgrade)
+    if not any(arg.startswith("--dataset.eval_split=") for arg in sys.argv):
+        sys.argv.append("--dataset.eval_split=0")
     lerobot_train.main()
 
 

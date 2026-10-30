@@ -76,7 +76,8 @@ class RLTPretrainedConfig(PreTrainedConfig):
     def ensure_registered(cls) -> None:
         import lerobot.policies  # noqa: F401
 
-        PreTrainedConfig._choice_registry["rlt"] = cls
+        if "rlt" not in PreTrainedConfig.get_known_choices():
+            PreTrainedConfig.register_subclass("rlt")(cls)
 
     def __post_init__(self) -> None:
         self.ensure_registered()
@@ -130,3 +131,6 @@ class RLTPretrainedConfig(PreTrainedConfig):
     @property
     def reward_delta_indices(self) -> None:
         return None
+
+
+RLTPretrainedConfig.ensure_registered()

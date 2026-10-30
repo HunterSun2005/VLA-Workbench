@@ -160,6 +160,7 @@ def test_train_entrypoint_forces_dataset_inference(monkeypatch) -> None:
         ],
     )
 
+    monkeypatch.setattr(lerobot_train, "update_policy", lerobot_train.update_policy)
     train_franka_pi05_sft.main()
 
     assert calls == [
@@ -168,6 +169,7 @@ def test_train_entrypoint_forces_dataset_inference(monkeypatch) -> None:
             "--policy.path=/model",
             "--policy.input_features=null",
             "--policy.empty_cameras=0",
+            "--dataset.eval_split=0",
         ),
     ]
 

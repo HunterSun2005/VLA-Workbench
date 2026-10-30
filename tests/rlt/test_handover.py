@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from lerobot.utils.constants import OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TOKENS
 
 from vla.adapters.lerobot.checkpoint_contract import sha256_file
-from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
 from vla.adapters.lerobot.policies.modeling_rlt_ac import ChunkACPolicy
 from vla.adapters.lerobot.policies.modeling_rlt_token import extract_pi05_prefix_hidden
 from vla.cli.build_handover_cache import (
@@ -205,12 +205,12 @@ def test_phase_controller_uses_hysteresis_debounce_and_manual_cooldown():
 
 
 def test_chunk_ac_config_requires_checkpoint_only_for_learned_handover():
-    assert ChunkACPolicyConfig(device="cpu", phase_mode="manual").phase_mode == "manual"
-    assert ChunkACPolicyConfig(device="cpu", phase_mode="always_rl").phase_mode == "always_rl"
+    assert ChunkACConfig(device="cpu", phase_mode="manual").phase_mode == "manual"
+    assert ChunkACConfig(device="cpu", phase_mode="always_rl").phase_mode == "always_rl"
     with pytest.raises(ValueError, match="requires handover_pretrained_path"):
-        ChunkACPolicyConfig(device="cpu", phase_mode="learned")
+        ChunkACConfig(device="cpu", phase_mode="learned")
 
-    config = ChunkACPolicyConfig(
+    config = ChunkACConfig(
         device="cpu",
         phase_mode="learned",
         handover_pretrained_path="/tmp/handover",

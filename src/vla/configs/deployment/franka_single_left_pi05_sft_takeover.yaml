@@ -64,7 +64,7 @@ deployment:
   home:
     enabled: false
     key: h
-    target_action: [0.30459969, -0.34679768, 0.36701421, 0.71863529, 0.69538688, -0.00063997, 0.69538130, -0.71863270, -0.00344723, 1.0]
+    target_action: null
     clearance_z: 0.45
     gripper_hold_action: 0.80
     phase_timeout_s: 20.0

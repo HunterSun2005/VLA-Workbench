@@ -37,7 +37,8 @@ def _load_info(root: Path) -> dict[str, Any]:
     path = root / "meta/info.json"
     if not path.is_file():
         raise ValueError(f"missing dataset metadata: {path}")
-    info = json.loads(path.read_text(encoding="utf-8"))
+    from vla.dataset_metadata import load_info
+    info = load_info(root)
     if info.get("codebase_version") != "v3.0":
         raise ValueError(f"{root}: expected LeRobot v3.0 metadata")
     return info
@@ -190,6 +191,8 @@ def merge_franka_datasets(sources: list[Path], output_root: Path) -> Path:
         info["total_tasks"] = int(len(base_tasks))
         info["splits"] = {"train": f"0:{episode_offset}"}
         (temporary / "meta/info.json").write_text(json.dumps(_jsonable(info), indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
+        from vla.dataset_metadata import write_metadata_sidecar
+        write_metadata_sidecar(temporary, _jsonable(info))
         (temporary / "meta/stats.json").write_text(
             json.dumps(_merge_stats(all_tables, info, merged_rows), indent=4, default=_jsonable) + "\n",
             encoding="utf-8",

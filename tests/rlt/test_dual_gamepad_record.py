@@ -33,16 +33,16 @@ def test_dual_loss_groups_include_both_arms():
 
 def test_dual_shared_ac_optimizes_20d_chunks_without_loading_vla(tmp_path, monkeypatch):
     import torch
-    from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenPolicyConfig
-    from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
+    from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenConfig
+    from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
     from vla.adapters.lerobot.policies.modeling_rlt_ac import ChunkACPolicy
     camera_keys = ["base", "left_wrist", "right_wrist"]
-    token = RLTokenPolicyConfig(action_dim=20, proprio_dim=20, camera_keys=camera_keys,
+    token = RLTokenConfig(action_dim=20, proprio_dim=20, camera_keys=camera_keys,
                                rl_token_dim=32, device="cpu")
     token.validate_features()
     token.save_pretrained(tmp_path / "token")
     monkeypatch.setattr(ChunkACPolicy, "_load_rl_token_policy", lambda self: pytest.fail("offline training loaded VLA"))
-    policy = ChunkACPolicy(ChunkACPolicyConfig(
+    policy = ChunkACPolicy(ChunkACConfig(
         rl_token_pretrained_path=str(tmp_path / "token"), rl_token_dim=32,
         camera_keys=camera_keys, action_dim=20, proprio_dim=20, chunk_length=20,
         actor_hidden_dim=32, critic_hidden_dim=32, device="cpu"))

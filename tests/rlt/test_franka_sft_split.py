@@ -138,7 +138,7 @@ def test_materialized_split_inherits_absolute_action_metadata(tmp_path: Path) ->
     info_path.parent.mkdir(parents=True)
     info_path.write_text(json.dumps({"total_frames": 10}), encoding="utf-8")
     source_info = {
-        "vla": {
+        "evo_rlt": {
             "actions_stored_as": "absolute",
             "action_stats": "absolute",
             "action_chunk_size": 50,
@@ -149,7 +149,7 @@ def test_materialized_split_inherits_absolute_action_metadata(tmp_path: Path) ->
     inherit_vla_metadata(source_info, split_root)
 
     materialized = json.loads(info_path.read_text(encoding="utf-8"))
-    assert materialized["vla"] == source_info["vla"]
+    assert materialized["evo_rlt"] == source_info["evo_rlt"]
 
 
 @pytest.mark.parametrize(
@@ -175,4 +175,4 @@ def test_split_rejects_incompatible_action_metadata(
     metadata[field] = value
 
     with pytest.raises(ValueError, match=message):
-        inherit_vla_metadata({"vla": metadata}, split_root)
+        inherit_vla_metadata({"evo_rlt": metadata}, split_root)

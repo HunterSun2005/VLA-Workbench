@@ -17,8 +17,8 @@ from lerobot.policies.rtc.action_queue import ActionQueue
 from lerobot.policies.rtc.configuration_rtc import RTCConfig
 from lerobot.policies.rtc.latency_tracker import LatencyTracker
 from vla.adapters.lerobot.policies.action_modifier import PrefixOutputCapture, RLTActionModifier
-from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
-from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
+from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenConfig
 from vla.adapters.lerobot.policies.modeling_rlt_token import RLTokenPolicy
 from vla.adapters.lerobot.checkpoint_contract import (
     assert_same_fingerprint,
@@ -55,19 +55,19 @@ class ChunkACPolicy(PreTrainedPolicy):
     setting lerobot-train `--steps` to outer*k.
     """
 
-    config_class = ChunkACPolicyConfig
+    config_class = ChunkACConfig
     name = "rlt_ac"
 
     def __init__(
         self,
-        config: ChunkACPolicyConfig,
+        config: ChunkACConfig,
         dataset_stats: dict[str, dict[str, Tensor]] | None = None,
         *args,
         **kwargs,
     ) -> None:
         super().__init__(config, *args, **kwargs)
         config.validate_features()
-        self.config: ChunkACPolicyConfig = config
+        self.config: ChunkACConfig = config
 
         rl_token_config = self._load_rl_token_config()
         object.__setattr__(self, "_rl_token_config", rl_token_config)
@@ -133,13 +133,13 @@ class ChunkACPolicy(PreTrainedPolicy):
     # Construction helpers
     # ------------------------------------------------------------------
 
-    def _load_rl_token_config(self) -> RLTokenPolicyConfig:
+    def _load_rl_token_config(self) -> RLTokenConfig:
         if not self.config.rl_token_pretrained_path:
             raise ValueError(
                 "ChunkACPolicy requires config.rl_token_pretrained_path "
                 "pointing at a saved RLTokenPolicy checkpoint dir."
             )
-        rl_config = RLTokenPolicyConfig.from_pretrained(self.config.rl_token_pretrained_path)
+        rl_config = RLTokenConfig.from_pretrained(self.config.rl_token_pretrained_path)
         rl_config.device = self.config.device
         rl_config.vla_dtype = self.config.vla_dtype
         if self.config.vla_pretrained_path:
@@ -162,7 +162,7 @@ class ChunkACPolicy(PreTrainedPolicy):
     def _validate_rl_token_arch(self, rl_token_policy: RLTokenPolicy) -> None:
         self._validate_rl_token_arch_config(rl_token_policy.config)
 
-    def _validate_rl_token_arch_config(self, rtp_cfg: RLTokenPolicyConfig) -> None:
+    def _validate_rl_token_arch_config(self, rtp_cfg: RLTokenConfig) -> None:
         fields = (
             "action_dim",
             "proprio_dim",
@@ -344,7 +344,7 @@ class ChunkACPolicy(PreTrainedPolicy):
             ctrl.trigger_vla()
 
     def _build_phase_controller(self) -> PhaseController:
-        # ChunkACPolicyConfig.phase_mode (always_rl / always_vla / manual) is
+        # ChunkACConfig.phase_mode (always_rl / always_vla / manual) is
         # validated in the config __post_init__. PhaseController only does
         # manual/learned transitions, so we pin the deploy phase explicitly.
         if self.config.phase_mode == "learned":

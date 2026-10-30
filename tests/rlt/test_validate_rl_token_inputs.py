@@ -130,8 +130,10 @@ def test_validate_rl_token_inputs_rejects_chunk_size_mismatch(tmp_path: Path) ->
     _make_sft(checkpoint, tmp_path / "tokenizer")
     info_path = dataset / "meta/info.json"
     info = json.loads(info_path.read_text())
-    info["vla"]["action_chunk_size"] = 25
+    info["evo_rlt"]["action_chunk_size"] = 25
     info_path.write_text(json.dumps(info))
+    from vla.dataset_metadata import write_metadata_sidecar
+    write_metadata_sidecar(dataset, info)
 
     with pytest.raises(ValueError, match="action_chunk_size=25.*SFT chunk_size=50"):
         validate_rl_token_inputs(dataset, checkpoint)
@@ -144,8 +146,10 @@ def test_validate_rl_token_inputs_rejects_relative_parquet_actions(tmp_path: Pat
     _make_sft(checkpoint, tmp_path / "tokenizer")
     info_path = dataset / "meta/info.json"
     info = json.loads(info_path.read_text())
-    info["vla"]["actions_stored_as"] = "relative"
+    info["evo_rlt"]["actions_stored_as"] = "relative"
     info_path.write_text(json.dumps(info))
+    from vla.dataset_metadata import write_metadata_sidecar
+    write_metadata_sidecar(dataset, info)
 
     with pytest.raises(ValueError, match="actions_stored_as='relative'.*expects absolute"):
         validate_rl_token_inputs(dataset, checkpoint)

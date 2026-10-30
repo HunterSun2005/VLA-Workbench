@@ -4,13 +4,13 @@ from typing import Any
 
 import torch
 
-from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_token import RLTokenConfig
 from vla.adapters.lerobot.policies.processor_rlt_common import load_sft_pi05_processors
 from lerobot.processor import PolicyAction, PolicyProcessorPipeline
 
 
 def make_rlt_token_pre_post_processors(
-    config: RLTokenPolicyConfig,
+    config: RLTokenConfig,
     dataset_stats: dict[str, dict[str, torch.Tensor]] | None = None,
 ) -> tuple[
     PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],

@@ -9,7 +9,7 @@ import torch
 from lerobot.configs.policies import PreTrainedConfig
 
 from vla.adapters.lerobot.policies.cache_manifest import atomic_write_json, new_cache_manifest
-from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
 from vla.adapters.lerobot.policies.dataset_rlt_ac import ChunkTransitionDataset
 from vla.adapters.lerobot.policies.modeling_rlt_ac import ChunkACPolicy
 from vla.adapters.lerobot.checkpoint_contract import sha256_file
@@ -116,7 +116,7 @@ def test_chunk_transition_dataset_keeps_all_loaded_shards_cached(
 
 def test_ac_config_is_populated_from_cache_manifest(tmp_path: Path) -> None:
     manifest_path = _make_cache(tmp_path)
-    config = ChunkACPolicyConfig(cache_manifest_path=str(manifest_path), device="cpu")
+    config = ChunkACConfig(cache_manifest_path=str(manifest_path), device="cpu")
     assert config.action_dim == 10
     assert config.proprio_dim == 10
     assert config.camera_keys == ["base", "left_wrist"]
@@ -129,7 +129,7 @@ def test_ac_config_is_populated_from_cache_manifest(tmp_path: Path) -> None:
 def test_ac_config_rejects_manifest_schema_override(tmp_path: Path) -> None:
     manifest_path = _make_cache(tmp_path)
     with pytest.raises(ValueError, match="action_dim"):
-        ChunkACPolicyConfig(
+        ChunkACConfig(
             cache_manifest_path=str(manifest_path),
             action_dim=20,
             device="cpu",
@@ -138,7 +138,7 @@ def test_ac_config_rejects_manifest_schema_override(tmp_path: Path) -> None:
 
 def test_ac_config_allows_relocated_checkpoint_paths(tmp_path: Path) -> None:
     manifest_path = _make_cache(tmp_path)
-    config = ChunkACPolicyConfig(
+    config = ChunkACConfig(
         cache_manifest_path=str(manifest_path),
         vla_pretrained_path="/relocated/sft",
         rl_token_pretrained_path="/relocated/rl_token",
@@ -169,7 +169,7 @@ def test_ac_manifest_accepts_franka_dual_arm_20d_schema(tmp_path: Path) -> None:
     )
     atomic_write_json(manifest_path, manifest)
 
-    config = ChunkACPolicyConfig(cache_manifest_path=str(manifest_path), device="cpu")
+    config = ChunkACConfig(cache_manifest_path=str(manifest_path), device="cpu")
     assert config.action_dim == 20
     assert config.proprio_dim == 20
     assert config.camera_keys == ["base", "left_wrist", "right_wrist"]
@@ -230,7 +230,7 @@ def test_ac_initialization_defers_rl_token_backbone_loading(
         "_load_rl_token_policy",
         lambda self: pytest.fail("backbone must not load during AC initialization"),
     )
-    config = ChunkACPolicyConfig(
+    config = ChunkACConfig(
         rl_token_pretrained_path="unused",
         action_dim=10,
         proprio_dim=10,
@@ -263,7 +263,7 @@ def test_ac_initialization_defers_rl_token_backbone_loading(
 
 def test_saved_ac_config_keeps_embedded_contract_when_manifest_moves(tmp_path: Path) -> None:
     manifest_path = _make_cache(tmp_path / "cache")
-    config = ChunkACPolicyConfig(cache_manifest_path=str(manifest_path), device="cpu")
+    config = ChunkACConfig(cache_manifest_path=str(manifest_path), device="cpu")
     checkpoint = tmp_path / "ac_config"
     config.save_pretrained(checkpoint)
     manifest_path.unlink()

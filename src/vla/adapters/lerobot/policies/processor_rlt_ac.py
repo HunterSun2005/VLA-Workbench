@@ -4,7 +4,7 @@ from typing import Any
 
 import torch
 
-from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACPolicyConfig
+from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
 from vla.adapters.lerobot.policies.processor_rlt_common import load_sft_pi05_processors
 from lerobot.processor import PolicyAction, PolicyProcessorPipeline
 from lerobot.utils.constants import POLICY_PREPROCESSOR_DEFAULT_NAME
@@ -28,7 +28,7 @@ class _BypassOnChunkTransitionPipeline(PolicyProcessorPipeline[dict[str, Any], d
 
 
 def make_rlt_ac_pre_post_processors(
-    config: ChunkACPolicyConfig,
+    config: ChunkACConfig,
     dataset_stats: dict[str, dict[str, torch.Tensor]] | None = None,
 ) -> tuple[
     PolicyProcessorPipeline[dict[str, Any], dict[str, Any]],

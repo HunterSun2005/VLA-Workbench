@@ -42,6 +42,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def _load_json(path: Path) -> dict[str, Any]:
+    if path.name == "info.json" and path.parent.name == "meta":
+        from vla.dataset_metadata import load_info
+        return load_info(path.parent.parent)
     with path.open(encoding="utf-8") as stream:
         value = json.load(stream)
     if not isinstance(value, dict):
@@ -196,7 +199,7 @@ def _update_info(
                 "video.pix_fmt": "yuv420p",
             }
         )
-    info.setdefault("vla", {})["video_resize"] = {
+    info.setdefault("evo_rlt", {})["video_resize"] = {
         "source_sizes": original_sizes,
         "target_size": [height, width],
         "method": "ffmpeg_lanczos_libx264",
@@ -300,6 +303,8 @@ def resize_dataset_videos(
 
         _update_info(info, video_keys, width=width, height=height)
         _write_json_atomic(staging / "meta/info.json", info)
+        from vla.dataset_metadata import write_metadata_sidecar
+        write_metadata_sidecar(staging, info)
         if validate_lerobot:
             _validate_with_lerobot(staging, info, video_keys)
         if output.exists():

@@ -16,7 +16,7 @@ from vla.adapters.lerobot.policies.configuration_schema import (
 
 
 @dataclass
-class RLTokenPolicyConfig(PreTrainedConfig):
+class RLTokenConfig(PreTrainedConfig):
     """Config for the RL Token training policy.
 
     Trains an RLTokenModule (encoder + decoder) that reconstructs pi0.5's prefix
@@ -93,7 +93,8 @@ class RLTokenPolicyConfig(PreTrainedConfig):
     def ensure_registered(cls) -> None:
         import lerobot.policies  # noqa: F401
 
-        PreTrainedConfig._choice_registry["rlt_token"] = cls
+        if "rlt_token" not in PreTrainedConfig.get_known_choices():
+            PreTrainedConfig.register_subclass("rlt_token")(cls)
 
     @classmethod
     def from_pretrained(cls, pretrained_name_or_path, **kwargs):
@@ -138,3 +139,6 @@ class RLTokenPolicyConfig(PreTrainedConfig):
     @property
     def reward_delta_indices(self) -> None:
         return None
+
+
+RLTokenConfig.ensure_registered()
