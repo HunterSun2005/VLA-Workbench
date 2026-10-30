@@ -1,0 +1,13 @@
+# Python 3.10 ROS collection overlay. SDK source is pinned in dependencies.repos.
+pyserial==3.5
+numpy==1.26.4
+scipy==1.15.3
+opencv-python-headless==4.11.0.86
+pandas==2.3.3
+pyarrow==24.0.0
+pyrealsense2==2.57.7.10387
+PyYAML==6.0.3
+python-dateutil==2.9.0.post0
+pytz==2025.2
+tzdata==2025.2
+six==1.17.0

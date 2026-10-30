@@ -31,8 +31,7 @@ from vla.robots.franka_robotiq.robot import (
 )
 
 
-from vla.paths import python_root
-PYTHON_ROOT = python_root()
+from vla.paths import workspace
 DEFAULT_CONFIG = Path(__file__).with_name("configs") / "single_left_gamepad.yaml"
 
 
@@ -641,7 +640,8 @@ def ros_environment():
     keep = ("HOME", "USER", "LOGNAME", "LANG", "TERM", "ROS_DOMAIN_ID", "ROS_LOCALHOST_ONLY", "RMW_IMPLEMENTATION")
     result = {key: os.environ[key] for key in keep if key in os.environ}
     result.update(PATH="/usr/bin:/bin:/usr/sbin:/sbin", PYTHONNOUSERSITE="1",
-                  PYTHONPATH=str(PYTHON_ROOT))
+                  PYTHONPATH=os.pathsep.join(str(workspace() / path) for path in ("ros_ws/python", "ros_ws/python_deps", "src")))
+    result.update(ROS_HOME=str(workspace() / "runtime/ros"), ROS_LOG_DIR=str(workspace() / "runtime/ros/log"))
     return result
 
 

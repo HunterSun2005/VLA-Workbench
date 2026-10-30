@@ -24,3 +24,13 @@ logs/
 ros_ws/src/third_party/
 ros_ws/install/
 ros_ws/log/
+ros_ws/python_deps/
+.cache/
+cache/
+replay/
+replay_buffer/
+wandb/
+recordings/
+*.log
+*.mcap
+*.bag

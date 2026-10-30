@@ -1,0 +1,3 @@
+robot1:
+  namespace: ""
+  com_port: "usb-FTDI_USB__-__Serial_Converter_FTC0GK1K-if00-port0"

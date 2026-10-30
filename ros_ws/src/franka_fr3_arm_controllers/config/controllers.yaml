@@ -1,0 +1,42 @@
+/**:
+  controller_manager:
+    ros__parameters:
+      update_rate: 1000  # Hz
+      thread_priority: 98
+
+      joint_impedance_controller:
+        type: franka_fr3_arm_controllers/JointImpedanceController
+
+      joint_state_broadcaster:
+        type: joint_state_broadcaster/JointStateBroadcaster
+
+      franka_robot_state_broadcaster:
+        type: franka_robot_state_broadcaster/FrankaRobotStateBroadcaster
+
+/**:
+  joint_impedance_controller:
+    ros__parameters:
+      k_alpha: 0.99
+      # Ignore tiny GELLO joint changes and smooth accepted updates before they become FR3 goals.
+      gello_deadband: 0.0005
+      gello_filter_alpha: 0.70
+      # Bound commanded motion and torque changes to reduce reflex and power-limit aborts.
+      initial_alignment_speed_factor: 0.1
+      max_gello_velocity: 0.8
+      max_delta_tau_per_ms: 1.0
+      k_gains:
+        - 240.0
+        - 240.0
+        - 240.0
+        - 240.0
+        - 100.0
+        - 60.0
+        - 20.0
+      d_gains:
+        - 20.0
+        - 20.0
+        - 20.0
+        - 10.0
+        - 10.0
+        - 10.0
+        - 5.0

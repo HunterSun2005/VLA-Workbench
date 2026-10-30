@@ -1,0 +1,57 @@
+{
+  "original_source": "/home/amax/factr_ws/src/factr_teleop/factr_teleop/dynamixel/python/src/dynamixel_sdk",
+  "upstream": "https://github.com/ROBOTIS-GIT/DynamixelSDK",
+  "commit": "ad2d6136831dc3400aa43db21323c9cbfc182a34",
+  "files": [
+    {
+      "name": "__init__.py",
+      "sha256": "03dfd07d4a094745e2747d733ac1239f3205c8403bcea34ac4560852069be928",
+      "matches_upstream": true
+    },
+    {
+      "name": "group_bulk_read.py",
+      "sha256": "f0ad48f84329163a664c6b72ca37eb961ce1b1e1fbbc5592b46858243645cda8",
+      "matches_upstream": true
+    },
+    {
+      "name": "group_bulk_write.py",
+      "sha256": "723604c0f6bec0052b092541e6e89ce1d8266f5653ae6e48eee890a3c968b6a3",
+      "matches_upstream": true
+    },
+    {
+      "name": "group_sync_read.py",
+      "sha256": "32eff6f400ca9e3f7d7cdf4a2eee5e680c0636639a4dea5158adb1adc7da3587",
+      "matches_upstream": true
+    },
+    {
+      "name": "group_sync_write.py",
+      "sha256": "837b1b103bff4822331f771869eef7fdd7a767d5077d5514958dd495a19ffdcd",
+      "matches_upstream": true
+    },
+    {
+      "name": "packet_handler.py",
+      "sha256": "8ba41cbd2f3c7e701ae86b0b26b7f676fa46e5256bce3944591e6e9e8b65a8e4",
+      "matches_upstream": true
+    },
+    {
+      "name": "port_handler.py",
+      "sha256": "f665af372827da80317a262a502f3dfc27efbf89968e29e272fdd8d8e216f4ea",
+      "matches_upstream": true
+    },
+    {
+      "name": "protocol1_packet_handler.py",
+      "sha256": "98f98563c4531f791f4e473fe810b28d1def926f58762b308ff623b9dc2061fb",
+      "matches_upstream": true
+    },
+    {
+      "name": "protocol2_packet_handler.py",
+      "sha256": "f790251f6dc2ce060ec98e6fa4aa23a27cc3bde1e1dc12fd9614a68bd2838e56",
+      "matches_upstream": true
+    },
+    {
+      "name": "robotis_def.py",
+      "sha256": "fff0b2d28cd3c667915be58a1a350d45785d49a9eba8d24b573c8b8d18e5a66d",
+      "matches_upstream": true
+    }
+  ]
+}

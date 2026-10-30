@@ -1,0 +1,38 @@
+{
+  "serial": {
+    "version": "3.5",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/serial/__init__.py"
+  },
+  "dynamixel_sdk": {
+    "version": "3.7.51",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/dynamixel_sdk/__init__.py"
+  },
+  "numpy": {
+    "version": "1.26.4",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/numpy/__init__.py"
+  },
+  "yaml": {
+    "version": "6.0.3",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/yaml/__init__.py"
+  },
+  "scipy": {
+    "version": "1.15.3",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/scipy/__init__.py"
+  },
+  "cv2": {
+    "version": "4.11.0.86",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/cv2/__init__.py"
+  },
+  "pandas": {
+    "version": "2.3.3",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/pandas/__init__.py"
+  },
+  "pyarrow": {
+    "version": "24.0.0",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/pyarrow/__init__.py"
+  },
+  "pyrealsense2": {
+    "version": "2.57.7.10387",
+    "module": "/data0/sht/VLA/ros_ws/python_deps/pyrealsense2/__init__.py"
+  }
+}

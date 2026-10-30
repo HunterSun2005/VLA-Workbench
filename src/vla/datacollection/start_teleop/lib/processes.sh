@@ -38,7 +38,7 @@ start_task() {
   fi
   # Non-interactive shells start asynchronous children with SIGINT ignored.
   # Reset it before exec so ROS/Python can install their graceful handlers.
-  setsid env --default-signal=INT,QUIT bash -lc "${TASK_COMMANDS[$index]}" \
+  setsid env --default-signal=INT,QUIT bash --noprofile --norc -c "${TASK_COMMANDS[$index]}" \
     >>"$log_file" 2>&1 &
   TASK_PIDS[$index]="$!"
   printf '%s %s\n' "$!" "$name" >>"$STATE_DIR/task_pids"

@@ -1,0 +1,29 @@
+repositories:
+  src/third_party/franka_ros2:
+    type: git
+    url: https://github.com/frankarobotics/franka_ros2.git
+    version: 7ed045886cdfaf60810e5bf7450f1d56ccb6c8f4
+  src/third_party/franka_description:
+    type: git
+    url: https://github.com/frankarobotics/franka_description.git
+    version: 2c4610f4df7e736b44882483598856819cd6b6f6
+  src/third_party/libfranka:
+    type: git
+    url: https://github.com/frankarobotics/libfranka.git
+    version: 95b406f47c97cedfbe426c04d8fb7f83a9885e1c
+  src/third_party/libfranka/common:
+    type: git
+    url: https://github.com/frankarobotics/libfranka-common.git
+    version: d96c221a32c343384cbe2f77c61116ed58b84231
+  src/third_party/serial:
+    type: git
+    url: https://github.com/tylerjw/serial.git
+    version: d8d160678aa0b31cdf467c052b954fa287cc6cdf
+  src/third_party/ros2_robotiq_gripper:
+    type: git
+    url: https://github.com/PickNikRobotics/ros2_robotiq_gripper.git
+    version: 2ff85455d4b9f973c4b0bab1ce95fb09367f0d26
+  src/third_party/dynamixel_sdk:
+    type: git
+    url: https://github.com/ROBOTIS-GIT/DynamixelSDK.git
+    version: ad2d6136831dc3400aa43db21323c9cbfc182a34

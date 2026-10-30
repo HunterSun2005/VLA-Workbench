@@ -35,13 +35,13 @@ case "$TELEOP_MODE" in
     ;;
 esac
 
-ROS2_WS="${ROS2_WS:-/home/amax/workspace/ros2}"
-FRANKA_ROS2_WS="${FRANKA_ROS2_WS:-/home/amax/franka_ros2_ws}"
-ROBOTIQ_ROS2_SETUP="${ROBOTIQ_ROS2_SETUP:-$ROS2_WS/install/robotiq_underlay/setup.bash}"
+ROS2_WS="${ROS2_WS:-${VLA_ROOT:-$PWD}/ros_ws}"
+FRANKA_ROS2_WS="${FRANKA_ROS2_WS:-$ROS2_WS}"
+ROBOTIQ_ROS2_SETUP="${ROBOTIQ_ROS2_SETUP:-$ROS2_WS/install/local_setup.bash}"
 OPENROBOTS_LIB_DIR="${OPENROBOTS_LIB_DIR:-/opt/openrobots/lib}"
 FRANKA_HARDWARE_LIBRARY="${FRANKA_HARDWARE_LIBRARY:-$FRANKA_ROS2_WS/install/franka_hardware/lib/libfranka_hardware.so}"
 LOG_DIR="${LOG_DIR:-$ROS2_WS/log/${TELEOP_MODE}_${CONTROL_OWNER}}"
-STATE_DIR="${STATE_DIR:-/tmp/vla_fr3_fine_teleop_${UID}}"
+STATE_DIR="${STATE_DIR:-${VLA_ROOT:-$PWD}/runtime/fr3_fine_teleop_${UID}}"
 
 FINE_TELEOP_NODE="$SCRIPT_DIR/fine_teleop.py"
 PREPARE_CONFIGS="$SCRIPT_DIR/prepare_runtime_configs.py"
@@ -124,12 +124,12 @@ main() {
   prepare_runtime_configs
 
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
-    bash -lc "$(ros_env_cmd) /usr/bin/python3 '$GELLO_FINE_LAUNCH' --check --config-path '$GELLO_RUNTIME_CONFIG' --expected-namespaces '$EXPECTED_GELLO_NAMESPACES'" ||
+    bash --noprofile --norc -c "$(ros_env_cmd) /usr/bin/python3 '$GELLO_FINE_LAUNCH' --check --config-path '$GELLO_RUNTIME_CONFIG' --expected-namespaces '$EXPECTED_GELLO_NAMESPACES'" ||
       die "GELLO fine launch configuration check failed"
   fi
-  bash -lc "$(ros_env_cmd) ros2 launch '$ARM_TELEOP_LAUNCH' --show-args >/dev/null" ||
+  bash --noprofile --norc -c "$(ros_env_cmd) ros2 launch '$ARM_TELEOP_LAUNCH' --show-args >/dev/null" ||
     die "FR3 teleop topic remap launch check failed"
-  bash -lc "$(ros_env_cmd) ros2 launch '$GRIPPER_TELEOP_LAUNCH' --show-args >/dev/null" ||
+  bash --noprofile --norc -c "$(ros_env_cmd) ros2 launch '$GRIPPER_TELEOP_LAUNCH' --show-args >/dev/null" ||
     die "Robotiq teleop topic remap launch check failed"
 
   if is_enabled "$CHECK_ONLY"; then
@@ -178,7 +178,7 @@ main() {
   done
 
   add_task "robotiq_${TELEOP_MODE}" \
-    "${environment} exec ros2 launch '$GRIPPER_TELEOP_LAUNCH' config_file:=$(basename "$GRIPPER_RUNTIME_CONFIG") control_owner:=$CONTROL_OWNER"
+    "${environment} exec ros2 launch '$GRIPPER_TELEOP_LAUNCH' config_file:='$GRIPPER_RUNTIME_CONFIG' control_owner:=$CONTROL_OWNER"
   start_task "$((${#TASK_NAMES[@]} - 1))"
   local side
   for side in "${ACTIVE_SIDES[@]}"; do
@@ -193,7 +193,7 @@ main() {
   fi
 
   add_task "fr3_${TELEOP_MODE}_controllers" \
-    "${environment} exec ros2 launch '$ARM_TELEOP_LAUNCH' robot_config_file:=$(basename "$ARM_RUNTIME_CONFIG") control_owner:=$CONTROL_OWNER"
+    "${environment} exec ros2 launch '$ARM_TELEOP_LAUNCH' robot_config_file:='$ARM_RUNTIME_CONFIG' control_owner:=$CONTROL_OWNER"
   start_task "$((${#TASK_NAMES[@]} - 1))"
 
   if is_enabled "$SET_FULL_COLLISION_BEHAVIOR"; then

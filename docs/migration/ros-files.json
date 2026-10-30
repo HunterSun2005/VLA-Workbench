@@ -1,0 +1,446 @@
+[
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/CMakeLists.txt",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/CMakeLists.txt",
+    "sha256": "26073e6ba297c0d923f7e93eb85142b92db4c6933b40346f666b616217ac6186",
+    "destination_sha256": "26073e6ba297c0d923f7e93eb85142b92db4c6933b40346f666b616217ac6186"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/LICENSE",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "destination_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/NOTICE",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/NOTICE",
+    "sha256": "4dd12371ba349990cf600ab5a390adfbe8a7291ece37b3475cc66af560722a3f",
+    "destination_sha256": "4dd12371ba349990cf600ab5a390adfbe8a7291ece37b3475cc66af560722a3f"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/config/controllers.yaml",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/config/controllers.yaml",
+    "sha256": "b466dd41a1b13b184de3a6634c9649595a9a2623747032547c9e35e08ab4bead",
+    "destination_sha256": "b466dd41a1b13b184de3a6634c9649595a9a2623747032547c9e35e08ab4bead"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/config/example_fr3_config.yaml",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/config/example_fr3_config.yaml",
+    "sha256": "3716b4a7f331652c86e2f8e96d279017f90dcd5f3eacf47b311fa149789a97fe",
+    "destination_sha256": "3716b4a7f331652c86e2f8e96d279017f90dcd5f3eacf47b311fa149789a97fe"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/config/example_fr3_duo_config.yaml",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/config/example_fr3_duo_config.yaml",
+    "sha256": "4f70319c92b3b91de4b7d7099ad517ca1513503343c26f01f557fb748a13de7d",
+    "destination_sha256": "4f70319c92b3b91de4b7d7099ad517ca1513503343c26f01f557fb748a13de7d"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/config/example_fr3_left_config.yaml",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/config/example_fr3_left_config.yaml",
+    "sha256": "6a04884f292280b6a02a4ea7935ed2fbe5c521fcda160014b38772f39647b8fe",
+    "destination_sha256": "6a04884f292280b6a02a4ea7935ed2fbe5c521fcda160014b38772f39647b8fe"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/franka_fr3_arm_controllers.xml",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/franka_fr3_arm_controllers.xml",
+    "sha256": "50e5c0a6cb067306676f353237aea1cd4ac3d22876314c23ddd4d1237c756ef3",
+    "destination_sha256": "50e5c0a6cb067306676f353237aea1cd4ac3d22876314c23ddd4d1237c756ef3"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/include/franka_fr3_arm_controllers/joint_impedance_controller.hpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/include/franka_fr3_arm_controllers/joint_impedance_controller.hpp",
+    "sha256": "6f2f522467f3036bda1e8fb34011c9e0fc42d97fd62d9ba459d86b81d329040f",
+    "destination_sha256": "6f2f522467f3036bda1e8fb34011c9e0fc42d97fd62d9ba459d86b81d329040f"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/include/franka_fr3_arm_controllers/motion_generator.hpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/include/franka_fr3_arm_controllers/motion_generator.hpp",
+    "sha256": "710c6fce510380f9f16b809e07b26dcd7a4429b4e5f0918f6793a9ddc1e7e88c",
+    "destination_sha256": "710c6fce510380f9f16b809e07b26dcd7a4429b4e5f0918f6793a9ddc1e7e88c"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/launch/franka.launch.py",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/launch/franka.launch.py",
+    "sha256": "8ab4d5144639dc0233bf43b5190a5158ec8e66a227f4cacd82407b48cf33efe4",
+    "destination_sha256": "8ab4d5144639dc0233bf43b5190a5158ec8e66a227f4cacd82407b48cf33efe4"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/launch/franka_fr3_arm_controllers.launch.py",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/launch/franka_fr3_arm_controllers.launch.py",
+    "sha256": "a2afebd5da6b485d27bc1343372f83fe422436c7964a6d4c5ac41f3643f09a13",
+    "destination_sha256": "a2afebd5da6b485d27bc1343372f83fe422436c7964a6d4c5ac41f3643f09a13"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/package.xml",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/package.xml",
+    "sha256": "a15021d504d29e39b4524483b96669b881429f95004e493b2066ab74155bd953",
+    "destination_sha256": "33ee63e7e6462032fd4fb05b27bc0a5c47f334fbc871dcdf881177c1260faf1a"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/src/joint_impedance_controller.cpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/src/joint_impedance_controller.cpp",
+    "sha256": "2ead2514822422168a2889b161db29b8ccd81d65378d6be7aefe634673742df4",
+    "destination_sha256": "2ead2514822422168a2889b161db29b8ccd81d65378d6be7aefe634673742df4"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/src/motion_generator.cpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/src/motion_generator.cpp",
+    "sha256": "363dd7edd898246064efc2043171f5d45e4203b518f14b4014abd0088124342d",
+    "destination_sha256": "363dd7edd898246064efc2043171f5d45e4203b518f14b4014abd0088124342d"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/test/include/mocks/mock_joint_state_publisher.hpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/test/include/mocks/mock_joint_state_publisher.hpp",
+    "sha256": "1192b02eb697cb5faadaf0a28d99d49c30d822c39036072a896f46e86a7db431",
+    "destination_sha256": "1192b02eb697cb5faadaf0a28d99d49c30d822c39036072a896f46e86a7db431"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/test/include/mocks/mock_parameter_server.hpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/test/include/mocks/mock_parameter_server.hpp",
+    "sha256": "3eac5114583c822d8e96f2233f8056a5d9e3dc444c441bddb2e74e11a962d553",
+    "destination_sha256": "3eac5114583c822d8e96f2233f8056a5d9e3dc444c441bddb2e74e11a962d553"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/test/include/test_joint_impedance_controller.hpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/test/include/test_joint_impedance_controller.hpp",
+    "sha256": "be6d472aaac4fb68ce4c0f3357b9067de0f9216838a6415ab4bf58871c23d8e0",
+    "destination_sha256": "be6d472aaac4fb68ce4c0f3357b9067de0f9216838a6415ab4bf58871c23d8e0"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/test/invalid_configuration_test.cpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/test/invalid_configuration_test.cpp",
+    "sha256": "0faaa504c510d89bf03e7ae5d1dd25f196be2931ab5be051af612b07d62b9f4f",
+    "destination_sha256": "0faaa504c510d89bf03e7ae5d1dd25f196be2931ab5be051af612b07d62b9f4f"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/test/setup_test.cpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/test/setup_test.cpp",
+    "sha256": "097f390bbd0b89d2125b26447d3dbd5e11164d6fb86fd6213e05dd99f5da7489",
+    "destination_sha256": "097f390bbd0b89d2125b26447d3dbd5e11164d6fb86fd6213e05dd99f5da7489"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_fr3_arm_controllers/test/test_joint_impedance_controller.cpp",
+    "destination": "ros_ws/src/franka_fr3_arm_controllers/test/test_joint_impedance_controller.cpp",
+    "sha256": "c7744d61dc5ba6f153265eb8c1eb44158b10c335144dd5c30a42b43ec3a8f4e9",
+    "destination_sha256": "c7744d61dc5ba6f153265eb8c1eb44158b10c335144dd5c30a42b43ec3a8f4e9"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/.pytest_cache/.gitignore",
+    "destination": "ros_ws/src/franka_gripper_manager/.pytest_cache/.gitignore",
+    "sha256": "3ed731b65d06150c138e2dadb0be0697550888a6b47eb8c45ecc9adba8b8e9bd",
+    "destination_sha256": "3ed731b65d06150c138e2dadb0be0697550888a6b47eb8c45ecc9adba8b8e9bd"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/.pytest_cache/CACHEDIR.TAG",
+    "destination": "ros_ws/src/franka_gripper_manager/.pytest_cache/CACHEDIR.TAG",
+    "sha256": "ffacb1561d9688b9d9b5e06f3ffa10814a03c2a6f892d7bea3e7fef62599eb23",
+    "destination_sha256": "ffacb1561d9688b9d9b5e06f3ffa10814a03c2a6f892d7bea3e7fef62599eb23"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/.pytest_cache/README.md",
+    "destination": "ros_ws/src/franka_gripper_manager/.pytest_cache/README.md",
+    "sha256": "27a7071ba39c9ef4054eaf99bc59e3f0aa328a62166f426e6549ef923ade7533",
+    "destination_sha256": "27a7071ba39c9ef4054eaf99bc59e3f0aa328a62166f426e6549ef923ade7533"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/.pytest_cache/v/cache/lastfailed",
+    "destination": "ros_ws/src/franka_gripper_manager/.pytest_cache/v/cache/lastfailed",
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "destination_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/.pytest_cache/v/cache/nodeids",
+    "destination": "ros_ws/src/franka_gripper_manager/.pytest_cache/v/cache/nodeids",
+    "sha256": "715495e7eee05fc7e5fce2a4e57abfe7929bbff638a217b46ce825556165be32",
+    "destination_sha256": "715495e7eee05fc7e5fce2a4e57abfe7929bbff638a217b46ce825556165be32"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/.pytest_cache/v/cache/stepwise",
+    "destination": "ros_ws/src/franka_gripper_manager/.pytest_cache/v/cache/stepwise",
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "destination_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/LICENSE",
+    "destination": "ros_ws/src/franka_gripper_manager/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "destination_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/NOTICE",
+    "destination": "ros_ws/src/franka_gripper_manager/NOTICE",
+    "sha256": "294ceebdb6a98ca2cb65da516b7f0f3078ebcb461bd04e79cf41b9beeb40e4f8",
+    "destination_sha256": "294ceebdb6a98ca2cb65da516b7f0f3078ebcb461bd04e79cf41b9beeb40e4f8"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/config/example_fr3_config_franka_hand.yaml",
+    "destination": "ros_ws/src/franka_gripper_manager/config/example_fr3_config_franka_hand.yaml",
+    "sha256": "52f251d2b9d27e1b0bc7f5f611eb3161296ef4c246291ac105bbc3d2af4f5b0b",
+    "destination_sha256": "52f251d2b9d27e1b0bc7f5f611eb3161296ef4c246291ac105bbc3d2af4f5b0b"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/config/example_fr3_config_robotiq.yaml",
+    "destination": "ros_ws/src/franka_gripper_manager/config/example_fr3_config_robotiq.yaml",
+    "sha256": "27284db0ec4a48822f4068789dd9bd3cd37fd976727d5654b2e2dcbb17ebee88",
+    "destination_sha256": "27284db0ec4a48822f4068789dd9bd3cd37fd976727d5654b2e2dcbb17ebee88"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/config/example_fr3_duo_config_franka_hand.yaml",
+    "destination": "ros_ws/src/franka_gripper_manager/config/example_fr3_duo_config_franka_hand.yaml",
+    "sha256": "d3975105177428dded79fa2ce6b1e81e59c866b98e1ab5e076cbcad83f962a3b",
+    "destination_sha256": "d3975105177428dded79fa2ce6b1e81e59c866b98e1ab5e076cbcad83f962a3b"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/config/example_fr3_duo_config_robotiq.yaml",
+    "destination": "ros_ws/src/franka_gripper_manager/config/example_fr3_duo_config_robotiq.yaml",
+    "sha256": "21c58eb82dc2c4823904c16e45bbdd705975ecc9237886368ce2a7c6785bd8e4",
+    "destination_sha256": "21c58eb82dc2c4823904c16e45bbdd705975ecc9237886368ce2a7c6785bd8e4"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/config/example_fr3_left_config_robotiq.yaml",
+    "destination": "ros_ws/src/franka_gripper_manager/config/example_fr3_left_config_robotiq.yaml",
+    "sha256": "66d1fc2de10b1e67fefe333fe9deec5e003512b72cdeb9f91e1e42e71be2be79",
+    "destination_sha256": "66d1fc2de10b1e67fefe333fe9deec5e003512b72cdeb9f91e1e42e71be2be79"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/config/robotiq_controllers.yaml",
+    "destination": "ros_ws/src/franka_gripper_manager/config/robotiq_controllers.yaml",
+    "sha256": "abb009af329043eee7aba6dcdb242dbebff4d195a2c7c108838ecf64ee2e55f1",
+    "destination_sha256": "abb009af329043eee7aba6dcdb242dbebff4d195a2c7c108838ecf64ee2e55f1"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/franka_gripper_manager/__init__.py",
+    "destination": "ros_ws/src/franka_gripper_manager/franka_gripper_manager/__init__.py",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/franka_gripper_manager/franka_gripper_client.py",
+    "destination": "ros_ws/src/franka_gripper_manager/franka_gripper_manager/franka_gripper_client.py",
+    "sha256": "cee40672328463b872353e213ad9e56335f7b412c08a985ef345ce84880a9e66",
+    "destination_sha256": "cee40672328463b872353e213ad9e56335f7b412c08a985ef345ce84880a9e66"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/franka_gripper_manager/robotiq_command.py",
+    "destination": "ros_ws/src/franka_gripper_manager/franka_gripper_manager/robotiq_command.py",
+    "sha256": "c9e8002f7f7cc1f1f316a814bdda43ddbe2fb7a3518d5b5fbc6d9a7c90bc5346",
+    "destination_sha256": "c9e8002f7f7cc1f1f316a814bdda43ddbe2fb7a3518d5b5fbc6d9a7c90bc5346"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/franka_gripper_manager/robotiq_gripper_client.py",
+    "destination": "ros_ws/src/franka_gripper_manager/franka_gripper_manager/robotiq_gripper_client.py",
+    "sha256": "79b90d329988a39441b4f8d7738a40596b003cafe933a59dac2664574872dfc6",
+    "destination_sha256": "79b90d329988a39441b4f8d7738a40596b003cafe933a59dac2664574872dfc6"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/launch/franka_gripper_client.launch.py",
+    "destination": "ros_ws/src/franka_gripper_manager/launch/franka_gripper_client.launch.py",
+    "sha256": "e6904e5a3d17e4ffc0c8ddb5ce9461e1a1ad2bd9556c9aace02af0d453d2a3f8",
+    "destination_sha256": "e6904e5a3d17e4ffc0c8ddb5ce9461e1a1ad2bd9556c9aace02af0d453d2a3f8"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/launch/robotiq.launch.py",
+    "destination": "ros_ws/src/franka_gripper_manager/launch/robotiq.launch.py",
+    "sha256": "a8c7b97afefce8d4d93bc54e048f7934b55de662ebb6113885c1c7f64d367b5a",
+    "destination_sha256": "a8c7b97afefce8d4d93bc54e048f7934b55de662ebb6113885c1c7f64d367b5a"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/launch/robotiq_gripper_controller_client.launch.py",
+    "destination": "ros_ws/src/franka_gripper_manager/launch/robotiq_gripper_controller_client.launch.py",
+    "sha256": "c8c3290ad1b7fa423efc769b40d6e8303ddb572c4abb569edc86d9e74f2b4115",
+    "destination_sha256": "c8c3290ad1b7fa423efc769b40d6e8303ddb572c4abb569edc86d9e74f2b4115"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/package.xml",
+    "destination": "ros_ws/src/franka_gripper_manager/package.xml",
+    "sha256": "374541f8c564250a90e270b866c7a778655af279790bc2b58ee549c57ff3ac67",
+    "destination_sha256": "374541f8c564250a90e270b866c7a778655af279790bc2b58ee549c57ff3ac67"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/resource/franka_gripper_manager",
+    "destination": "ros_ws/src/franka_gripper_manager/resource/franka_gripper_manager",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/setup.cfg",
+    "destination": "ros_ws/src/franka_gripper_manager/setup.cfg",
+    "sha256": "a51a1fd48776ad8a0ae62b3beb75e1c2803f3586ed04b064d9233897014841a2",
+    "destination_sha256": "a51a1fd48776ad8a0ae62b3beb75e1c2803f3586ed04b064d9233897014841a2"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/setup.py",
+    "destination": "ros_ws/src/franka_gripper_manager/setup.py",
+    "sha256": "910747357a7ac025235469f9cc99533650ab8655a3a404ac2b0d87994d575435",
+    "destination_sha256": "910747357a7ac025235469f9cc99533650ab8655a3a404ac2b0d87994d575435"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/test/test_copyright.py",
+    "destination": "ros_ws/src/franka_gripper_manager/test/test_copyright.py",
+    "sha256": "8306494900a4cac5bc4d721a7eb7e061c920e6e70e4d504d6dfd815545b167e1",
+    "destination_sha256": "8306494900a4cac5bc4d721a7eb7e061c920e6e70e4d504d6dfd815545b167e1"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/test/test_flake8.py",
+    "destination": "ros_ws/src/franka_gripper_manager/test/test_flake8.py",
+    "sha256": "635a886ec347f476a43fc004b140a1d85441a4814d4feb69d1e4117001cbd4ed",
+    "destination_sha256": "635a886ec347f476a43fc004b140a1d85441a4814d4feb69d1e4117001cbd4ed"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/test/test_pep257.py",
+    "destination": "ros_ws/src/franka_gripper_manager/test/test_pep257.py",
+    "sha256": "8c0b228755484d590201e807c762f1e922684c842a12dc17aaefff2e7be9f072",
+    "destination_sha256": "8c0b228755484d590201e807c762f1e922684c842a12dc17aaefff2e7be9f072"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/test/test_robotiq_gripper_client.py",
+    "destination": "ros_ws/src/franka_gripper_manager/test/test_robotiq_gripper_client.py",
+    "sha256": "ef7b4a42b2489e8b30bd0d867578ae887f45556e9823c0c9574de0fb4c87797c",
+    "destination_sha256": "ef7b4a42b2489e8b30bd0d867578ae887f45556e9823c0c9574de0fb4c87797c"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gripper_manager/urdf/robotiq_2f_85_gripper.urdf.xacro",
+    "destination": "ros_ws/src/franka_gripper_manager/urdf/robotiq_2f_85_gripper.urdf.xacro",
+    "sha256": "6c849e4f32c10af46b1879d95d6ea078cb65c489c8aad1ac55cde748ffb2f4b4",
+    "destination_sha256": "6c849e4f32c10af46b1879d95d6ea078cb65c489c8aad1ac55cde748ffb2f4b4"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/LICENSE",
+    "destination": "ros_ws/src/franka_gello_state_publisher/LICENSE",
+    "sha256": "25ab049cf52c6c7ecf874532bcc8ecdf652063baf8022b3cf244372a489dfdc4",
+    "destination_sha256": "25ab049cf52c6c7ecf874532bcc8ecdf652063baf8022b3cf244372a489dfdc4"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/config/example_duo.yaml",
+    "destination": "ros_ws/src/franka_gello_state_publisher/config/example_duo.yaml",
+    "sha256": "2e995b77960b31d664441b57f462ee981226ac484006e7dba28963aa70898fa6",
+    "destination_sha256": "2e995b77960b31d664441b57f462ee981226ac484006e7dba28963aa70898fa6"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/config/example_single.yaml",
+    "destination": "ros_ws/src/franka_gello_state_publisher/config/example_single.yaml",
+    "sha256": "95df0e9063b017edc26074962adafd54448b5a0c699d02b170576824f017c805",
+    "destination_sha256": "95df0e9063b017edc26074962adafd54448b5a0c699d02b170576824f017c805"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/config/franka_gello_duo.yaml",
+    "destination": "ros_ws/src/franka_gello_state_publisher/config/franka_gello_duo.yaml",
+    "sha256": "408ab0282a6e305ae529ee3fc1ac85bb3ecc8425bd3f6476aaa2d129aa5f9940",
+    "destination_sha256": "408ab0282a6e305ae529ee3fc1ac85bb3ecc8425bd3f6476aaa2d129aa5f9940"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/config/franka_gello_left.yaml",
+    "destination": "ros_ws/src/franka_gello_state_publisher/config/franka_gello_left.yaml",
+    "sha256": "5e4f870b831fcfc439b3066c2394d07bc68db77fca1d5fb486e2630dbae62606",
+    "destination_sha256": "5e4f870b831fcfc439b3066c2394d07bc68db77fca1d5fb486e2630dbae62606"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/config/franka_gello_single.yaml",
+    "destination": "ros_ws/src/franka_gello_state_publisher/config/franka_gello_single.yaml",
+    "sha256": "92c67eca59b7a4accf4d5b9405db673151c74a156ffc19cc73dee3351e822b61",
+    "destination_sha256": "92c67eca59b7a4accf4d5b9405db673151c74a156ffc19cc73dee3351e822b61"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/__init__.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/franka_gello_state_publisher/__init__.py",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/README.md",
+    "destination": "ros_ws/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/README.md",
+    "sha256": "21a1a7fdf0d9060be92549d02c461aac0c4acb887e5557682b20f91343d5fd5b",
+    "destination_sha256": "21a1a7fdf0d9060be92549d02c461aac0c4acb887e5557682b20f91343d5fd5b"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/__init__.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/__init__.py",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/driver.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/driver.py",
+    "sha256": "773551963e2cf43ed2b0029cd331295300f00a6b0b7456497c1a17adf9cdd7f7",
+    "destination_sha256": "773551963e2cf43ed2b0029cd331295300f00a6b0b7456497c1a17adf9cdd7f7"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/motor_configs/xl330.yaml",
+    "destination": "ros_ws/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/motor_configs/xl330.yaml",
+    "sha256": "5dc7b3dfaddc6ebde1ddc7834b6e88bc36bb0dcf9bbbbbf4e0bf4cef82db9757",
+    "destination_sha256": "5dc7b3dfaddc6ebde1ddc7834b6e88bc36bb0dcf9bbbbbf4e0bf4cef82db9757"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/gello_hardware.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/franka_gello_state_publisher/gello_hardware.py",
+    "sha256": "64493752ffd6e7868fa186de2e25416b12b4006af3e0ea99adefcb86d6999a8e",
+    "destination_sha256": "64493752ffd6e7868fa186de2e25416b12b4006af3e0ea99adefcb86d6999a8e"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/gello_parameter_config.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/franka_gello_state_publisher/gello_parameter_config.py",
+    "sha256": "36cb0e797751f6765dbe7cf49593f1d231579e59911aa4a89409a4975a37970a",
+    "destination_sha256": "36cb0e797751f6765dbe7cf49593f1d231579e59911aa4a89409a4975a37970a"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/gello_publisher.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/franka_gello_state_publisher/gello_publisher.py",
+    "sha256": "e9e6b50b275a29acc2d00183a6acce6da14a592e34455ee8fc5b6bb3b3ab954d",
+    "destination_sha256": "e9e6b50b275a29acc2d00183a6acce6da14a592e34455ee8fc5b6bb3b3ab954d"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/launch/main.launch.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/launch/main.launch.py",
+    "sha256": "68f2ec6f086433229968a23bf4557d2c64f5839b739c9790a4a492188fd36fb9",
+    "destination_sha256": "68f2ec6f086433229968a23bf4557d2c64f5839b739c9790a4a492188fd36fb9"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/package.xml",
+    "destination": "ros_ws/src/franka_gello_state_publisher/package.xml",
+    "sha256": "0dd17d45a726e566caef2979d2cf3e8c5ee76b2cacf4b145b13ff9f41b064591",
+    "destination_sha256": "0dd17d45a726e566caef2979d2cf3e8c5ee76b2cacf4b145b13ff9f41b064591"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/resource/franka_gello_state_publisher",
+    "destination": "ros_ws/src/franka_gello_state_publisher/resource/franka_gello_state_publisher",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/scripts/get_offsets.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/scripts/get_offsets.py",
+    "sha256": "90cad10e01290bd21cd457f2ccda514d685f470fb1e8015e6083713ee0a9e68c",
+    "destination_sha256": "90cad10e01290bd21cd457f2ccda514d685f470fb1e8015e6083713ee0a9e68c"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/setup.cfg",
+    "destination": "ros_ws/src/franka_gello_state_publisher/setup.cfg",
+    "sha256": "d1c06717e06670642b4408b770316ec6ff8029a003c3641bccb3578d6d3e8100",
+    "destination_sha256": "d1c06717e06670642b4408b770316ec6ff8029a003c3641bccb3578d6d3e8100"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/setup.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/setup.py",
+    "sha256": "e1fb083ee1fb29b00807aeaea0bfa8ecfade106498bcc5e68f65a031142d38d6",
+    "destination_sha256": "e1fb083ee1fb29b00807aeaea0bfa8ecfade106498bcc5e68f65a031142d38d6"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/test/test_copyright.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/test/test_copyright.py",
+    "sha256": "8306494900a4cac5bc4d721a7eb7e061c920e6e70e4d504d6dfd815545b167e1",
+    "destination_sha256": "8306494900a4cac5bc4d721a7eb7e061c920e6e70e4d504d6dfd815545b167e1"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/test/test_flake8.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/test/test_flake8.py",
+    "sha256": "fc23ea6fe9d556d996e719f800052ff6a7edbb5ce609b65e7ca718b38425d4ce",
+    "destination_sha256": "fc23ea6fe9d556d996e719f800052ff6a7edbb5ce609b65e7ca718b38425d4ce"
+  },
+  {
+    "source": "/home/amax/workspace/ros2/src/franka_gello_state_publisher/test/test_pep257.py",
+    "destination": "ros_ws/src/franka_gello_state_publisher/test/test_pep257.py",
+    "sha256": "8c0b228755484d590201e807c762f1e922684c842a12dc17aaefff2e7be9f072",
+    "destination_sha256": "8c0b228755484d590201e807c762f1e922684c842a12dc17aaefff2e7be9f072"
+  }
+]

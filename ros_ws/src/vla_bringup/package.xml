@@ -1,0 +1,2 @@
+<?xml version="1.0"?>
+<package format="3"><name>vla_bringup</name><version>0.1.0</version><description>VLA Franka bringup</description><maintainer email="maintainers@example.com">VLA maintainers</maintainer><license>Apache-2.0</license><buildtool_depend>ament_cmake</buildtool_depend><exec_depend>launch_ros</exec_depend><exec_depend>franka_fr3_arm_controllers</exec_depend><exec_depend>franka_gripper_manager</exec_depend><exec_depend>franka_gello_state_publisher</exec_depend><exec_depend>joy</exec_depend><export><build_type>ament_cmake</build_type></export></package>

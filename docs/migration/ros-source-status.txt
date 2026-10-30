@@ -1,0 +1,29 @@
+ M ros2/src/franka_fr3_arm_controllers/config/controllers.yaml
+ M ros2/src/franka_fr3_arm_controllers/config/example_fr3_config.yaml
+ M ros2/src/franka_fr3_arm_controllers/config/example_fr3_duo_config.yaml
+ M ros2/src/franka_fr3_arm_controllers/include/franka_fr3_arm_controllers/joint_impedance_controller.hpp
+ M ros2/src/franka_fr3_arm_controllers/launch/franka.launch.py
+ M ros2/src/franka_fr3_arm_controllers/launch/franka_fr3_arm_controllers.launch.py
+ M ros2/src/franka_fr3_arm_controllers/src/joint_impedance_controller.cpp
+ M ros2/src/franka_fr3_arm_controllers/test/setup_test.cpp
+ M ros2/src/franka_gello_state_publisher/config/example_single.yaml
+ M ros2/src/franka_gello_state_publisher/config/franka_gello_duo.yaml
+ M ros2/src/franka_gello_state_publisher/config/franka_gello_single.yaml
+ M ros2/src/franka_gello_state_publisher/franka_gello_state_publisher/dynamixel/driver.py
+ M ros2/src/franka_gello_state_publisher/setup.py
+ M ros2/src/franka_gripper_manager/config/example_fr3_config_franka_hand.yaml
+ M ros2/src/franka_gripper_manager/config/example_fr3_config_robotiq.yaml
+ M ros2/src/franka_gripper_manager/config/example_fr3_duo_config_franka_hand.yaml
+ M ros2/src/franka_gripper_manager/config/example_fr3_duo_config_robotiq.yaml
+ M ros2/src/franka_gripper_manager/config/robotiq_controllers.yaml
+ M ros2/src/franka_gripper_manager/franka_gripper_manager/franka_gripper_client.py
+ M ros2/src/franka_gripper_manager/franka_gripper_manager/robotiq_gripper_client.py
+ M ros2/src/franka_gripper_manager/launch/franka_gripper_client.launch.py
+ M ros2/src/franka_gripper_manager/launch/robotiq.launch.py
+ M ros2/src/franka_gripper_manager/launch/robotiq_gripper_controller_client.launch.py
+ M ros2/src/franka_gripper_manager/package.xml
+?? ros2/src/franka_fr3_arm_controllers/config/example_fr3_left_config.yaml
+?? ros2/src/franka_gello_state_publisher/config/franka_gello_left.yaml
+?? ros2/src/franka_gripper_manager/config/example_fr3_left_config_robotiq.yaml
+?? ros2/src/franka_gripper_manager/franka_gripper_manager/robotiq_command.py
+?? ros2/src/franka_gripper_manager/test/test_robotiq_gripper_client.py

@@ -1,0 +1,7 @@
+LEFT:
+  com_port: "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTBSVZUJ-if00-port0"
+  namespace: "left"
+
+RIGHT:
+  com_port: "/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTC0GK1K-if00-port0"
+  namespace: "right"

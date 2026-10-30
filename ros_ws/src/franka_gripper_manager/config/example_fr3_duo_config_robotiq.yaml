@@ -1,0 +1,17 @@
+LEFT:
+  com_port: "/dev/serial/by-id/usb-FTDI_USB_TO_RS-485_DABC0KC0-if00-port0"
+  namespace: "left/gripper"
+  open_position: 0.0
+  closed_position: 0.8
+  max_effort: 50.0
+  command_deadband: 0.02
+  endpoint_snap_threshold: 0.03
+
+RIGHT:
+  com_port: "/dev/serial/by-id/usb-FTDI_USB_TO_RS-485_DABBX63F-if00-port0"
+  namespace: "right/gripper"
+  open_position: 0.0
+  closed_position: 0.8
+  max_effort: 50.0
+  command_deadband: 0.02
+  endpoint_snap_threshold: 0.03

@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Franky owns the arm, gripper, and cameras. This process only bridges ROS Joy.
 export CONTROL_OWNER=rollout
 REPOSITORY_ROOT="${VLA_ROOT:-$PWD}"
+source "$REPOSITORY_ROOT/scripts/ros_env.sh"
+set -u
 ROS_SETUP="${ROS_SETUP:-/opt/ros/humble/setup.bash}"
 LEFT_JOY_DEVICE_ID="${LEFT_JOY_DEVICE_ID:-0}"
 JOY_AUTOREPEAT_RATE="${JOY_AUTOREPEAT_RATE:-100.0}"

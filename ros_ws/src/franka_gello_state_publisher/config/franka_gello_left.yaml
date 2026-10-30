@@ -1,0 +1,14 @@
+# Left GELLO from the pre-assembled Franka GELLO Duo setup.
+LEFT:
+  namespace: "left"
+  com_port: "usb-FTDI_USB__-__Serial_Converter_FTBSVZUJ-if00-port0"
+  num_arm_joints: 7
+  joint_signs: [1, -1, 1, 1, 1, -1, 1]
+  gripper: true
+  assembly_offsets: [0.0, 0.0, 3.142, 0.0, 0.0, 0.0, 0.0]
+  gripper_range_rad: [2.54, 3.5]
+  dynamixel_torque_enable: [0, 0, 0, 0, 0, 0, 0, 0]
+  dynamixel_goal_position: [0.0, 0.0, 0.0, -1.571, 0.0, 1.571, 0.0, 3.509]
+  dynamixel_kp_p: [30, 60, 0, 30, 0, 0, 0, 50]
+  dynamixel_kp_i: [0, 0, 0, 0, 0, 0, 0, 0]
+  dynamixel_kp_d: [250, 100, 80, 60, 30, 10, 5, 0]

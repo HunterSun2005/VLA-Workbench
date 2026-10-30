@@ -63,7 +63,8 @@ cleanup() {
   [[ -n "$JOY_PID" ]] && wait "$JOY_PID" 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
-set +u; source "$ROS_SETUP"; set -u
+source "$REPO_ROOT/scripts/ros_env.sh"
+set -u
 export PYTHONPATH="$(cd "$SCRIPT_DIR/../../.." && pwd):${PYTHONPATH:-}"
 ros2 run joy joy_node --ros-args -r __node:=left_rollout_joy -r joy:=/left/gamepad/joy \
   -p device_id:="$JOY_DEVICE_ID" -p deadzone:=0.0 -p autorepeat_rate:=100.0 & JOY_PID=$!
@@ -75,5 +76,5 @@ ARGS=(--config "$CONFIG" --dataset-root "$DATASET_ROOT" --execute)
 # Keep the collector in the foreground so it retains the user's TTY for
 # --execute and keyboard events (s/n/Space/y/x/r/c/Esc). The shell remains
 # alive long enough for the EXIT trap to stop the Joy sidecars.
-env -u PYTHONPATH PYTHONPATH="$(cd "$SCRIPT_DIR/../../.." && pwd)" \
+env -u PYTHONPATH -u LD_LIBRARY_PATH -u AMENT_PREFIX_PATH -u COLCON_PREFIX_PATH PYTHONPATH="$(cd "$SCRIPT_DIR/../../.." && pwd)" \
   "$MODEL_PYTHON" -u -m vla.datacollection.franka_robotiq_rollout.collect "${ARGS[@]}"

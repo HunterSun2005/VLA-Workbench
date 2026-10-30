@@ -27,15 +27,17 @@ require_file() {
 }
 
 ros_env_cmd() {
-  printf 'source %q/install/setup.bash; ' "$FRANKA_ROS2_WS"
-  printf 'source %q; ' "$ROBOTIQ_ROS2_SETUP"
-  printf 'source %q/install/setup.bash; ' "$ROS2_WS"
+  printf 'unset PYTHONHOME PYTHONPATH AMENT_PREFIX_PATH COLCON_PREFIX_PATH CMAKE_PREFIX_PATH LD_LIBRARY_PATH; '
+  printf 'export PATH=/usr/bin:/bin:/usr/sbin:/sbin PYTHONNOUSERSITE=1; '
+  printf 'export ROS_HOME=%q ROS_LOG_DIR=%q; ' "${VLA_ROOT:-$PWD}/runtime/ros" "${VLA_ROOT:-$PWD}/runtime/ros/log"
+  printf 'source /opt/ros/humble/setup.bash; source %q/install/local_setup.bash; ' "$ROS2_WS"
+  printf 'export PYTHONPATH=%q:${PYTHONPATH:-}; ' "${VLA_ROOT:-$PWD}/ros_ws/python:${VLA_ROOT:-$PWD}/ros_ws/python_deps:${VLA_ROOT:-$PWD}/src"
   printf 'export LD_LIBRARY_PATH=%q:${LD_LIBRARY_PATH:-}; ' "$OPENROBOTS_LIB_DIR"
 }
 
 package_share() {
   local package="$1"
-  bash -lc "$(ros_env_cmd) ros2 pkg prefix '$package'" |
+  bash --noprofile --norc -c "$(ros_env_cmd) ros2 pkg prefix '$package'" |
     tail -n 1 | awk "{print \$1 \"/share/$package\"}"
 }
 
@@ -80,21 +82,21 @@ validate_environment() {
     packages+=(franka_gello_state_publisher forward_command_controller std_srvs)
   fi
   for package in "${packages[@]}"; do
-    bash -lc "$(ros_env_cmd) ros2 pkg prefix '$package' >/dev/null 2>&1" ||
+    bash --noprofile --norc -c "$(ros_env_cmd) ros2 pkg prefix '$package' >/dev/null 2>&1" ||
       die "Missing ROS package: $package"
   done
 
-  bash -lc "$(ros_env_cmd) /usr/bin/python3 -c 'import PyKDL, controller_manager_msgs.srv, numpy, rclpy, urdf_parser_py.urdf'" ||
+  bash --noprofile --norc -c "$(ros_env_cmd) /usr/bin/python3 -c 'import PyKDL, controller_manager_msgs.srv, numpy, rclpy, urdf_parser_py.urdf'" ||
     die "FR3 control Python dependencies are unavailable"
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
-    bash -lc "$(ros_env_cmd) /usr/bin/python3 '$FINE_TELEOP_NODE' --self-test" ||
+    bash --noprofile --norc -c "$(ros_env_cmd) /usr/bin/python3 '$FINE_TELEOP_NODE' --self-test" ||
       die "Fine teleop self-test failed"
   fi
 
   local hardware_library_q missing_libraries
   printf -v hardware_library_q '%q' "$FRANKA_HARDWARE_LIBRARY"
   missing_libraries="$(
-    bash -lc "$(ros_env_cmd) ldd $hardware_library_q" |
+    bash --noprofile --norc -c "$(ros_env_cmd) ldd $hardware_library_q" |
       awk '$2 == "=>" && $3 == "not" && $4 == "found" {print $1}'
   )"
   if [[ -n "$missing_libraries" ]]; then
@@ -103,7 +105,7 @@ validate_environment() {
 
   if ! is_enabled "$CHECK_ONLY"; then
     local existing_nodes
-    existing_nodes="$(bash -lc "$(ros_env_cmd) ros2 node list" 2>/dev/null || true)"
+    existing_nodes="$(bash --noprofile --norc -c "$(ros_env_cmd) ros2 node list" 2>/dev/null || true)"
     if grep -Eq '^/(left|right)/(controller_manager|gello_publisher)(/|$)' <<<"$existing_nodes"; then
       die "An FR3/GELLO stack is already running; run $SCRIPT_DIR/clean_teleop.sh first"
     fi
@@ -158,8 +160,8 @@ prepare_runtime_configs() {
   arm_share="$(package_share franka_fr3_arm_controllers)"
   gripper_share="$(package_share franka_gripper_manager)"
   suffix="runtime_${CONTROL_OWNER}_${TELEOP_MODE}_${USER:-user}_$$"
-  ARM_RUNTIME_CONFIG="$arm_share/config/${suffix}_arms.yaml"
-  GRIPPER_RUNTIME_CONFIG="$gripper_share/config/${suffix}_grippers.yaml"
+  ARM_RUNTIME_CONFIG="$STATE_DIR/${suffix}_arms.yaml"
+  GRIPPER_RUNTIME_CONFIG="$STATE_DIR/${suffix}_grippers.yaml"
   GRIPPER_SPEED_CONTROLLER_CONFIG="$STATE_DIR/${suffix}_gripper_speed_controller.yaml"
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
     GELLO_RUNTIME_CONFIG="$STATE_DIR/${suffix}_gello.yaml"

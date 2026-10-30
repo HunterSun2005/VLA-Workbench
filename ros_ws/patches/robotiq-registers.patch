@@ -1,0 +1,22 @@
+--- a/robotiq_driver/src/hardware_interface.cpp
++++ b/robotiq_driver/src/hardware_interface.cpp
+@@ -43,8 +43,8 @@
+ const auto kLogger = rclcpp::get_logger("RobotiqGripperHardwareInterface");
+ 
+ constexpr uint8_t kGripperMinPos = 3;
+-constexpr uint8_t kGripperMaxPos = 230;
+-constexpr double kGripperMaxSpeed = 0.150;  // mm/s
++constexpr uint8_t kGripperMaxPos = 255;
++constexpr double kGripperMaxSpeed = 1.0;  // mm/s
+ constexpr double kGripperMaxforce = 235;    // N
+ constexpr uint8_t kGripperRange = kGripperMaxPos - kGripperMinPos;
+ 
+@@ -297,7 +297,7 @@
+   gripper_speed_ = kGripperMaxSpeed * std::clamp(fabs(gripper_speed_) / kGripperMaxSpeed, 0.0, 1.0);
+   write_speed_.store(uint8_t(gripper_speed_ * 0xFF));
+   gripper_force_ = kGripperMaxforce * std::clamp(fabs(gripper_force_) / kGripperMaxforce, 0.0, 1.0);
+-  write_force_.store(uint8_t(gripper_force_ * 0xFF));
++  write_force_.store(uint8_t((gripper_force_ / kGripperMaxforce) * 0xFF));
+ 
+   return hardware_interface::return_type::OK;
+ }

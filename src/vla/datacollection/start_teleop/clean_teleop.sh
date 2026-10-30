@@ -4,10 +4,10 @@ set -Eeuo pipefail
 # Stop the FR3 GELLO/gamepad teleoperation stack and remove its runtime files.
 # Usage: clean_teleop.sh [--dry-run] [--keep-daemon] [--tmux]
 
-STATE_DIR="${STATE_DIR:-/tmp/vla_fr3_fine_teleop_${UID}}"
-ROS2_WS="${ROS2_WS:-/home/amax/workspace/ros2}"
-FRANKA_ROS2_WS="${FRANKA_ROS2_WS:-/home/amax/franka_ros2_ws}"
-ROBOTIQ_ROS2_SETUP="${ROBOTIQ_ROS2_SETUP:-$ROS2_WS/install/robotiq_underlay/setup.bash}"
+STATE_DIR="${STATE_DIR:-${VLA_ROOT:-$PWD}/runtime/fr3_fine_teleop_${UID}}"
+ROS2_WS="${ROS2_WS:-${VLA_ROOT:-$PWD}/ros_ws}"
+FRANKA_ROS2_WS="${FRANKA_ROS2_WS:-$ROS2_WS}"
+ROBOTIQ_ROS2_SETUP="${ROBOTIQ_ROS2_SETUP:-$ROS2_WS/install/local_setup.bash}"
 WAIT_SEC="${WAIT_SEC:-30}"
 TERM_WAIT_SEC="${TERM_WAIT_SEC:-5}"
 LAUNCHER_WAIT_SEC="${LAUNCHER_WAIT_SEC:-120}"
@@ -25,9 +25,11 @@ log() {
 }
 
 ros_env_cmd() {
-  printf 'source %q/install/setup.bash; ' "$FRANKA_ROS2_WS"
-  printf 'source %q; ' "$ROBOTIQ_ROS2_SETUP"
-  printf 'source %q/install/setup.bash; ' "$ROS2_WS"
+  printf 'unset PYTHONHOME PYTHONPATH AMENT_PREFIX_PATH COLCON_PREFIX_PATH CMAKE_PREFIX_PATH LD_LIBRARY_PATH; '
+  printf 'export PATH=/usr/bin:/bin:/usr/sbin:/sbin PYTHONNOUSERSITE=1; '
+  printf 'export ROS_HOME=%q ROS_LOG_DIR=%q; ' "${VLA_ROOT:-$PWD}/runtime/ros" "${VLA_ROOT:-$PWD}/runtime/ros/log"
+  printf 'source /opt/ros/humble/setup.bash; source %q/install/local_setup.bash; ' "$ROS2_WS"
+  printf 'export PYTHONPATH=%q:${PYTHONPATH:-}; ' "${VLA_ROOT:-$PWD}/ros_ws/python:${VLA_ROOT:-$PWD}/ros_ws/python_deps:${VLA_ROOT:-$PWD}/src"
 }
 
 while (($#)); do
@@ -224,15 +226,15 @@ prepare_arm_shutdown() {
   }
 
   local services
-  services="$(timeout 3s bash -lc "$(ros_env_cmd) ros2 service list" 2>/dev/null || true)"
+  services="$(timeout 3s bash --noprofile --norc -c "$(ros_env_cmd) ros2 service list" 2>/dev/null || true)"
   local side
   for side in right left; do
     grep -Fxq "/$side/controller_manager/switch_controller" <<<"$services" || continue
     log "Deactivating $side arm controllers and hardware"
-    timeout "${ARM_SHUTDOWN_TIMEOUT_SEC}s" bash -lc \
+    timeout "${ARM_SHUTDOWN_TIMEOUT_SEC}s" bash --noprofile --norc -c \
       "$(ros_env_cmd) ros2 control switch_controllers --deactivate joint_impedance_controller franka_robot_state_broadcaster joint_state_broadcaster --switch-timeout 5 -c '/$side/controller_manager'" \
       >/dev/null 2>&1 || log "WARNING: failed to deactivate all $side arm controllers"
-    timeout "${ARM_SHUTDOWN_TIMEOUT_SEC}s" bash -lc \
+    timeout "${ARM_SHUTDOWN_TIMEOUT_SEC}s" bash --noprofile --norc -c \
       "$(ros_env_cmd) ros2 control set_hardware_component_state '${side}_FrankaHardwareInterface' inactive -c '/$side/controller_manager'" \
       >/dev/null 2>&1 || log "WARNING: failed to deactivate $side Franka hardware"
   done
