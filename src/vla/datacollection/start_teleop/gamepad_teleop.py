@@ -353,7 +353,7 @@ class GamepadTeleop:
         self.report(
             f"Gamepad control active; speed=LOW. Joy button {self.config.speed_modes.toggle_button}=continuous XYZ LOW/HIGH "
             f"({self.config.speed_modes.transition_time_s:.2f}s full-range ramp; rotation/gripper unchanged), "
-            f"View {shortcuts.view_button}=initial XYZ+upright, Menu {shortcuts.menu_button}=current XYZ+upright, "
+            f"View {shortcuts.view_button}=initial XYZ+upright, Menu {shortcuts.menu_button}=current XYZ+upright+initial heading, "
             f"yaw reset={shortcuts.yaw_reset_button} (heading captured at s), "
             "d=pause, c/Esc/Ctrl+C=exit"
         )
@@ -414,8 +414,13 @@ class GamepadTeleop:
             # path, but may use the deployment's configured home XYZ.
             position = (np.asarray(menu_position, dtype=np.float64).copy()
                         if menu_position is not None else pose[:3, 3].copy())
-            rotation = (menu_rotation.copy() if menu_rotation is not None
-                        else upright_tcp_rotation(pose[:3, :3]))
+            # Restore the captured heading too, undoing X/B tool-Z rotation.
+            # An explicit deployment home orientation still takes precedence.
+            reference_rotation = (menu_rotation if menu_rotation is not None
+                                  else self._initial_upright_rotation)
+            if reference_rotation is None:
+                raise RuntimeError("initial teleop heading was not captured")
+            rotation = reference_rotation.copy()
         self._pose_return = PoseReturn(
             label, position, rotation, self.clock() + shortcuts.timeout_s,
         )

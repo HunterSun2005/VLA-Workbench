@@ -34,6 +34,8 @@ SFT 服务使用 `vla-serve-franka-sft --checkpoint <SFT目录> --tokenizer-path
 
 单臂 Franky 的手柄入口使用独立 ROS Joy 子进程，模型侧不能加载 ROS Python。双臂/GELLO 使用 `scripts/franka/start_teleop_duo.sh`；可通过 `ROS2_WS` 指向其他明确配置的专用工作空间，默认是当前 VLA 的 `ros_ws`。
 
+手柄 Menu（“恢复竖直”）保持按键时的 XYZ，将末端恢复为竖直向下，并同时复位 X/B 控制的旋转：朝向以本次启用遥操作时记录的初始朝向为准。暂停后重新启用会重新记录参考姿态。View 则同时恢复初始 XYZ。在线接管沿用其已捕获的初始朝向；若显式配置了部署 home 位置或姿态，Menu 仍优先使用对应的 home 配置。自动恢复期间可通过手动运动输入取消。
+
 ROS 运行 YAML 和日志写入 `runtime/`，不会改写包的安装目录。`vla_bringup` 提供 `teleop.launch.py`，接收绝对路径的 `robot_config_file`、`config_file` 和 `control_owner`。
 
 ## 后续真实资产验收

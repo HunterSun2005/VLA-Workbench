@@ -105,6 +105,22 @@ def test_menu_keeps_xyz_and_view_returns_to_start_at_high_speed(controls):
     np.testing.assert_allclose(controls._pose_return.position, [.4, 0, .3])
 
 
+@pytest.mark.parametrize("roll_degrees", [-65, 65])
+def test_menu_restores_captured_heading_after_tool_roll(controls, roll_degrees):
+    initial = state()
+    moved = state((.5, 0, .3))
+    moved.O_T_EE[:3, :3] = initial.O_T_EE[:3, :3] @ Rotation.from_euler(
+        "zx", [roll_degrees, 20], degrees=True,
+    ).as_matrix()
+    observe(controls, packet())
+    observe(controls, packet(7))
+    linear, angular, _, _ = controls.make_command(packet(7), moved, 1 / 30)
+    np.testing.assert_allclose(controls._pose_return.rotation, initial.O_T_EE[:3, :3], atol=1e-12)
+    np.testing.assert_allclose(controls._pose_return.position, moved.O_T_EE[:3, 3])
+    np.testing.assert_allclose(linear, 0)
+    assert np.linalg.norm(angular) > 0
+
+
 def test_menu_uses_configured_dataset_home_xyz_but_keeps_direct_return_path(controls):
     controls.configure_dataset_home_position(np.array([.3, -.3, .36]))
     observe(controls, packet())

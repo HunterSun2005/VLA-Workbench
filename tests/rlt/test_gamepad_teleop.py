@@ -373,6 +373,30 @@ def test_menu_returns_upright_at_press_xyz_and_is_edge_triggered(rig):
     np.testing.assert_array_equal(rig.app._pose_return.position, rig.arm.state.O_T_EE[:3, 3])
 
 
+@pytest.mark.parametrize("roll_degrees", [-65, 65])
+@pytest.mark.parametrize("tilt_degrees", [0, 20])
+def test_menu_restores_initial_heading_after_tool_roll_and_tilt(rig, roll_degrees, tilt_degrees):
+    from scipy.spatial.transform import Rotation
+
+    initial = Rotation.from_euler("xyz", [180, 0, 35], degrees=True).as_matrix()
+    rig.arm.state.O_T_EE[:3, :3] = initial
+    enable(rig)
+    # X/B rotate about tool Z; the right stick may additionally tilt the tool.
+    rig.arm.state.O_T_EE[:3, :3] = initial @ Rotation.from_euler(
+        "zx", [roll_degrees, tilt_degrees], degrees=True,
+    ).as_matrix()
+    rig.arm.state.O_T_EE[:3, 3] = [.45, -.1, .35]
+    pose_button(rig, "menu")
+
+    target = rig.app._pose_return
+    assert target is not None
+    np.testing.assert_allclose(target.rotation, initial, atol=1e-12)
+    np.testing.assert_allclose(target.position, [.45, -.1, .35])
+    debug = rig.robot.command_debug_snapshot()
+    np.testing.assert_allclose(debug["commanded_linear_velocity"], 0)
+    assert np.linalg.norm(debug["commanded_angular_velocity"]) > 0
+
+
 def test_view_returns_to_position_captured_at_each_enable(rig):
     initial = rig.arm.state.O_T_EE[:3, 3].copy()
     enable(rig)
