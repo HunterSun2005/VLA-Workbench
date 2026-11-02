@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VLA · 操作面板</title><link rel="stylesheet" href="/static/vendor/uPlot.min.css"><link rel="stylesheet" href="/static/panel.css"></head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VLA · 操作面板</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/vendor/uPlot.min.css"><link rel="stylesheet" href="/static/panel.css"></head>
 <body>
-<header><div class="brand"><span class="mark">V</span><div><strong>VLA</strong><small>机器人操作面板</small></div></div><nav><button id="collectTab" class="selected">数据采集</button><button id="deployTab">推理部署</button></nav><div class="connection"><span id="dot" class="dot"></span><span id="connection">连接中</span><span id="demo" class="badge" hidden>模拟设备</span></div></header>
+<header><div class="brand"><span class="mark">V</span><div><strong>VLA</strong><small>机器人操作面板</small></div></div><nav><button id="collectTab" class="selected">数据采集</button><button id="deployTab">推理部署</button></nav><div class="connection"><button type="button" id="themeToggle" aria-label="浅色模式" aria-pressed="false">切换浅色</button><span id="dot" class="dot"></span><span id="connection">连接中</span><span id="demo" class="badge" hidden>模拟设备</span></div></header>
 <main><aside>
 <section class="card setup"><div class="section-title"><h2>会话配置</h2><span class="muted">启动前设置</span></div>
 <details id="sessionConfig" open><summary>配置参数</summary><form id="setup">
