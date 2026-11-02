@@ -21,10 +21,11 @@
 </details>
 <details><summary>环境与 ROS 配置</summary><label>模型 Python<input name="model_python"></label><label>ROS 工作空间<input name="ros_workspace" placeholder="仅 VLA_ROOT/ros_ws"></label><label>ROS 硬件 JSON<input name="ros_config" placeholder="由预设自动生成，也可手动填写自定义路径"></label></details>
 <div class="row"><button type="button" id="preflight">检查配置</button><button type="submit" id="start" class="primary">启动会话</button></div>
-</form></details><div id="preflightResult" class="muted"></div></section>
+</form></details></section>
 <section class="card controls"><h2>会话操作</h2><div class="row"><button data-op="enable" class="primary">启用控制</button><button data-op="pause" class="warn">软件暂停</button></div><div class="row"><button data-op="record">开始回合</button><button data-op="save">成功 · 保存</button></div><div class="row"><button data-op="save" data-outcome="failure">失败 · 保存</button><button data-op="discard">丢弃当前回合</button></div><div class="row"><button data-op="critical">Critical 标注</button><button data-op="next_subtask">下一阶段</button></div><div class="row"><button data-op="intervention">接管 / 归还策略</button><button data-op="recover">恢复故障</button></div><button data-op="stop" class="danger full">停止会话</button><p class="hint">关闭网页后任务继续运行；重连可恢复监控。暂停沿用采集端行为，可能丢弃当前回合。</p></section>
 </aside><article>
 <section class="status-bar card"><div><span class="eyebrow">当前状态</span><strong id="state">尚未启动</strong></div><div><span class="eyebrow">EPISODE</span><strong id="episode">—</strong></div><div><span class="eyebrow">帧数 / 时长</span><strong id="frames">—</strong></div><div><span class="eyebrow">实际控制来源</span><strong id="source">—</strong></div><div><span class="eyebrow">更新状态</span><strong id="freshness">等待数据</strong></div></section>
+<section id="preflightResult" class="card preflight-result" role="status" aria-live="polite" tabindex="-1" hidden></section>
 <div id="error" class="error" hidden></div>
 <section id="policy" class="card policy" hidden><div><span class="eyebrow">策略模式</span><div class="segmented"><button data-mode="vla">VLA</button><button data-mode="rlt">RLT</button><button data-mode="auto">分类头自动</button></div></div><div><span class="eyebrow">切换状态</span><strong id="modeState">—</strong></div><div><span class="eyebrow">分类头 P(RLT)</span><strong id="probability">—</strong></div><div><span class="eyebrow">推理 / RTC</span><strong id="latency">—</strong></div></section>
 <section><div class="section-title"><h2>实时相机</h2><span class="muted">共享缓存 · 最新帧</span></div><div id="cameras" class="cameras"></div></section>

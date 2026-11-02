@@ -66,3 +66,15 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 #hardwareFields details{border-top:1px solid var(--line);padding-top:8px}
 #hardwareFields select{font-size:11px}#hardwareStatus,#hardwareNotice{overflow-wrap:anywhere;white-space:pre-line}
 #hardwareNotice{color:var(--warn)}
+
+/* Configuration checks have their own readable list, separate from runtime faults. */
+.preflight-result{scroll-margin-top:16px;border-left:4px solid var(--accent)}
+.preflight-result[data-result="failed"]{border-left-color:var(--danger)}
+.preflight-result h2{margin:0 0 12px;line-height:1.6}
+.preflight-result[data-result="failed"] h2{color:var(--danger)}
+.preflight-result[data-result="passed"] h2{color:var(--accent)}
+.preflight-result ol{margin:0;padding-left:26px}
+.preflight-result li{padding:10px 6px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
+.preflight-result li+li{border-top:1px solid var(--line)}
+.preflight-result li::marker{color:var(--danger);font-weight:600}
+.preflight-output{margin:0;line-height:1.7;overflow-wrap:anywhere}
