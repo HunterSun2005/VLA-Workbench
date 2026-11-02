@@ -19,22 +19,10 @@ class CameraSnapshot:
 
 
 def prepare_image(rgb: np.ndarray, image_size: int = 224) -> np.ndarray:
-    """Match the SFT recorder's square center crop followed by INTER_AREA resize."""
-    import cv2
+    """Preserve the full camera view using the shared resize-and-pad transform."""
+    from vla.core.images import resize_rgb_with_pad
 
-    rgb = np.asarray(rgb)
-    if rgb.ndim != 3 or rgb.shape[2] != 3 or rgb.dtype != np.uint8:
-        raise ValueError(f"expected HWC uint8 RGB image, got {rgb.shape}/{rgb.dtype}")
-    height, width = rgb.shape[:2]
-    size = min(height, width)
-    y0, x0 = (height - size) // 2, (width - size) // 2
-    return np.ascontiguousarray(
-        cv2.resize(
-            rgb[y0 : y0 + size, x0 : x0 + size],
-            (image_size, image_size),
-            interpolation=cv2.INTER_AREA,
-        )
-    )
+    return resize_rgb_with_pad(rgb, image_size, image_size)
 
 
 class RealSenseCapture:

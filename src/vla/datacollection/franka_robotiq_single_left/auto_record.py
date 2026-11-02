@@ -422,14 +422,13 @@ class DirectRealSenseCapture:
             camera.close()
 
 
-def prepare_image(rgb: np.ndarray) -> np.ndarray:
-    height, width = rgb.shape[:2]
-    crop_size = min(height, width)
-    y0, x0 = (height - crop_size) // 2, (width - crop_size) // 2
-    return np.ascontiguousarray(
-        cv2.resize(rgb[y0 : y0 + crop_size, x0 : x0 + crop_size], (IMAGE_WIDTH, IMAGE_HEIGHT), interpolation=cv2.INTER_AREA),
-        dtype=np.uint8,
-    )
+def prepare_image(
+    rgb: np.ndarray, image_size: tuple[int, int] = (IMAGE_HEIGHT, IMAGE_WIDTH)
+) -> np.ndarray:
+    """Fit the entire camera view into the requested (height, width)."""
+    from vla.core.images import resize_rgb_with_pad
+
+    return resize_rgb_with_pad(rgb, *image_size)
 
 
 class CommandPoseKinematics:

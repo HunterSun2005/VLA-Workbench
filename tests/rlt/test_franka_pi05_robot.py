@@ -216,9 +216,10 @@ def test_pose_state_and_rot6d_round_trip() -> None:
     np.testing.assert_allclose(state, [0.4, -0.1, 0.3, 1, 0, 0, 0, 1, 0, 0.6])
 
 
-def test_camera_crop_matches_sft_recorder_algorithm() -> None:
+def test_camera_preserves_full_frame_with_centered_padding() -> None:
     image = np.arange(480 * 640 * 3, dtype=np.uint8).reshape(480, 640, 3)
-    expected = cv2.resize(image[:, 80:560], (224, 224), interpolation=cv2.INTER_AREA)
+    expected = np.pad(cv2.resize(image, (224, 168), interpolation=cv2.INTER_AREA),
+                      ((28, 28), (0, 0), (0, 0)))
     np.testing.assert_array_equal(prepare_image(image), expected)
 
 

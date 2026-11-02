@@ -565,12 +565,7 @@ class RolloutCollector(Node):
             self._latest[key] = (timestamp_ns or time.monotonic_ns(), value)
 
     def _camera_callback(self, role: str, timestamp_ns: int, rgb: np.ndarray) -> None:
-        height, width = self.config.image_size
-        prepared = prepare_image(rgb)
-        if prepared.shape[:2] != (height, width):
-            import cv2
-
-            prepared = cv2.resize(prepared, (width, height), interpolation=cv2.INTER_AREA)
+        prepared = prepare_image(rgb, self.config.image_size)
         self._store_latest(f"camera.{role}", prepared, timestamp_ns)
 
     def _snapshot(
