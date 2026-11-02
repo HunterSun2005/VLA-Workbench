@@ -18,7 +18,9 @@ python -c 'from pathlib import Path; from shutil import copyfile; from vla.paths
 
 字段、单位和训练提取示例见 [完整采集格式](DATA_COLLECTION_FORMAT.md)。已有 29D/31D/58D 数据保留不变、仍可离线提取；新采集使用新目录，禁止混格式续采。
 
-先运行 `vla-extract-dataset-features --help` 选择状态维度，再运行 `vla-prepare-franka-sft-split --help` 生成外部训练/验证划分。SFT 入口为 `vla-train-franka-pi05-sft`，支持 `--split-manifest`；LeRobot 参数采用 0.6.1 名称，例如 `--env_eval_freq=0 --dataset.eval_split=0`。
+可在 `vla-web` 的「数据处理」页预览各视角和逐帧数值、剔除完整回合并全局选择状态字段；结果写入新数据集。步骤见 [离线数据处理](DATA_PROCESSING.md)。
+
+也可先运行 `vla-extract-dataset-features --help` 选择状态维度，再运行 `vla-prepare-franka-sft-split --help` 生成外部训练/验证划分。SFT 入口为 `vla-train-franka-pi05-sft`，支持 `--split-manifest`；LeRobot 参数采用 0.6.1 名称，例如 `--env_eval_freq=0 --dataset.eval_split=0`。
 
 已划分数据不再自动划分；SFT 入口拒绝非零 `dataset.eval_split`。所有训练任务显式提供数据根目录、策略路径和输出目录。`scripts/franka/train_franka_pi05_sft_screens.sh` 保留多配置筛选能力，使用前配置新的 `SPLIT_ROOT` 与模型路径。
 

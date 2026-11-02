@@ -59,6 +59,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 | --- | --- |
 | 单臂手柄完整 50D 采集（旧 31d 入口同样写 50D） | `scripts/franka/start_gamepad_record_single_left.sh` / `start_gamepad_record_single_left_31d.sh` |
 | 双臂采集 / GELLO | `scripts/franka/start_gamepad_record_dual.sh` / `start_teleop_duo.sh` |
+| Web 离线预览 / 回合筛选 | `vla-web` → 数据处理；[使用说明](docs/DATA_PROCESSING.md) |
 | 特征处理 / SFT 划分 | `vla-extract-dataset-features` / `vla-prepare-franka-sft-split` |
 | PI0.5 SFT / RLToken | `vla-train-franka-pi05-sft` / `vla-train-rl-token` |
 | 离线缓存 / Actor-Critic | `vla-build-transition-cache-v2` / `vla-train-actor-critic` |
