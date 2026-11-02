@@ -19,7 +19,17 @@ artifacts/
 !/datasets/*/.gitkeep
 checkpoints/
 models/
-outputs/
+# Keep only the output layout documentation and empty stage markers.
+/outputs/*
+!/outputs/README.md
+!/outputs/sft/
+!/outputs/rltoken/
+!/outputs/ac/
+!/outputs/handover/
+!/outputs/online/
+!/outputs/eval/
+/outputs/*/*
+!/outputs/*/.gitkeep
 runtime/
 logs/
 *.safetensors
