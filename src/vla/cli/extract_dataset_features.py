@@ -40,7 +40,9 @@ def parse_args() -> argparse.Namespace:
         description="Extract selected state features from a LeRobot v3.0 dataset."
     )
     parser.add_argument("--source-root", required=True, help="Source LeRobot v3.0 dataset directory.")
-    parser.add_argument("--config", required=True, help="State feature-selection YAML.")
+    choice = parser.add_mutually_exclusive_group(required=True)
+    choice.add_argument("--config", help="State feature-selection YAML.")
+    choice.add_argument("--selection-file", help="Versioned Web processing selection JSON (fields and complete episodes).")
     parser.add_argument(
         "--output-root",
         default=None,
@@ -397,7 +399,7 @@ def dataset_fps(root: Path) -> int:
 
 def extract_dataset_features(
     source_root: str | Path,
-    config_path: str | Path,
+    config_path: str | Path | None = None,
     output_root: str | Path | None = None,
     *,
     action_stats: str = "absolute",
@@ -405,8 +407,18 @@ def extract_dataset_features(
     num_workers: int = 0,
     prompt: str | None = None,
     validate: bool = True,
+    selection_file: str | Path | None = None,
 ) -> Path:
     source = Path(source_root).expanduser().resolve()
+    if selection_file is not None:
+        if config_path is not None or action_stats != "absolute" or action_chunk_size != 50 or prompt is not None:
+            raise ValueError("selection-file uses its own fields, absolute statistics, chunk size 50 and original tasks")
+        from vla.datacollection.processing import export_selection
+        chosen = json.loads(Path(selection_file).expanduser().read_text())
+        output = output_root if output_root is not None else chosen.get("output_root")
+        if not output:
+            raise ValueError("selection-file requires output-root or a saved output_root")
+        return export_selection(source, output, chosen, validate=validate)
     config = load_feature_config(config_path)
     prompt = _normalize_prompt(prompt)
     output = _default_output(source, config) if output_root is None else Path(output_root).expanduser().resolve()
@@ -471,6 +483,7 @@ def main() -> None:
         action_chunk_size=args.action_chunk_size,
         num_workers=args.num_workers,
         prompt=args.prompt,
+        selection_file=args.selection_file,
     )
 
 

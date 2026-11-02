@@ -339,6 +339,10 @@ def load_episode_frame_annotations(
     from vla.dataset_metadata import dataset_info
     info = dataset_info(dataset)
     contract = info.get("recording_contract", {})
+    if not contract and info.get("processing", {}).get("version") == 1:
+        # Offline exports retain demonstration provenance without pretending to be
+        # resumable collection/online runs under the original writer contract.
+        contract = info["processing"].get("source_contract", {}).get("recording_contract", {})
     phase_only_demo = (
         available == {FRAME_PHASE_KEY}
         and info.get("collection_kind") == "human_demonstration"

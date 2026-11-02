@@ -179,14 +179,25 @@ def test_real_video_writer_commit_and_trace(recorded):
 
 
 @pytest.mark.parametrize("dimension", [10, 22])
-def test_feature_extraction_official_loader_and_demo_cache(recorded, tmp_path, dimension):
+@pytest.mark.parametrize("selection_mode", [False, True])
+def test_feature_extraction_official_loader_and_demo_cache(recorded, tmp_path, dimension, selection_mode):
     from vla.cli import extract_dataset_features as extraction
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
     store, _, _, _ = recorded
-    result = extraction.extract_dataset_features(
-        store.root, extraction.FEATURE_CONFIG_DIR / f"franka_single_left_tcp_rot6d_{dimension}d.yaml",
-        tmp_path / f"features-{dimension}", validate=True,
-    )
+    if selection_mode:
+        from vla.datacollection.processing import DatasetIndex, export_selection
+        source = DatasetIndex(store.root)
+        # Release the collection lease before offline processing starts.
+        store.close()
+        result = export_selection(store.root, tmp_path / f"features-{dimension}", {
+            "version": 1, "source_fingerprint": source.fingerprint,
+            "state_fields": source.names[:dimension], "episodes": [0],
+        })
+    else:
+        result = extraction.extract_dataset_features(
+            store.root, extraction.FEATURE_CONFIG_DIR / f"franka_single_left_tcp_rot6d_{dimension}d.yaml",
+            tmp_path / f"features-{dimension}", validate=True,
+        )
     dataset = LeRobotDataset(repo_id="local/gamepad-test", root=result, video_backend="pyav")
     assert dataset[0]["observation.state"].shape == (dimension,)
     assert dataset[0]["observation.images.base"].shape == (3, 224, 224)
