@@ -127,7 +127,7 @@ class DemoBackend:
                 'signals': self.signals, 'values': values, 'sample_time': now,
                 'available_commands': ['enable','pause','record','save','discard','recover','stop','critical'] +
                     (['mode','intervention'] if self.config.workflow == 'deploy' else []),
-                'modes': self.config.modes(True), 'outcomes':['success','failure'] if self.config.workflow == 'deploy' or self.config.schema == '31d' else ['success'], 'demo': True}
+                'modes': self.config.modes(True), 'outcomes':['success','failure'] if self.config.workflow == 'deploy' or (self.config.arms == 'single_left' and self.config.source == 'gamepad') else ['success'], 'demo': True}
 
     def images(self):
         now = time.monotonic()

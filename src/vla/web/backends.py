@@ -198,7 +198,7 @@ class FrankyBackend(BaseBackend):
         self.setup(config,directory,root)
         from vla.datacollection.start_teleop.gamepad_teleop import JoyReceiver, JoySidecars
         if config.workflow == 'collect':
-            module = importlib.import_module('vla.datacollection.start_teleop.gamepad_record' + ('_31d' if config.schema == '31d' else ''))
+            module = importlib.import_module('vla.datacollection.start_teleop.gamepad_record')
             control, recording = module.load_recording_config(config.default_config())
             module.recording_preflight(control,recording)
             # Preserve configured realtime core for Franky's control thread.
@@ -209,7 +209,7 @@ class FrankyBackend(BaseBackend):
             receiver = JoyReceiver(self.directory/'joy.sock')
             self.resources.callback(receiver.close)
             self.sidecars = self.resources.enter_context(JoySidecars(control,receiver.path,self.directory))
-            robot_class = module.FrankaRobotiq31DRobot if config.schema == '31d' else module.FrankaRobotiqRobot
+            robot_class = module.FrankaRobotiqRobot
             self.robot = robot_class(replace(control.robot,calibration_dir=self.directory/'calibration'))
             self.resources.callback(self.robot.disconnect)
             self.check_children()
@@ -252,12 +252,8 @@ class FrankyBackend(BaseBackend):
             self._finish(discard=True)
 
     def _finish(self, *, discard=False, outcome='success'):
-        if self.config.schema == '31d':
-            self.session.finish(outcome == 'success','web operator',discard=discard)
-        else:
-            if not discard and outcome != 'success':
-                raise ValueError('standard gamepad recording supports success/save or discard; use 31D for failure/save')
-            self.session.finish(not discard,'web operator')
+        self.session.finish(not discard and outcome == 'success', 'web operator',
+                            save_failure=not discard and outcome == 'failure')
 
     def command(self, op, args):
         if self.collector:
@@ -343,7 +339,7 @@ class FrankyBackend(BaseBackend):
                                         'transition':abs(c.speed_scale-(c.config.speed_modes.high_multiplier if c.high_speed else 1.))>1e-6}},
                       'available_commands':['enable','pause','record','save','discard','recover','stop','critical'],
                       'modes':[], 'actual_source':'gamepad',
-                      'outcomes':['success','failure'] if self.config.schema == '31d' else ['success']}
+                      'outcomes':['success','failure']}
         state = getattr(self.robot,'_telemetry_state',None)
         stamp = getattr(state,'time',None)
         if stamp != self._state_time:

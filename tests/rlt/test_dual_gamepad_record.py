@@ -233,8 +233,8 @@ def test_demo_save_preserves_stage_and_is_cache_demonstration(collector, monkeyp
     c.enable_teleop()
     c.start_episode()
     action = np.tile([.4, 0., .3, 1., 0., 0., 0., 1., 0., 1.], 2).astype(np.float32)
-    state = np.zeros(58, dtype=np.float32)
-    for offset in (0, 29):
+    state = np.zeros(100, dtype=np.float32)
+    for offset in (0, 50):
         state[offset:offset+9] = action[:9]
         state[offset+9] = .085
     monkeypatch.setattr(c, "_actual_action", lambda *args: action.copy())
@@ -251,7 +251,7 @@ def test_demo_save_preserves_stage_and_is_cache_demonstration(collector, monkeyp
     info = json.loads((c.config.dataset_root / "meta/info.json").read_text())
     frame = pd.read_parquet(c.writer.data_path(0))
     assert info["features"]["action"]["shape"] == [20]
-    assert info["features"]["observation.state"]["shape"] == [58]
+    assert info["features"]["observation.state"]["shape"] == [100]
     assert frame["complementary_info.subtask_index"].tolist() == [0] * 6 + [1] * 6
     assert "complementary_info.collector_policy_id" not in frame
     data = SimpleNamespace(hf_dataset=Dataset.from_pandas(frame), meta=SimpleNamespace(info=info))
@@ -313,7 +313,7 @@ def test_demo_camera_poll_does_not_duplicate_images_and_faults_on_gap(collector,
     clock = [time.monotonic_ns()]
     monkeypatch.setattr(ros_module.time, "monotonic_ns", lambda: clock[0])
     monkeypatch.setattr(c, "_validate_robot_health", lambda values: None)
-    monkeypatch.setattr(c, "_raw_state", lambda *args: np.zeros(58))
+    monkeypatch.setattr(c, "_raw_state", lambda *args: np.zeros(100))
     recorded = []
     monkeypatch.setattr(c, "_record_frame", lambda *args: recorded.append(args[-1]))
     for camera in c.config.cameras:

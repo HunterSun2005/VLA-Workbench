@@ -51,6 +51,9 @@ class FrankaRolloutSnapshot:
     pose: np.ndarray
     joint_positions: np.ndarray
     base_wrench: np.ndarray
+    joint_torques: np.ndarray
+    external_joint_torques: np.ndarray
+    joint_velocities: np.ndarray
     gripper_width: float
     gripper_open_fraction: float
     images: dict[str, np.ndarray]
@@ -544,7 +547,13 @@ class FrankaRobotiqRobot(Robot):
             base_wrench = np.asarray(
                 robot_state.O_F_ext_hat_K, dtype=np.float64
             ).reshape(-1).copy()
+            joint_torques = np.asarray(robot_state.tau_J, dtype=np.float64).reshape(-1).copy()
+            external_joint_torques = np.asarray(robot_state.tau_ext_hat_filtered, dtype=np.float64).reshape(-1).copy()
+            joint_velocities = np.asarray(robot_state.dq, dtype=np.float64).reshape(-1).copy()
             state_sample_time = time.monotonic()
+        if any(v.shape != (7,) or not np.isfinite(v).all()
+               for v in (joint_torques, external_joint_torques, joint_velocities)):
+            raise ValueError("Franky joint torque and velocity fields must be finite 7-vectors")
         if joint_positions.shape != (7,) or base_wrench.shape != (6,):
             raise ValueError(
                 "Franky rollout state must provide seven joints and a six-axis base wrench"
@@ -570,6 +579,9 @@ class FrankaRobotiqRobot(Robot):
             pose=pose,
             joint_positions=joint_positions,
             base_wrench=base_wrench,
+            joint_torques=joint_torques,
+            external_joint_torques=external_joint_torques,
+            joint_velocities=joint_velocities,
             gripper_width=float(gripper_open_fraction * GRIPPER_OPEN_WIDTH_M),
             gripper_open_fraction=float(gripper_open_fraction),
             images={key: np.asarray(value).copy() for key, value in camera_snapshot.images.items()},

@@ -183,13 +183,11 @@ def _validate_source(info: dict[str, Any], config: FeatureSelectionConfig) -> li
     names = state.get("names")
     if not isinstance(names, list) or list(state.get("shape", [])) != [len(names)]:
         raise ValueError("observation.state must be a named 1D feature")
-    if tuple(names) != config.source_names:
-        missing = sorted(set(config.source_names) - set(names))
-        extra = sorted(set(names) - set(config.source_names))
-        raise ValueError(
-            "source state schema does not exactly match the YAML declaration; "
-            f"missing={missing}, extra={extra}, order_matches={tuple(names) == config.source_names}"
-        )
+    if any(not isinstance(name, str) for name in names) or len(names) != len(set(names)):
+        raise ValueError("source state field names must be unique strings")
+    missing = sorted(set(config.selected_names) - set(names))
+    if missing:
+        raise ValueError(f"source state schema is missing selected fields: {missing}")
     action_shape = list(features["action"].get("shape", []))
     if config.expected_action_dim is not None and action_shape != [config.expected_action_dim]:
         raise ValueError(f"expected {config.expected_action_dim}D action, got {action_shape}")

@@ -11,6 +11,9 @@ state:
     left_linear_velocity_xyz: false
     left_angular_velocity_xyz: false
     left_joint_positions: false
+    left_joint_torques: false
+    left_external_joint_torques: false
+    left_joint_velocities: false
     right_tcp_position_xyz: true
     right_tcp_rot6d: true
     right_gripper: true
@@ -19,6 +22,9 @@ state:
     right_linear_velocity_xyz: false
     right_angular_velocity_xyz: false
     right_joint_positions: false
+    right_joint_torques: false
+    right_external_joint_torques: false
+    right_joint_velocities: false
   component_features:
     left_tcp_position_xyz: [left_tcp_position_x, left_tcp_position_y, left_tcp_position_z]
     left_tcp_rot6d:
@@ -47,6 +53,30 @@ state:
       - left_joint_position_5
       - left_joint_position_6
       - left_joint_position_7
+    left_joint_torques:
+      - left_joint_torque_1
+      - left_joint_torque_2
+      - left_joint_torque_3
+      - left_joint_torque_4
+      - left_joint_torque_5
+      - left_joint_torque_6
+      - left_joint_torque_7
+    left_external_joint_torques:
+      - left_external_joint_torque_1
+      - left_external_joint_torque_2
+      - left_external_joint_torque_3
+      - left_external_joint_torque_4
+      - left_external_joint_torque_5
+      - left_external_joint_torque_6
+      - left_external_joint_torque_7
+    left_joint_velocities:
+      - left_joint_velocity_1
+      - left_joint_velocity_2
+      - left_joint_velocity_3
+      - left_joint_velocity_4
+      - left_joint_velocity_5
+      - left_joint_velocity_6
+      - left_joint_velocity_7
     right_tcp_position_xyz: [right_tcp_position_x, right_tcp_position_y, right_tcp_position_z]
     right_tcp_rot6d:
       - right_tcp_rot6d_col0_x
@@ -74,6 +104,30 @@ state:
       - right_joint_position_5
       - right_joint_position_6
       - right_joint_position_7
+    right_joint_torques:
+      - right_joint_torque_1
+      - right_joint_torque_2
+      - right_joint_torque_3
+      - right_joint_torque_4
+      - right_joint_torque_5
+      - right_joint_torque_6
+      - right_joint_torque_7
+    right_external_joint_torques:
+      - right_external_joint_torque_1
+      - right_external_joint_torque_2
+      - right_external_joint_torque_3
+      - right_external_joint_torque_4
+      - right_external_joint_torque_5
+      - right_external_joint_torque_6
+      - right_external_joint_torque_7
+    right_joint_velocities:
+      - right_joint_velocity_1
+      - right_joint_velocity_2
+      - right_joint_velocity_3
+      - right_joint_velocity_4
+      - right_joint_velocity_5
+      - right_joint_velocity_6
+      - right_joint_velocity_7
   output_order:
     - left_tcp_position_xyz
     - left_tcp_rot6d
@@ -83,6 +137,9 @@ state:
     - left_linear_velocity_xyz
     - left_angular_velocity_xyz
     - left_joint_positions
+    - left_joint_torques
+    - left_external_joint_torques
+    - left_joint_velocities
     - right_tcp_position_xyz
     - right_tcp_rot6d
     - right_gripper
@@ -91,6 +148,9 @@ state:
     - right_linear_velocity_xyz
     - right_angular_velocity_xyz
     - right_joint_positions
+    - right_joint_torques
+    - right_external_joint_torques
+    - right_joint_velocities
 
 action:
   expected_dim: 20

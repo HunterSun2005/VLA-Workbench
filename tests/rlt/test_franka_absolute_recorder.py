@@ -32,7 +32,12 @@ def _robot_state():
         measured_joint_state=SimpleNamespace(
             name=[f"left_fr3_joint{index}" for index in range(7, 0, -1)],
             position=[index / 10 for index in range(7, 0, -1)],
+            effort=[index for index in range(7, 0, -1)],
+            velocity=[index / 100 for index in range(7, 0, -1)],
         ),
+        tau_ext_hat_filtered=SimpleNamespace(
+            name=[f"left_fr3_joint{index}" for index in range(7, 0, -1)],
+            effort=[index / 2 for index in range(7, 0, -1)]),
         o_t_ee=_pose([1.0, 2.0, 3.0], [0.0, 0.0, 0.0, 1.0]),
         o_t_ee_d=_pose([4.0, 5.0, 6.0], [0.0, 0.0, 1.0, 0.0]),
         f_t_ee=_pose([0.0, 0.0, 0.174], [0.0, 0.0, 0.0, 1.0]),
@@ -96,11 +101,14 @@ def test_state_uses_measured_pose_and_action_uses_desired_pose() -> None:
     np.testing.assert_array_equal(action[:3], [4.0, 5.0, 6.0])
     np.testing.assert_array_equal(state[3:9], [1.0, 0.0, 0.0, 0.0, 1.0, 0.0])
     np.testing.assert_allclose(action[3:9], [-1.0, 0.0, 0.0, 0.0, -1.0, 0.0])
-    assert state.shape == (29,)
+    assert state.shape == (50,)
     assert action.shape == (10,)
     assert action[9] == pytest.approx(0.25)
     np.testing.assert_array_equal(state[10:16], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-    np.testing.assert_allclose(state[22:], np.arange(1, 8) / 10)
+    np.testing.assert_allclose(state[22:29], np.arange(1, 8) / 10)
+    np.testing.assert_allclose(state[29:36], np.arange(1, 8))
+    np.testing.assert_allclose(state[36:43], np.arange(1, 8) / 2)
+    np.testing.assert_allclose(state[43:50], np.arange(1, 8) / 100)
 
 
 def test_command_joint_positions_accepts_controller_namespace_and_reorders() -> None:
@@ -127,7 +135,7 @@ def test_tcp_pose_from_flange_applies_configured_tool_transform() -> None:
 
 
 def test_episode_validation_rejects_constant_tcp_action() -> None:
-    states = np.zeros((4, 29), dtype=np.float32)
+    states = np.zeros((4, 50), dtype=np.float32)
     states[:, 3] = 1.0
     states[:, 7] = 1.0
     actions = np.zeros((4, 10), dtype=np.float32)
@@ -138,7 +146,7 @@ def test_episode_validation_rejects_constant_tcp_action() -> None:
 
 
 def test_episode_validation_rejects_stationary_target_jitter() -> None:
-    states = np.zeros((4, 29), dtype=np.float32)
+    states = np.zeros((4, 50), dtype=np.float32)
     actions = np.zeros((4, 10), dtype=np.float32)
     states[:, 3] = actions[:, 3] = 1.0
     states[:, 7] = actions[:, 7] = 1.0
@@ -148,7 +156,7 @@ def test_episode_validation_rejects_stationary_target_jitter() -> None:
 
 
 def test_episode_validation_reports_all_feature_ranges() -> None:
-    states = np.zeros((4, 29), dtype=np.float32)
+    states = np.zeros((4, 50), dtype=np.float32)
     states[:, 3] = 1.0
     states[:, 7] = 1.0
     actions = np.zeros((4, 10), dtype=np.float32)
@@ -156,7 +164,7 @@ def test_episode_validation_reports_all_feature_ranges() -> None:
     actions[:, 3] = 1.0
     actions[:, 7] = 1.0
     report = schema.validate_episode_features(states, actions)
-    assert np.asarray(report["state_range"]).shape == (29,)
+    assert np.asarray(report["state_range"]).shape == (50,)
     assert np.asarray(report["action_range"]).shape == (10,)
     assert report["translation_span_m"] == pytest.approx(0.1)
 
@@ -190,7 +198,7 @@ def _save_synthetic_episode(writer: V30DatasetWriter, offset: float = 0.0, lengt
         path = writer.video_path(episode_index, key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"synthetic video placeholder")
-    states = np.arange(length * 29, dtype=np.float32).reshape(length, 29) + offset
+    states = np.arange(length * 50, dtype=np.float32).reshape(length, 50) + offset
     actions = np.arange(length * 10, dtype=np.float32).reshape(length, 10) + offset
     writer.save_episode(
         states,
@@ -218,10 +226,33 @@ def test_v30_writer_resume_discard_and_metadata(tmp_path: Path) -> None:
 
     info = json.loads((root / "meta/info.json").read_text())
     assert info["codebase_version"] == "v3.0"
-    assert info["features"]["observation.state"]["shape"] == [29]
+    assert info["features"]["observation.state"]["shape"] == [50]
     assert info["features"]["action"]["shape"] == [10]
     episodes = pd.read_parquet(root / "meta/episodes/chunk-000/file-000.parquet")
     assert episodes["episode_index"].tolist() == [0]
     assert episodes["data/file_index"].tolist() == [0]
     assert "stats/observation.state/q01" in episodes
     assert "videos/observation.images.base/file_index" in episodes
+
+
+@pytest.mark.parametrize("field", ["effort", "velocity", "external_effort"])
+@pytest.mark.parametrize("bad", [[], [0.] * 6, [float("nan")] * 7])
+def test_full_state_rejects_missing_or_invalid_joint_dynamics(field, bad):
+    message = _robot_state()
+    target = message.tau_ext_hat_filtered if field == "external_effort" else message.measured_joint_state
+    setattr(target, "effort" if field == "external_effort" else field, bad)
+    with pytest.raises(ValueError, match="finite 7-vector"):
+        schema.state_vector(message, _gripper_state(), np.zeros(6))
+
+
+@pytest.mark.parametrize("width", [29, 31])
+def test_full_writer_rejects_legacy_dataset_without_touching_files(tmp_path, width):
+    from vla.datacollection.franka_robotiq_single_left.schema_31d import STATE_31D_FIELDS
+    fields = schema.LEGACY_STATE_FIELDS if width == 29 else STATE_31D_FIELDS
+    V30DatasetWriter(tmp_path, 30, "test", (), 16, 16, state_fields=fields)
+    pending = tmp_path / "unfinished.tmp"
+    pending.write_text("keep")
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(RuntimeError, match="incompatible shape"):
+        V30DatasetWriter(tmp_path, 30, "test", (), 16, 16)
+    assert before == {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}

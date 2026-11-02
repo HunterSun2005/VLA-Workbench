@@ -27,12 +27,14 @@ def _image_stats(count: int) -> dict[str, np.ndarray]:
 
 
 def _make_dataset(root: Path) -> None:
-    writer = V30DatasetWriter(root, 30, "local task", CAMERA_KEYS, 16, 16)
+    # These tests represent an already-selected 29D training dataset, not raw capture.
+    writer = V30DatasetWriter(root, 30, "local task", CAMERA_KEYS, 16, 16,
+                              state_fields=schema.LEGACY_STATE_FIELDS)
     for key in CAMERA_KEYS:
         path = writer.video_path(0, key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"local fixture")
-    state_dim = len(schema.STATE_FIELDS)
+    state_dim = len(schema.LEGACY_STATE_FIELDS)
     states = np.arange(4 * state_dim, dtype=np.float32).reshape(4, state_dim)
     actions = np.arange(4 * 10, dtype=np.float32).reshape(4, 10)
     writer.save_episode(
@@ -46,7 +48,7 @@ def _make_sft(
     root: Path,
     tokenizer: Path,
     *,
-    state_dim: int = len(schema.STATE_FIELDS),
+    state_dim: int = len(schema.LEGACY_STATE_FIELDS),
     relative: bool = False,
 ) -> None:
     root.mkdir(parents=True)
@@ -89,9 +91,9 @@ def test_validate_rl_token_inputs_accepts_matching_local_fixture(tmp_path: Path)
 
     summary = validate_rl_token_inputs(dataset, checkpoint)
 
-    assert summary.state_dim == len(schema.STATE_FIELDS)
+    assert summary.state_dim == len(schema.LEGACY_STATE_FIELDS)
     assert summary.action_dim == 10
-    assert len(summary.state_names) == len(schema.STATE_FIELDS)
+    assert len(summary.state_names) == len(schema.LEGACY_STATE_FIELDS)
     assert len(summary.action_names) == 10
     assert summary.camera_keys == ("base", "left_wrist")
     assert summary.chunk_size == 50

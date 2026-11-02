@@ -1,4 +1,4 @@
-"""Read-only preflight for the independent 31D Franky collection setup."""
+"""Read-only preflight for the full 50D Franky collection setup (legacy command name)."""
 
 from __future__ import annotations
 
@@ -25,11 +25,10 @@ def main() -> None:
     print(f"dataset_root={root}")
     print(f"dataset_root_exists={root.exists()}")
     print(f"dataset_root_is_empty={not any(root.iterdir()) if root.exists() else True}")
-    print("required_state=10D+tau_J[7]+tau_ext_hat_filtered[7]+dq[7]")
-    print("required_shape=(31,)")
+    print("required_state=29D+tau_J[7]+tau_ext_hat_filtered[7]+dq[7]")
+    print("required_shape=(50,)")
     print("hardware_connection=not_attempted")
-    print("WARNING: existing collect_franky.py still writes the legacy schema;")
-    print("use only a 31D-aware collector after its offline validation.")
+    print("All live collectors now write full state; legacy datasets require a new output root.")
 
 
 if __name__ == "__main__":

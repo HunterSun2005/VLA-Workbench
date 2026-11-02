@@ -14,7 +14,9 @@ python -c 'from pathlib import Path; from shutil import copyfile; from vla.paths
 
 ## 数据处理和 SFT
 
-单臂手柄采集、31D 采集和双臂采集脚本分别保留。31D 是采集接口，本项目不附带 force-VLA 训练。
+单／双臂 GELLO、gamepad 采集和部署回合记录统一保存完整状态：单臂 50D、双臂 100D。动作仍为 10D／20D，部署策略输入仍为 10D／20D。旧 `_31d` 命令转到同一个完整状态采集器，不再生成独立 31D 数据。单臂 gamepad 保留成功保存、失败保存和丢弃（终端 y/f/x）。本项目不附带 force-VLA 训练。
+
+字段、单位和训练提取示例见 [完整采集格式](DATA_COLLECTION_FORMAT.md)。已有 29D/31D/58D 数据保留不变、仍可离线提取；新采集使用新目录，禁止混格式续采。
 
 先运行 `vla-extract-dataset-features --help` 选择状态维度，再运行 `vla-prepare-franka-sft-split --help` 生成外部训练/验证划分。SFT 入口为 `vla-train-franka-pi05-sft`，支持 `--split-manifest`；LeRobot 参数采用 0.6.1 名称，例如 `--env_eval_freq=0 --dataset.eval_split=0`。
 

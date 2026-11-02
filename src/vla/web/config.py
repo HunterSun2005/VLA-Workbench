@@ -14,7 +14,7 @@ class SessionConfig:
     workflow: str = 'collect'
     arms: str = 'single_left'
     source: str = 'gamepad'
-    schema: str = 'standard'
+    schema: str = 'full'
     config_path: str = ''
     dataset_root: str = ''
     task: str = ''
@@ -43,12 +43,10 @@ class SessionConfig:
         if type(result.resume) is not bool:
             raise ValueError('resume must be boolean')
         for name, choices in {'workflow': ('collect','deploy'), 'arms': ('single_left','dual'),
-                              'source': ('gamepad','gello'), 'schema': ('standard','31d'),
+                              'source': ('gamepad','gello'), 'schema': ('full',),
                               'policy_kind': ('sft','rlt'), 'mode': ('vla','rlt','auto')}.items():
             if getattr(result, name) not in choices:
                 raise ValueError(f'invalid {name}')
-        if result.schema == '31d' and (result.workflow != 'collect' or result.arms != 'single_left' or result.source != 'gamepad'):
-            raise ValueError('31D requires single-left gamepad collection')
         if result.workflow == 'deploy' and result.source != 'gamepad':
             raise ValueError('deployment intervention uses gamepad')
         if not result.task.strip():
@@ -79,8 +77,7 @@ class SessionConfig:
         if self.config_path:
             return Path(self.config_path).expanduser().resolve()
         if self.workflow == 'collect' and self.source == 'gamepad' and not self.ros:
-            suffix = '31d' if self.schema == '31d' else 'record'
-            return resource(f'datacollection/start_teleop/configs/single_left_gamepad_{suffix}.yaml')
+            return resource('datacollection/start_teleop/configs/single_left_gamepad_record.yaml')
         suffix = 'dual' if self.arms == 'dual' else 'single_left_sft_takeover'
         return resource(f'datacollection/franka_robotiq_rollout/configs/{suffix}.yaml')
 
@@ -106,6 +103,17 @@ def preflight(config, *, demo=False, root=None):
     checks.append(f'数据集输出目录: {target}')
     if config.resume and not (target / 'meta/info.json').is_file():
         errors.append('续采需要有效的已有数据集')
+    if config.resume and (target / 'meta/info.json').is_file():
+        try:
+            from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
+            names = (STATE_FIELDS if config.arms == 'single_left' else
+                     [f'{arm}_{field}' for arm in ('left', 'right') for field in STATE_FIELDS])
+            info = json.loads((target / 'meta/info.json').read_text())
+            state = info['features']['observation.state']
+            if state.get('shape') != [len(names)] or state.get('names') != names:
+                errors.append(f'续采需要相同的完整 {len(names)}D 状态字段；旧 29D/31D/58D 数据请使用新目录')
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            errors.append(f'无法校验续采字段: {error}')
     if not config.resume and target.exists() and (not target.is_dir() or any(target.iterdir())):
         errors.append('输出目录非空；请选择续采或新目录')
     if config.ros:
@@ -172,7 +180,7 @@ def dataset_defaults():
     result = {}
     for arms in ('single_left', 'dual'):
         for source in ('gamepad', 'gello'):
-            for schema in (('standard', '31d') if arms == 'single_left' and source == 'gamepad' else ('standard',)):
+            for schema in ('full',):
                 config = SessionConfig(arms=arms, source=source, schema=schema)
                 result[f'collect/{arms}/{source}/{schema}'] = config.default_dataset_root()
         for kind in ('sft', 'rlt'):

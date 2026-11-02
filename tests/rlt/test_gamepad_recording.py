@@ -26,6 +26,7 @@ def snapshot(at=1., **changes):
     pose[:3, 3] = [.4, -.2, .3]
     result = FrankaRolloutSnapshot(
         observed_at_ns=round(at * 1e9), pose=pose, joint_positions=np.zeros(7), base_wrench=np.zeros(6),
+        joint_torques=np.arange(7), external_joint_torques=np.arange(7)/2, joint_velocities=np.arange(7)/100,
         gripper_width=.075, gripper_open_fraction=.075 / .085,
         images={key: np.full((224, 224, 3), 50, np.uint8) for key in ("base", "left_wrist")},
         image_timestamps={"base": at - .005, "left_wrist": at - .006},
@@ -165,7 +166,7 @@ def test_real_video_writer_commit_and_trace(recorded):
     store, worker, _, _ = recorded
     frame = pd.read_parquet(store.writer.data_path(0))
     assert len(frame) == worker.frames == 14
-    assert np.stack(frame["observation.state"]).shape == (14, 29)
+    assert np.stack(frame["observation.state"]).shape == (14, 50)
     assert np.stack(frame["action"]).shape == (14, 10)
     assert worker.critical_frames == 6
     episodes = pd.read_parquet(store.root / "meta/episodes/chunk-000/file-000.parquet")
@@ -326,6 +327,7 @@ class MemoryWorker:
         self.done, self.cancel = threading.Event(), threading.Event()
         self.cancel_details = None
         self.saved_index = self.error = None
+        self.success = True
         self.attempt = Path("fake-attempt")
         self.events = []
 
@@ -494,3 +496,11 @@ def test_preview_status_does_not_change_recording_flow(session_rig):
     rig.advance()
     assert statuses[-1]["mode"] == "SAVING/CLEANUP"
     assert session.controller.mode == "standby"
+
+
+def test_full_recorder_keeps_failure_save_distinct_from_discard(session_rig):
+    rig, session = session_rig
+    session.key('f')
+    assert session.controller.mode == 'standby'
+    assert session.worker.events[-1] == ('finish', {'success': False, 'reason': 'operator marked failure'})
+    assert not session.worker.cancel.is_set()

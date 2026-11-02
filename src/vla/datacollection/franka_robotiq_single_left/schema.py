@@ -65,7 +65,12 @@ EXTENDED_STATE_FIELDS = [
     "base_tcp_angular_velocity_z",
 ]
 JOINT_STATE_FIELDS = [f"joint_position_{index}" for index in range(1, 8)]
-STATE_FIELDS = TCP_STATE_FIELDS + EXTENDED_STATE_FIELDS + JOINT_STATE_FIELDS
+LEGACY_STATE_FIELDS = TCP_STATE_FIELDS + EXTENDED_STATE_FIELDS + JOINT_STATE_FIELDS
+JOINT_TORQUE_FIELDS = [f"joint_torque_{index}" for index in range(1, 8)]
+EXTERNAL_JOINT_TORQUE_FIELDS = [f"external_joint_torque_{index}" for index in range(1, 8)]
+JOINT_VELOCITY_FIELDS = [f"joint_velocity_{index}" for index in range(1, 8)]
+STATE_FIELDS = (LEGACY_STATE_FIELDS + JOINT_TORQUE_FIELDS
+                + EXTERNAL_JOINT_TORQUE_FIELDS + JOINT_VELOCITY_FIELDS)
 ACTION_FIELDS = [
     "desired_tcp_position_x",
     "desired_tcp_position_y",
@@ -100,10 +105,14 @@ def canonical_franka_joint_name(name: str) -> str:
 
 def measured_joint_positions(robot_state_message) -> np.ndarray:
     """Return measured J1-J7 positions from a Franka robot-state message."""
-    joint_state = robot_state_message.measured_joint_state
-    positions = np.asarray(joint_state.position, dtype=np.float64)
+    return measured_joint_values(robot_state_message.measured_joint_state, "position")
+
+
+def measured_joint_values(joint_state, field: str) -> np.ndarray:
+    """Read a finite J1-J7 vector, reordering named ROS position/velocity/effort."""
+    positions = np.asarray(getattr(joint_state, field), dtype=np.float64)
     if positions.shape != (7,) or not np.isfinite(positions).all():
-        raise ValueError("measured Franka joint positions must be a finite 7-vector")
+        raise ValueError(f"measured Franka joint {field} must be a finite 7-vector")
 
     names = list(joint_state.name)
     if names:
@@ -312,6 +321,9 @@ def state_vector(
             torque,
             velocity,
             joint_positions,
+            measured_joint_values(robot_state_message.measured_joint_state, "effort"),
+            measured_joint_values(robot_state_message.tau_ext_hat_filtered, "effort"),
+            measured_joint_values(robot_state_message.measured_joint_state, "velocity"),
         )
     ).astype(np.float32)
     if value.shape != (len(STATE_FIELDS),) or not np.isfinite(value).all():

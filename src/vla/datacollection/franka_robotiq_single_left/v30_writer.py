@@ -313,9 +313,10 @@ class V30DatasetWriter:
         if not self.state_fields or not self.action_fields:
             raise ValueError("state_fields and action_fields must not be empty")
         self.root.mkdir(parents=True, exist_ok=True)
-        self._recover_temporary_files()
         self.info = self._load_or_initialize_info()
         self._validate_info()
+        # Reject incompatible datasets before removing any recovery files.
+        self._recover_temporary_files()
         self._rebuild_metadata()
 
     @property

@@ -712,7 +712,7 @@ def test_rollout_yaml_profiles_are_single_and_dual() -> None:
     feature_config = load_feature_config(
         FEATURE_CONFIG_DIR / "franka_dual_tcp_rot6d_20d.yaml"
     )
-    assert len(feature_config.source_names) == 58
+    assert len(feature_config.source_names) == 100
     assert len(feature_config.selected_names) == 20
     assert feature_config.selected_names[0] == "left_tcp_position_x"
     assert feature_config.selected_names[10] == "right_tcp_position_x"
@@ -834,7 +834,7 @@ def test_joy_bridge_packet_round_trip_and_validation() -> None:
         decode_joy_packet(encode_joy_packet(JoyPacket(17, 123456, (0.0,), (2,))))
 
 
-def test_franky_rollout_state_preserves_existing_29d_schema() -> None:
+def test_franky_rollout_state_preserves_29d_prefix_and_appends_joint_dynamics() -> None:
     pose = np.eye(4)
     pose[:3, 3] = [0.4, -0.2, 0.3]
     snapshot = SimpleNamespace(
@@ -843,6 +843,7 @@ def test_franky_rollout_state_preserves_existing_29d_schema() -> None:
         gripper_width=0.05,
         base_wrench=np.arange(6, dtype=float),
         joint_positions=np.arange(7, dtype=float),
+        joint_torques=np.arange(7)+10, external_joint_torques=np.arange(7)+20, joint_velocities=np.arange(7)+30,
     )
     previous = (
         np.array([0.39, -0.2, 0.3]),
@@ -854,7 +855,10 @@ def test_franky_rollout_state_preserves_existing_29d_schema() -> None:
     np.testing.assert_allclose(state[:10], [0.4, -0.2, 0.3, 1, 0, 0, 0, 1, 0, 0.05])
     np.testing.assert_allclose(state[10:16], np.arange(6))
     np.testing.assert_allclose(state[16:22], [0.01, 0, 0, 0, 0, 0])
-    np.testing.assert_allclose(state[22:], np.arange(7))
+    np.testing.assert_allclose(state[22:29], np.arange(7))
+    np.testing.assert_allclose(state[29:36], np.arange(7)+10)
+    np.testing.assert_allclose(state[36:43], np.arange(7)+20)
+    np.testing.assert_allclose(state[43:50], np.arange(7)+30)
 
 
 def test_franky_collector_switches_sources_without_recording_priming_frames(
@@ -963,6 +967,7 @@ def test_franky_collector_switches_sources_without_recording_priming_frames(
                 pose=pose,
                 joint_positions=np.array([0, 0, 0, -1, 0, 1, 0], dtype=float),
                 base_wrench=np.zeros(6),
+                joint_torques=np.zeros(7), external_joint_torques=np.zeros(7), joint_velocities=np.zeros(7),
                 gripper_width=0.085,
                 gripper_open_fraction=1.0,
                 images={
@@ -1312,7 +1317,7 @@ def test_franky_collector_contract_setup_cleans_up_before_hardware_connect(
     )
 
 
-def test_rollout_policy_state_extracts_each_arms_first_10_of_29_dimensions() -> None:
+def test_rollout_policy_state_extracts_each_arms_first_10_of_50_dimensions() -> None:
     raw_state = np.arange(2 * len(schema.STATE_FIELDS), dtype=np.float32)
 
     policy_state = policy_state_from_raw(raw_state, 2)

@@ -29,27 +29,27 @@ ssh -N -L 8765:127.0.0.1:8765 用户@机器人主机
 
 | 路线 | 数据／模型 | 回合和标注 | 控制与监控 |
 | --- | --- | --- | --- |
-| 单左臂 gamepad 采集 | 标准或 31D；原 RecordingSession | 标准成功保存／丢弃；31D 成功或失败保存；Critical | Franky；Normal/Fast、实际倍率与过渡 |
-| 单左臂 GELLO 采集 | 原 DirectLeRobotRecorder | 成功保存／丢弃 | ROS；GELLO / fine_gamepad / returning_to_gello |
-| 双臂 gamepad 采集 | 原 ROS RolloutCollector demonstration | 成功保存／丢弃；Critical、配置中的阶段 | ROS；固定档位，不伪造 Fast |
-| 双臂 GELLO 采集 | 原 DualLeRobotRecorder | 成功保存／丢弃 | ROS；每臂交接状态、固定档位 |
+| 单左臂 gamepad 采集 | 完整 50D；RecordingSession | 成功或失败保存／丢弃；Critical | Franky；Normal/Fast、实际倍率与过渡 |
+| 单左臂 GELLO 采集 | 完整 50D；DirectLeRobotRecorder | 成功保存／丢弃 | ROS；GELLO / fine_gamepad / returning_to_gello |
+| 双臂 gamepad 采集 | 完整 100D；ROS RolloutCollector demonstration | 成功保存／丢弃；Critical、配置中的阶段 | ROS；固定档位，不伪造 Fast |
+| 双臂 GELLO 采集 | 完整 100D；DualLeRobotRecorder | 成功保存／丢弃 | ROS；每臂交接状态、固定档位 |
 | 单左臂部署 | PI0.5 SFT 或兼容 RLT AC checkpoint | 原部署回合记录；成功／失败／丢弃 | 原 Franky RTC；gamepad 接管 |
 | 双臂部署 | 一套联合 20D 策略 | 原部署回合记录；成功／失败／丢弃 | 原 ROS 时序；gamepad 接管，无新增 RTC |
 
 所有路线都有待命、启用、软件暂停、保存／丢弃和停止。故障恢复仅在后端提供对应能力时开放；ROS gamepad 的 fault latch 需结束当前会话后排查并重启。GELLO 恢复只清除已排查的本地故障锁，不自动启用运动。没有单右臂模式。
 
-按钮可见不代表当前状态可执行；命令在设备事件循环中校验，拒绝原因显示在操作区。标准 gamepad 和 GELLO 不支持失败标签；面板禁用相应按钮。阶段标注使用双臂 gamepad YAML 的 `dataset.subtasks`，没有配置时不新增标签。
+按钮可见不代表当前状态可执行；命令在设备事件循环中校验，拒绝原因显示在操作区。双臂 gamepad 和 GELLO 采集不支持失败标签；面板禁用相应按钮。阶段标注使用双臂 gamepad YAML 的 `dataset.subtasks`，没有配置时不新增标签。
 
 ## 工作配置
 
-会话选择、日志、socket、临时硬件配置放在 `runtime/web/<session_id>/`，active manifest 和独占锁放在 `runtime/web/`。这些文件不进 Git；日志不自动清理。数据集输出目录自动预填相对路径，随单双臂、输入源和采集格式切换；手动编辑后保留自定义值，“使用推荐路径”可恢复自动跟随。相对路径以 `--root` / `VLA_ROOT` / 启动当前目录为基准（页面会显示）；检查配置可查看最终绝对路径。已有非空目录必须选择续采。分层和命名见 [数据集目录说明](../datasets/README.md)。不要删除活动会话目录。
+会话选择、日志、socket、临时硬件配置放在 `runtime/web/<session_id>/`，active manifest 和独占锁放在 `runtime/web/`。这些文件不进 Git；日志不自动清理。数据集输出目录自动预填相对路径，随单双臂和输入源切换，统一采用 `_full` 后缀；手动编辑后保留自定义值，“使用推荐路径”可恢复自动跟随。相对路径以 `--root` / `VLA_ROOT` / 启动当前目录为基准（页面会显示）；检查配置可查看最终绝对路径。已有非空目录必须选择续采。分层和命名见 [数据集目录说明](../datasets/README.md)。不要删除活动会话目录。
 
 **单臂 gamepad 采集**：复制对应 YAML 到本地运行目录，修改 IP、夹爪串口、相机序列号、工作空间与运动限值。在面板的“采集／部署 YAML”中填入绝对路径。
 
 ```bash
 mkdir -p runtime/web/config
 cp src/vla/datacollection/start_teleop/configs/single_left_gamepad_record.yaml runtime/web/config/record.yaml
-# 31D 使用同目录 single_left_gamepad_31d.yaml
+# 所有入口统一记录完整状态，不再选择 29D/31D
 ```
 
 **ROS 路线**：先按 README 构建 `ros_ws` 并安装 `ros_ws/python_deps`。面板只接受 `VLA_ROOT/ros_ws`；不读取其他 overlay 或 Conda ROS 包。提供本地 JSON，例如 `runtime/web/config/hardware.json`：
@@ -92,7 +92,7 @@ GELLO 录制使用原 recorder 的数据 schema；面板中的“采集／部署
 
 右上角可切换浅色／深色模式，默认深色。选择保存在当前浏览器，多标签页同步；背景、控件和曲线同步换色，图表暂停和当前显示范围保持不变。
 
-相机输入统一采用等比例缩放后居中补黑边：例如 640×480 → 224×168，再上下各补 28 像素到 224×224。该处理覆盖单／双臂 GELLO、gamepad（含 31D）采集以及 Franky／ROS 部署，预览与录制／推理使用同一处理后的缓存，保留完整视野。缩小仍会降低细节分辨率；已有裁剪数据不能恢复被裁掉的区域。新采集建议使用独立数据目录，使用旧裁剪数据训练的模型需重新验证输入变化后的效果。
+相机输入统一采用等比例缩放后居中补黑边：例如 640×480 → 224×168，再上下各补 28 像素到 224×224。该处理覆盖单／双臂 GELLO、gamepad（含旧 `_31d` 入口）采集以及 Franky／ROS 部署，预览与录制／推理使用同一处理后的缓存，保留完整视野。缩小仍会降低细节分辨率；已有裁剪数据不能恢复被裁掉的区域。新采集建议使用独立数据目录，使用旧裁剪数据训练的模型需重新验证输入变化后的效果。
 
 相机只读设备拥有者缓存；无订阅者时不编码。每个相机只保留最新 JPEG，最大 640×480、不放大小图、最高约 10 FPS。遥测后台最高 20 Hz，WebSocket 约 10 Hz，缓冲最多 6000 个采样；慢客户端不积压旧显示数据。限制为最多 4 个 WebSocket 和 12 路相机订阅。
 

@@ -2,7 +2,7 @@ version: 1
 backend: franky
 
 dataset:
-  root: datasets/raw/rollout_dataset_franky_31d
+  root: datasets/raw/rollout_dataset_franky_full
   task: Place the white lid firmly onto the jig.
   fps: 30
   image_size: [224, 224]
@@ -47,10 +47,10 @@ cameras:
     serial: "346222073620"
 
 force_observation:
-  format: 31d
+  format: full50
   source: Franky/libfranka RobotState
   fields:
-    - state_10d
+    - state_29d
     - tau_J
     - tau_ext_hat_filtered
     - dq

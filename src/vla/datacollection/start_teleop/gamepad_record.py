@@ -75,11 +75,11 @@ class RecordingSession:
             self.last_snapshot = snapshot
             self.started_at = snapshot.observed_at_ns / 1e9
             self.next_sample = self.started_at + 1 / self.recording.fps
-            self.report(f"RECORDING episode={self.worker.index}: n=start, y=success/save, x=discard; RB=critical ON/OFF")
+            self.report(f"RECORDING episode={self.worker.index}: n=start, y=success/save, f=failure/save, x=discard; RB=critical ON/OFF")
         except Exception as error:
             self.controller.pause(f"recording start failed: {error}")
 
-    def finish(self, success=False, reason="discard requested"):
+    def finish(self, success=False, reason="discard requested", *, save_failure=False):
         worker = self.worker
         if worker is None:
             self.controller.pause(reason)
@@ -93,10 +93,11 @@ class RecordingSession:
             self.controller.pause("success requested" if success else reason)
         if self.controller.mode == "fault":
             success = False
+            save_failure = False
             reason = self.controller.reason
-        if success:
+        if success or save_failure:
             try:
-                worker.put("finish", None)
+                worker.put("finish", {"success": bool(success), "reason": str(reason)})
                 self.report("SAVING: motion disabled while videos/data are finalized")
             except Exception as error:
                 self.storage_fault = True
@@ -117,7 +118,8 @@ class RecordingSession:
             self.storage_fault = True
             self.report(f"RECORDING FAULT: {worker.error}; diagnostic files: {worker.attempt}; restart with --resume")
         elif worker.saved_index is not None:
-            self.report(f"Saved episode={worker.saved_index} frames={worker.frames} critical+Human={worker.critical_frames} success")
+            outcome = "success" if worker.success else "failure"
+            self.report(f"Saved episode={worker.saved_index} frames={worker.frames} critical+Human={worker.critical_frames} {outcome}")
             if not worker.critical_frames:
                 self.report("No critical frames: saved as an SFT demonstration with phase=0")
         self.worker = self.store.worker = None
@@ -180,6 +182,9 @@ class RecordingSession:
         elif key == "y":
             if self.worker is not None:
                 self.finish(True)
+        elif key == "f":
+            if self.worker is not None:
+                self.finish(False, "operator marked failure", save_failure=True)
         elif key in ("x", "d"):
             self.finish(False, "operator discarded episode" if key == "x" else "operator paused")
         elif key == "r":
@@ -222,7 +227,7 @@ def run(control, recording, root, task, resume, *, preview=True):
                     robot.connect()
                     session = RecordingSession(control, recording, robot, receiver, store, report=reporter)
                     viewer = CameraPreview(runtime, robot.get_camera_preview_snapshot, enabled=preview, report=reporter)
-                    print("STANDBY: s=enable, n=record, y=success/save, x=discard, d=pause, r=recover, c/Esc/Ctrl+C=exit; RB=critical")
+                    print("STANDBY: s=enable, n=record, y=success/save, f=failure/save, x=discard, d=pause, r=recover, c/Esc/Ctrl+C=exit; RB=critical")
                     try:
                         viewer.start()
                         session.preview = viewer

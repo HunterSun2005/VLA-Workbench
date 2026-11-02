@@ -42,7 +42,7 @@ def recording_contract(config):
     for key in ("dataset_root", "socket_path", "joy_socket_path", "policy_timeout_s"):
         settings.pop(key)
     return json.loads(json.dumps({
-        "version": 1, "collection_kind": "human_demonstration", "source": "demonstration",
+        "version": 1, "raw_state_format": "full50_per_arm", "collection_kind": "human_demonstration", "source": "demonstration",
         "action_encoding": ACTION_ENCODING, "settings": settings,
         "state_gripper_unit": "metres", "action_gripper_unit": "open_fraction",
         "recording_clock": "base_camera_host_receive",
@@ -98,7 +98,7 @@ def main():
         if args.resume:
             validate_resume_contract(config)
     if not args.execute:
-        print("Dual configuration passed: left/right, 58D raw state, 20D action, 3 RGB cameras; "
+        print("Dual configuration passed: left/right, 100D raw state, 20D action, 3 RGB cameras; "
               "no hardware connection, policy server or dataset initialization")
         return
     if not sys.stdin.isatty():

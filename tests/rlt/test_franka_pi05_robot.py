@@ -138,6 +138,7 @@ class FakeArm:
             O_T_EE=np.eye(4),
             q=np.array([0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0]),
             O_F_ext_hat_K=np.zeros(6),
+            tau_J=np.arange(7), tau_ext_hat_filtered=np.arange(7)/2, dq=np.arange(7)/100,
         )
         jacobian = np.zeros((6, 7))
         jacobian[:6, :6] = np.eye(6)
@@ -1014,6 +1015,11 @@ def test_robot_rollout_snapshot_and_human_mode_use_native_velocity_motions(tmp_p
     assert snapshot.policy_state.shape == (10,)
     np.testing.assert_allclose(snapshot.base_wrench, np.arange(6))
     np.testing.assert_allclose(snapshot.joint_positions, arm.state.q)
+    np.testing.assert_allclose(snapshot.joint_torques, arm.state.tau_J)
+    np.testing.assert_allclose(snapshot.external_joint_torques, arm.state.tau_ext_hat_filtered)
+    np.testing.assert_allclose(snapshot.joint_velocities, arm.state.dq)
+    arm.state.tau_J[:] = -1
+    np.testing.assert_allclose(snapshot.joint_torques, np.arange(7))  # Owned copy.
 
     robot.begin_human_control()
     sent = robot.send_human_command(

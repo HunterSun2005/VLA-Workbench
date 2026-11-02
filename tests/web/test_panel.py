@@ -262,16 +262,30 @@ def test_dataset_path_preflight_and_resume_use_workspace(tmp_path, monkeypatch, 
     value={'relative':'datasets/raw/custom', 'absolute':str(tmp_path/'external'), 'default':''}[path_kind]
     cfg=SessionConfig(task='test',dataset_root=value)
     expected=(tmp_path/'external' if path_kind=='absolute' else
-              workspace/('datasets/raw/custom' if path_kind=='relative' else 'datasets/raw/franka_single_left_gamepad_standard'))
+              workspace/('datasets/raw/custom' if path_kind=='relative' else 'datasets/raw/franka_single_left_gamepad_full'))
     result=preflight(cfg,root=workspace)
     assert result['ok'],result
     assert result['dataset_root']==str(expected)
     assert not expected.exists()  # A check never creates a dataset.
     expected.mkdir(parents=True)
     (expected/'meta').mkdir()
-    (expected/'meta/info.json').write_text('{}')
+    from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
+    (expected/'meta/info.json').write_text(json.dumps({'features': {
+        'observation.state': {'shape': [50], 'names': STATE_FIELDS}}}))
     result=preflight(cfg,root=workspace)
     assert not result['ok'] and any('非空' in error for error in result['errors'])
     assert preflight(replace(cfg,resume=True),root=workspace)['ok']
     (expected/'meta/info.json').unlink()
     assert not preflight(replace(cfg,resume=True),root=workspace)['ok']
+
+
+@pytest.mark.parametrize('arms,width', [('single_left',29),('single_left',31),('dual',58)])
+def test_preflight_refuses_legacy_raw_format(tmp_path, arms, width):
+    cfg = SessionConfig(task='test', arms=arms, resume=True)
+    target = cfg.dataset_path(tmp_path)
+    (target/'meta').mkdir(parents=True)
+    (target/'meta/info.json').write_text(json.dumps({'features': {
+        'observation.state': {'shape': [width], 'names': ['old'] * width}}}))
+    result = preflight(cfg, root=tmp_path)
+    assert not result['ok']
+    assert any('旧 29D/31D/58D' in error for error in result['errors'])

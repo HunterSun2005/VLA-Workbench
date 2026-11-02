@@ -141,7 +141,7 @@ def arm_state_vector(
     position: np.ndarray | None = None,
     rotation: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Build one arm's 29D absolute measured state."""
+    """Build one arm's 50D absolute measured state."""
     return single_schema.state_vector(
         robot_state_message,
         gripper_message,

@@ -149,9 +149,10 @@ def state_vector(snapshot, previous):
         snapshot.pose[:3, 3], snapshot.pose[:3, :3], snapshot.observed_at_ns,
     )
     result = np.concatenate((snapshot.pose[:3, 3], schema.matrix_to_rot6d(snapshot.pose[:3, :3]),
-                             [snapshot.gripper_width], snapshot.base_wrench, velocity, snapshot.joint_positions))
-    if result.shape != (29,) or not np.isfinite(result).all():
-        raise ValueError("invalid 29D demonstration state")
+                             [snapshot.gripper_width], snapshot.base_wrench, velocity, snapshot.joint_positions,
+                             snapshot.joint_torques, snapshot.external_joint_torques, snapshot.joint_velocities))
+    if result.shape != (len(schema.STATE_FIELDS),) or not np.isfinite(result).all():
+        raise ValueError("invalid 50D demonstration state")
     return result.astype(np.float32)
 
 
@@ -299,6 +300,8 @@ class EpisodeWorker:
         self.events = queue.Queue(maxsize=self.config.queue_size)
         self.cancel, self.done, self.finishing = threading.Event(), threading.Event(), threading.Event()
         self.cancel_details = None
+        self.success = True
+        self.outcome_reason = ""
         self.error, self.saved_index = None, None
         self.frames = self.critical_frames = 0
         self.videos = {}
@@ -346,6 +349,8 @@ class EpisodeWorker:
                     except queue.Empty:
                         continue
                     if kind == "finish":
+                        self.success = bool(value.get("success", True)) if value else True
+                        self.outcome_reason = str(value.get("reason", "")) if value else ""
                         break
                     if kind == "command":
                         self.assembler.accept_command(value)
@@ -438,7 +443,8 @@ class EpisodeWorker:
         self.saved_index = writer.save_episode(
             np.asarray(states), np.asarray(actions), {key: value.as_dict() for key, value in stats.items()},
             frame_features={key: np.asarray(value).reshape(-1, 1) for key, value in extras.items()},
-            extra_episode_metadata={"episode_success": "success", "collection_source": "human_demonstration",
+            extra_episode_metadata={"episode_success": "success" if self.success else "failure",
+                                    "failure_reason": self.outcome_reason, "collection_source": "human_demonstration",
                                     "critical_intervals": json.dumps(intervals), "critical_human_frames": len(active),
                                     "command_trace": str(trace_path.relative_to(self.store.root))},
         )

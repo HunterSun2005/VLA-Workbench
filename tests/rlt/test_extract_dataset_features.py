@@ -23,11 +23,13 @@ def _image_stats(count: int) -> dict[str, np.ndarray]:
     return stats
 
 
-def _make_dataset(root: Path, *, episodes: int = 2, length: int = 55) -> np.ndarray:
+def _make_dataset(root: Path, *, episodes: int = 2, length: int = 55, state_fields=None) -> np.ndarray:
     if shutil.which("ffmpeg") is None:
         pytest.skip("ffmpeg is required for the video compatibility fixture")
     camera = "observation.images.base"
-    writer = V30DatasetWriter(root, 30, "synthetic absolute task", (camera,), 16, 16)
+    from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
+    state_fields = STATE_FIELDS if state_fields is None else state_fields
+    writer = V30DatasetWriter(root, 30, "synthetic absolute task", (camera,), 16, 16, state_fields=state_fields)
     all_states = []
     for episode_index in range(episodes):
         video = writer.video_path(episode_index, camera)
@@ -40,7 +42,7 @@ def _make_dataset(root: Path, *, episodes: int = 2, length: int = 55) -> np.ndar
             ],
             check=True,
         )
-        states = np.arange(length * 29, dtype=np.float32).reshape(length, 29) / 100 + episode_index
+        states = np.arange(length * len(state_fields), dtype=np.float32).reshape(length, len(state_fields)) / 100 + episode_index
         actions = states[:, :10].copy()
         actions[:, :9] += 0.2
         actions[:, 9] = np.linspace(0.0, 1.0, length)
@@ -207,5 +209,47 @@ def test_extractor_refuses_existing_output_and_bad_source_schema(tmp_path: Path)
     info = json.loads(info_path.read_text())
     info["features"]["observation.state"]["names"][0] = "wrong"
     info_path.write_text(json.dumps(info))
-    with pytest.raises(ValueError, match="does not exactly match"):
+    with pytest.raises(ValueError, match="missing selected fields"):
         extraction.extract_dataset_features(source, config, tmp_path / "new-output")
+
+
+@pytest.mark.parametrize("width", [29, 31, 50])
+def test_named_extraction_accepts_legacy_and_full_sources(tmp_path, width):
+    from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS, LEGACY_STATE_FIELDS
+    from vla.datacollection.franka_robotiq_single_left.schema_31d import STATE_31D_FIELDS
+    fields = {29: LEGACY_STATE_FIELDS, 31: STATE_31D_FIELDS, 50: STATE_FIELDS}[width]
+    source = tmp_path / "source"
+    states = _make_dataset(source, episodes=1, state_fields=fields)
+    output = extraction.extract_dataset_features(source,
+        extraction.FEATURE_CONFIG_DIR / "franka_single_left_tcp_rot6d_10d.yaml", tmp_path / "train", validate=False)
+    frame = pd.read_parquet(next((output / "data").glob("*/*.parquet")))
+    np.testing.assert_array_equal(np.stack(frame["observation.state"]), states[:, :10])
+
+
+@pytest.mark.parametrize("width", [29, 31])
+def test_full_dataset_extracts_original_training_subsets(tmp_path, width):
+    from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS, LEGACY_STATE_FIELDS
+    from vla.datacollection.franka_robotiq_single_left.schema_31d import STATE_31D_FIELDS
+    expected = LEGACY_STATE_FIELDS if width == 29 else list(STATE_31D_FIELDS)
+    source = tmp_path / "source"
+    states = _make_dataset(source, episodes=1)
+    output = extraction.extract_dataset_features(source,
+        extraction.FEATURE_CONFIG_DIR / f"franka_single_left_state_{width}d.yaml", tmp_path / "train", validate=True)
+    info = json.loads((output / "meta/info.json").read_text())
+    assert info['features']['observation.state']['names'] == expected
+    frame = pd.read_parquet(next((output / "data").glob("*/*.parquet")))
+    np.testing.assert_array_equal(np.stack(frame['observation.state']), states[:, [STATE_FIELDS.index(n) for n in expected]])
+
+
+def test_dual_full_named_selection_and_duplicate_rejection():
+    from vla.datacollection.franka_robotiq_dual.schema import STATE_FIELDS
+    config = extraction.load_feature_config(extraction.FEATURE_CONFIG_DIR / "franka_dual_tcp_rot6d_20d.yaml")
+    # Source field order is metadata-defined, including when an offline source reorders columns.
+    names = list(reversed(STATE_FIELDS))
+    info = {'codebase_version': 'v3.0', 'features': {
+        'observation.state': {'shape': [100], 'names': names}, 'action': {'shape': [20]}}}
+    indices = extraction._validate_source(info, config)
+    assert [names[i] for i in indices] == list(STATE_FIELDS[:10] + STATE_FIELDS[50:60])
+    names[-1] = names[0]
+    with pytest.raises(ValueError, match="unique"):
+        extraction._validate_source(info, config)

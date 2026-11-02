@@ -11,6 +11,9 @@ state:
     linear_velocity_xyz: true
     angular_velocity_xyz: true
     joint_positions: false
+    joint_torques: false
+    external_joint_torques: false
+    joint_velocities: false
   component_features:
     tcp_position_xyz: [tcp_position_x, tcp_position_y, tcp_position_z]
     tcp_rot6d:
@@ -39,6 +42,30 @@ state:
       - joint_position_5
       - joint_position_6
       - joint_position_7
+    joint_torques:
+      - joint_torque_1
+      - joint_torque_2
+      - joint_torque_3
+      - joint_torque_4
+      - joint_torque_5
+      - joint_torque_6
+      - joint_torque_7
+    external_joint_torques:
+      - external_joint_torque_1
+      - external_joint_torque_2
+      - external_joint_torque_3
+      - external_joint_torque_4
+      - external_joint_torque_5
+      - external_joint_torque_6
+      - external_joint_torque_7
+    joint_velocities:
+      - joint_velocity_1
+      - joint_velocity_2
+      - joint_velocity_3
+      - joint_velocity_4
+      - joint_velocity_5
+      - joint_velocity_6
+      - joint_velocity_7
   output_order:
     - tcp_position_xyz
     - tcp_rot6d
@@ -48,6 +75,9 @@ state:
     - linear_velocity_xyz
     - angular_velocity_xyz
     - joint_positions
+    - joint_torques
+    - external_joint_torques
+    - joint_velocities
 
 action:
   expected_dim: 10

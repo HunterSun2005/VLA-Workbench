@@ -125,6 +125,9 @@ def rollout_state(
             snapshot.base_wrench,
             velocity,
             snapshot.joint_positions,
+            snapshot.joint_torques,
+            snapshot.external_joint_torques,
+            snapshot.joint_velocities,
         )
     ).astype(np.float32)
     if value.shape != (len(schema.STATE_FIELDS),) or not np.isfinite(value).all():

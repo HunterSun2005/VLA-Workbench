@@ -1,8 +1,6 @@
-"""Independent 31D Franka collection schema.
+"""Legacy 31D field layout for offline data inspection and extraction.
 
-This schema does not modify the existing 10D or 29D collection paths. It
-extends the 10D policy state with measured torque, filtered external torque,
-and joint velocity read from the Franky/libfranka RobotState object.
+Live collection uses schema.STATE_FIELDS (50D per arm).
 """
 
 from __future__ import annotations

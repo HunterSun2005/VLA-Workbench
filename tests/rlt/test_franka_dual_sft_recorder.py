@@ -32,7 +32,9 @@ def _robot_state(measured, desired):
         measured_joint_state=SimpleNamespace(
             name=[f"fr3_joint{index}" for index in range(1, 8)],
             position=[index / 10 for index in range(1, 8)],
+            effort=list(range(1, 8)), velocity=[index / 100 for index in range(1, 8)],
         ),
+        tau_ext_hat_filtered=SimpleNamespace(name=[], effort=[index / 2 for index in range(1, 8)]),
         o_t_ee=_pose(measured),
         o_t_ee_d=_pose(desired),
         f_t_ee=_pose([0.0, 0.0, 0.0]),
@@ -87,20 +89,20 @@ def test_dual_schema_is_left_then_right_and_uses_absolute_poses() -> None:
     state = schema.dual_state_vector(states)
     action = schema.dual_action_vector(actions)
 
-    assert state.shape == (58,)
+    assert state.shape == (100,)
     assert action.shape == (20,)
     np.testing.assert_array_equal(state[:3], [1.0, 2.0, 3.0])
-    np.testing.assert_array_equal(state[29:32], [7.0, 8.0, 9.0])
+    np.testing.assert_array_equal(state[50:53], [7.0, 8.0, 9.0])
     np.testing.assert_allclose(state[22:29], np.arange(1, 8) / 10)
-    np.testing.assert_allclose(state[51:58], np.arange(1, 8) / 10)
+    np.testing.assert_allclose(state[72:79], np.arange(1, 8) / 10)
     np.testing.assert_array_equal(action[:3], [4.0, 5.0, 6.0])
     np.testing.assert_array_equal(action[10:13], [10.0, 11.0, 12.0])
     assert state[9] == pytest.approx(0.085)
-    assert state[38] == pytest.approx(0.0)
+    assert state[59] == pytest.approx(0.0)
     assert action[9] == pytest.approx(0.2)
     assert action[19] == pytest.approx(0.8)
     assert schema.STATE_FIELDS[0] == "left_tcp_position_x"
-    assert schema.STATE_FIELDS[29] == "right_tcp_position_x"
+    assert schema.STATE_FIELDS[50] == "right_tcp_position_x"
     assert schema.ACTION_FIELDS[0] == "left_desired_tcp_position_x"
     assert schema.ACTION_FIELDS[10] == "right_desired_tcp_position_x"
     assert [arm.command_joint_topic for arm in schema.ARMS] == [
@@ -127,7 +129,7 @@ def test_dual_episode_validation_rejects_only_fully_stationary_tcp_actions() -> 
     assert reports["right"]["translation_span_m"] == pytest.approx(0.0)
 
 
-def test_dual_writer_emits_58d_20d_schema_and_three_video_indices(tmp_path: Path) -> None:
+def test_dual_writer_emits_100d_20d_schema_and_three_video_indices(tmp_path: Path) -> None:
     writer = V30DatasetWriter(
         tmp_path,
         schema.FPS,
@@ -146,7 +148,7 @@ def test_dual_writer_emits_58d_20d_schema_and_three_video_indices(tmp_path: Path
         path.write_bytes(b"synthetic video placeholder")
     length = 4
     writer.save_episode(
-        np.zeros((length, 58), dtype=np.float32),
+        np.zeros((length, 100), dtype=np.float32),
         np.zeros((length, 20), dtype=np.float32),
         {key: _image_stats(length) for key in writer.camera_keys},
     )
@@ -154,7 +156,7 @@ def test_dual_writer_emits_58d_20d_schema_and_three_video_indices(tmp_path: Path
     info = json.loads((tmp_path / "meta/info.json").read_text())
     assert info["robot_type"] == "franka_robotiq_dual"
     assert info["arm_order"] == ["left", "right"]
-    assert info["features"]["observation.state"]["shape"] == [58]
+    assert info["features"]["observation.state"]["shape"] == [100]
     assert info["features"]["action"]["shape"] == [20]
     assert list(info["features"])[-3:] == list(schema.CAMERA_FEATURES)
     episodes = pd.read_parquet(tmp_path / "meta/episodes/chunk-000/file-000.parquet")
@@ -173,7 +175,7 @@ def test_dual_writer_keeps_one_prompt_per_episode_and_validates_task_indices(tmp
             path = writer.video_path(episode, key)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"synthetic video placeholder")
-        writer.save_episode(np.zeros((4, 58), dtype=np.float32),
+        writer.save_episode(np.zeros((4, 100), dtype=np.float32),
                             np.zeros((4, 20), dtype=np.float32), stats, task=task)
     tasks = pd.read_parquet(tmp_path / "meta/tasks.parquet")
     episodes = pd.read_parquet(tmp_path / "meta/episodes/chunk-000/file-000.parquet")
