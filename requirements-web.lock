@@ -3,3 +3,8 @@ fastapi==0.115.12
 starlette==0.46.2
 uvicorn==0.34.2
 websockets==17.3
+
+# Offline dataset processing and video preview (Python 3.12).
+pandas==2.3.3
+pyarrow==26.0.0
+av==15.1.0

@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VLA · 操作面板</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/vendor/uPlot.min.css"><link rel="stylesheet" href="/static/panel.css"></head>
 <body>
-<header><div class="brand"><span class="mark">V</span><div><strong>VLA</strong><small>机器人操作面板</small></div></div><nav><button id="collectTab" class="selected">数据采集</button><button id="deployTab">推理部署</button></nav><div class="connection"><button type="button" id="themeToggle" aria-label="浅色模式" aria-pressed="false">切换浅色</button><span id="dot" class="dot"></span><span id="connection">连接中</span><span id="demo" class="badge" hidden>模拟设备</span></div></header>
-<main><aside>
+<header><div class="brand"><span class="mark">V</span><div><strong>VLA</strong><small>机器人操作面板</small></div></div><nav><button id="collectTab" class="selected">数据采集</button><button id="processingTab">数据处理</button><button id="deployTab">推理部署</button></nav><div class="connection"><button type="button" id="themeToggle" aria-label="浅色模式" aria-pressed="false">切换浅色</button><span id="dot" class="dot"></span><span id="connection">连接中</span><span id="demo" class="badge" hidden>模拟设备</span></div></header>
+<main id="livePanel"><aside>
 <section class="card setup"><div class="section-title"><h2>会话配置</h2><span class="muted">启动前设置</span></div>
 <details id="sessionConfig" open><summary>配置参数</summary><form id="setup">
 <label>机械臂<select name="arms"><option value="single_left">单左臂</option><option value="dual">双臂 · 左 + 右</option></select></label>
@@ -25,5 +25,36 @@
 <section><div class="section-title"><h2>实时相机</h2><span class="muted">共享缓存 · 最新帧</span></div><div id="cameras" class="cameras"></div></section>
 <section class="card charts"><div class="section-title"><div><h2>机械臂遥测</h2><p class="muted">实测数据 · 选择需要关注的维度</p></div><div class="row compact"><select id="window"><option value="10">近 10 秒</option><option value="60" selected>近 60 秒</option><option value="300">近 300 秒</option></select><button id="freeze">暂停图表</button></div></div><div id="armStatus" class="arm-status"></div><details id="signalDetails"><summary>显示维度 <span class="muted">位置 / 姿态 / 关节 / 速度 / 力矩 / 夹爪</span></summary><div class="row compact"><button id="hideAll">全部隐藏</button><button id="defaults">恢复默认</button></div><div id="signals"></div></details><div id="plots"></div><p id="emptyPlots" class="empty">启用会话后显示实时数据。默认只显示 TCP XYZ 与夹爪。</p></section>
 <details class="card logs"><summary>最近命令与会话事件</summary><pre id="events">等待会话</pre></details>
-</article></main><footer>VLA · 本地操作面板 <span>监控与控制进程隔离 · 不自动恢复运动</span></footer>
-<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script></body></html>
+</article></main><main id="processingPanel" hidden>
+<aside>
+<section class="card"><h2>数据处理</h2><p class="muted">完整回合筛选 · 全局状态字段提取</p>
+<label class="processing-label">源数据集<input id="processingSource" list="processingDatasets" placeholder="datasets/raw/…"><datalist id="processingDatasets"></datalist></label>
+<div class="row"><button id="processingOpen" class="primary">打开 / 重新加载</button><button id="processingRefresh">刷新列表</button></div>
+<p id="processingSummary" class="muted">请选择已完成的数据集；原始数据保持不变。</p></section>
+<section class="card"><h2>导出状态字段 · 全局</h2><p class="muted">统一应用于所有保留回合；动作、图像和标注保留。</p>
+<label class="processing-label">快捷选择<select id="processingPreset"><option>先打开数据集</option></select></label>
+<div class="row"><button id="processingAllFields">全选</button><button id="processingNoFields">清空</button></div>
+<details id="processingFieldDetails"><summary>按手臂与物理量选择 <span id="processingDimension"></span></summary><div id="processingFields"></div></details>
+<label class="processing-label">输出目录<input id="processingOutput" placeholder="datasets/sft/…"></label><small id="processingBase" class="muted"></small>
+<div class="row"><button id="processingDefault">使用推荐路径</button><button id="processingExport" class="primary" disabled>开始转换</button></div>
+<p id="processingSelection" class="muted"></p><p id="processingSaved" class="muted"></p></section>
+<section class="card"><h2>后台转换任务</h2><div id="processingJob" class="muted">尚无任务</div><progress id="processingProgress" max="1" value="0"></progress><div class="row"><button id="processingCancel" disabled>取消转换</button><button id="processingResult" hidden>打开结果</button></div></section>
+</aside>
+<article>
+<div id="processingHardware" class="card" hidden></div>
+<div id="processingError" class="error" hidden></div>
+<section class="card"><div class="section-title"><h2>回合列表</h2><span class="muted">勾选「剔除」仅影响新输出</span></div>
+<div class="row compact"><button id="processingKeepAll">保留全部</button><button id="processingExcludeAll">剔除全部</button></div>
+<div class="processing-table-scroll"><table class="processing-table"><thead><tr><th>剔除</th><th>Episode</th><th>任务 / 结果</th><th>帧数 / 时长</th><th></th></tr></thead><tbody id="processingEpisodes"></tbody></table></div>
+<div class="row compact"><button id="processingPrevPage">上一页</button><span id="processingPage">—</span><button id="processingNextPage">下一页</button></div></section>
+<section class="card"><div class="section-title"><h2>离线帧预览</h2><strong id="processingFrameTitle">选择一个回合</strong></div>
+<div class="row compact processing-transport"><button id="processingPrevFrame">上一帧</button><button id="processingPlay">播放</button><button id="processingNextFrame">下一帧</button><label>帧 <input id="processingFrameNumber" type="number" min="0" value="0"></label><span id="processingTime" class="muted"></span></div>
+<input id="processingTimeline" type="range" min="0" max="0" value="0" aria-label="离线帧时间轴">
+<div id="processingImages" class="cameras"></div><p class="muted">离线图像与数值对应同一帧；播放预览最高 10 Hz，可暂停逐帧检查。</p></section>
+<section class="card"><div class="section-title"><h2>当前帧数值</h2><label><input id="processingShowAll" type="checkbox" checked> 显示全部状态（不改变导出选择）</label></div>
+<div class="processing-table-scroll values"><table class="processing-table"><thead><tr><th>状态字段</th><th>数值</th><th>单位</th><th>导出</th></tr></thead><tbody id="processingValues"></tbody></table></div>
+<details open><summary>动作与帧标注</summary><div class="processing-table-scroll"><table class="processing-table"><tbody id="processingActions"></tbody></table></div></details></section>
+</article>
+</main>
+<footer>VLA · 本地操作面板 <span>监控与控制进程隔离 · 不自动恢复运动</span></footer>
+<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/processing.js"></script></body></html>

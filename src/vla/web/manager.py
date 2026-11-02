@@ -46,6 +46,9 @@ class Manager:
             raise ValueError('; '.join(result['errors']))
         with self.lock, (self.directory/'manager.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
+            if not self.demo:
+                from .processing_service import reject_processing_job
+                reject_processing_job(self.root)
             active = self.active()
             if active and active['alive']:
                 raise RuntimeError('a session is already running')

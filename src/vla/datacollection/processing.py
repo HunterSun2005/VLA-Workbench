@@ -318,8 +318,10 @@ def export_selection(source, output, chosen, *, progress=None, cancelled=None, v
             tasks.to_parquet(staging/'meta/tasks.parquet')
             info.update(total_episodes=len(episodes), total_frames=total, total_tasks=len(tasks),
                         splits={'train':f'0:{len(episodes)}'}, data_path=DATA_PATH, video_path=VIDEO_PATH)
-            source_contract = {k:info.pop(k) for k in ('recording_contract','run_uuid','dataset_uuid','online_run','online_contract',
-                               'online_rlt','online_replay_root','online_warmup_steps') if k in info}
+            previous_processing = info.get('processing', {})
+            source_contract = deepcopy(previous_processing.get('source_contract', {}))
+            source_contract.update({k:info.pop(k) for k in ('recording_contract','run_uuid','dataset_uuid','online_run','online_contract',
+                                   'online_rlt','online_replay_root','online_warmup_steps') if k in info})
             info.setdefault('evo_rlt', {}).update(action_stats='absolute', actions_stored_as='absolute', action_chunk_size=50)
             info['processing'] = {'version':1, 'source_root':str(source), 'source_fingerprint':index.fingerprint,
                 'state_fields':names, 'kept_episodes':episodes,

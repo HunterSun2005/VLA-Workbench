@@ -95,6 +95,11 @@ def test_browse_and_export_keep_episode_semantics_and_source(tmp_path,width):
     assert stats['action']['count']==[14] and stats['observation.state']['count']==[16]
     assert stats[index.cameras[0]]['mean'][0][0][0]==pytest.approx(2.)
     assert before==hashes(source)
+    if width == 50:
+        # Reprocessing a derived result must retain the original demonstration contract.
+        again = export_selection(output, tmp_path/'again', choose(result, episodes=[0]))
+        assert DatasetIndex(again).info['processing']['source_contract']==result.info['processing']['source_contract']
+
 
 
 def test_single_dimension_official_loader_and_cli_selection(tmp_path):

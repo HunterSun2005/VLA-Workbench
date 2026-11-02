@@ -41,3 +41,23 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 .plot .u-series:nth-child(7) .u-marker{border-color:var(--series-5)!important}
 .plot .u-series:nth-child(8) .u-marker{border-color:var(--series-6)!important}
 .plot .u-cursor-x,.plot .u-cursor-y{border-color:var(--axis)}
+
+/* Offline dataset workspace shares the theme; no live-camera overlays. */
+#processingPanel{grid-template-columns:340px minmax(0,1fr)}
+.processing-label{display:block;font-size:12px;color:var(--label);margin:12px 0}
+.processing-label input,.processing-label select{display:block;width:100%;margin-top:5px}
+#processingFields{max-height:420px;overflow:auto}#processingFields details{border-top:1px solid var(--line);padding-top:8px}
+#processingFields label{display:flex;gap:6px;align-items:center;font-size:11px;overflow-wrap:anywhere;margin:6px 0}
+.processing-table-scroll{overflow:auto}.processing-table-scroll.values{max-height:460px}
+.processing-table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}
+.processing-table td,.processing-table th{padding:9px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.processing-table th{color:var(--muted)}.processing-table tr.excluded{opacity:.55;background:var(--danger-bg)}
+.processing-transport{align-items:center;flex-wrap:wrap}.processing-transport input{width:90px}
+#processingTimeline,#processingProgress{width:100%;accent-color:var(--accent);margin:10px 0}
+#processingImages.loading{opacity:.3}#processingImages{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.offline-camera{border:1px solid var(--line);border-radius:8px;padding:8px;min-width:0;background:var(--plot)}
+.offline-camera strong{display:block;font-size:12px;margin-bottom:6px}.offline-camera img{width:100%;height:220px;object-fit:contain;background:#0b1016}
+.offline-camera p{color:var(--danger);font-size:12px;overflow-wrap:anywhere}#processingJob{white-space:pre-wrap;overflow-wrap:anywhere}
+#processingFrameTitle{font-size:12px}#processingHardware{color:var(--warn)}#processingPanel aside{display:flex}
+@media(max-width:1000px){#processingPanel{grid-template-columns:280px minmax(0,1fr)}}
+@media(max-width:720px){#processingPanel{display:flex}nav{flex-wrap:wrap}header{gap:10px}.processing-table td{padding:6px}}

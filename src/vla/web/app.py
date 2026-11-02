@@ -21,9 +21,12 @@ from .manager import Manager
 
 def create_app(root=None, *, demo=False):
     manager = Manager(root or os.environ.get('VLA_ROOT',Path.cwd()),demo=demo)
+    from .processing_service import ProcessingService
+    processing = ProcessingService(manager)
     token = secrets.token_urlsafe(32)
     app = FastAPI(docs_url=None,redoc_url=None)
     app.state.manager = manager
+    app.state.processing = processing
     app.state.token = token
     app.state.sockets = 0
     app.state.streams = 0
@@ -47,7 +50,8 @@ def create_app(root=None, *, demo=False):
             if not hmac.compare_digest(request.headers.get('x-vla-token',''),token):
                 return JSONResponse({'detail':'request token rejected'},status_code=403)
             length=request.headers.get('content-length')
-            if length and (not length.isdigit() or int(length)>32768):
+            limit = 524288 if request.url.path.startswith('/api/processing/') else 32768
+            if length and (not length.isdigit() or int(length)>limit):
                 return JSONResponse({'detail':'request too large'},status_code=413)
         response=await call_next(request)
         response.headers['X-Content-Type-Options']='nosniff'
@@ -65,6 +69,60 @@ def create_app(root=None, *, demo=False):
                 'defaults':{'model_python':os.environ.get('VLA_PYTHON',__import__('sys').executable)},
                 'camera_roles':['base','left_wrist','right_wrist'],
                 'workspace_root':str(manager.root),'dataset_defaults':dataset_defaults()}
+
+    async def processing_call(fn, *args):
+        try:
+            return await asyncio.to_thread(fn, *args)
+        except (ValueError, TypeError, KeyError, IndexError) as error:
+            raise HTTPException(422, str(error)) from error
+        except (RuntimeError, OSError) as error:
+            raise HTTPException(409, str(error)) from error
+
+    @app.get('/api/processing/datasets')
+    async def datasets():
+        return {'datasets': await processing_call(processing.available), 'last': processing.last()}
+
+    @app.post('/api/processing/open')
+    async def open_dataset(request: Request):
+        data = await request.json()
+        return await processing_call(processing.open, data.get('path') if isinstance(data, dict) else None)
+
+    @app.get('/api/processing/datasets/{dataset_id}')
+    async def dataset_summary(dataset_id: str):
+        return await processing_call(processing.summary, dataset_id)
+
+    @app.post('/api/processing/datasets/{dataset_id}/draft')
+    async def update_draft(dataset_id: str, request: Request):
+        return await processing_call(processing.update, dataset_id, await request.json())
+
+    @app.get('/api/processing/datasets/{dataset_id}/episodes')
+    async def episodes(dataset_id: str, offset: int = 0, limit: int = 25):
+        return await processing_call(processing.episodes, dataset_id, offset, limit)
+
+    @app.get('/api/processing/datasets/{dataset_id}/episodes/{episode}/frames/{frame}')
+    async def offline_frame(dataset_id: str, episode: int, frame: int):
+        return await processing_call(processing.frame, dataset_id, episode, frame)
+
+    @app.get('/api/processing/datasets/{dataset_id}/episodes/{episode}/frames/{frame}/image/{camera}')
+    async def offline_image(dataset_id: str, episode: int, frame: int, camera: str):
+        from fastapi.responses import Response
+        data = await processing_call(processing.jpeg, dataset_id, episode, frame, camera)
+        return Response(data, media_type='image/jpeg')
+
+    @app.get('/api/processing/job')
+    async def processing_job():
+        return await processing_call(processing.status)
+
+    @app.post('/api/processing/jobs')
+    async def start_processing(request: Request):
+        data = await request.json()
+        if not isinstance(data, dict) or set(data) != {'dataset_id', 'revision'}:
+            raise HTTPException(422, 'invalid processing request')
+        return await processing_call(processing.start, data['dataset_id'], data['revision'])
+
+    @app.post('/api/processing/jobs/{job_id}/cancel')
+    async def cancel_processing(job_id: str):
+        return await processing_call(processing.cancel, job_id)
 
     @app.post('/api/preflight')
     async def check(request:Request):
