@@ -7,7 +7,16 @@ __pycache__/
 build/
 dist/
 artifacts/
-datasets/
+# Keep only the dataset layout documentation and empty stage markers.
+/datasets/*
+!/datasets/README.md
+!/datasets/raw/
+!/datasets/sft/
+!/datasets/transitions/
+!/datasets/rollouts/
+!/datasets/online/
+/datasets/*/*
+!/datasets/*/.gitkeep
 checkpoints/
 models/
 outputs/

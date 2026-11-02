@@ -57,6 +57,16 @@ class SessionConfig:
             raise ValueError('SFT supports VLA only')
         return result
 
+    def default_dataset_root(self):
+        if self.workflow == 'collect':
+            return f'datasets/raw/franka_{self.arms}_{self.source}_{self.schema}'
+        return f'datasets/rollouts/franka_{self.arms}_{self.policy_kind}'
+
+    def dataset_path(self, root):
+        value = self.dataset_root if self.dataset_root.strip() else self.default_dataset_root()
+        path = Path(value).expanduser()
+        return (path if path.is_absolute() else Path(root) / path).resolve()
+
     @property
     def ros(self):
         return self.arms == 'dual' or self.source == 'gello'
@@ -84,22 +94,20 @@ class SessionConfig:
 
 def preflight(config, *, demo=False, root=None):
     checks, errors = [], []
+    root = Path(root or os.environ.get('VLA_ROOT', Path.cwd())).expanduser().resolve()
+    target = config.dataset_path(root)
     if demo:
         return {'ok': True, 'checks': ['模拟模式：不访问硬件、不写数据集'], 'errors': [],
-                'modes': config.modes(True), 'cameras': config.cameras}
-    root = Path(root or os.environ.get('VLA_ROOT', Path.cwd())).resolve()
+                'modes': config.modes(True), 'cameras': config.cameras, 'dataset_root': str(target)}
     for label, path, directory in [('配置', str(config.default_config()), False),
                                    ('模型 Python', config.model_python, False)]:
         p = Path(path).expanduser()
         (checks if p.is_file() else errors).append(f'{label}: {p}')
-    if not config.dataset_root or not Path(config.dataset_root).expanduser().is_absolute():
-        errors.append('数据集路径必须为绝对路径（部署回合也会记录）')
-    else:
-        target = Path(config.dataset_root).expanduser()
-        if config.resume and not (target / 'meta/info.json').is_file():
-            errors.append('续采需要有效的已有数据集')
-        if not config.resume and target.exists() and (not target.is_dir() or any(target.iterdir())):
-            errors.append('输出目录非空；请选择续采或新目录')
+    checks.append(f'数据集输出目录: {target}')
+    if config.resume and not (target / 'meta/info.json').is_file():
+        errors.append('续采需要有效的已有数据集')
+    if not config.resume and target.exists() and (not target.is_dir() or any(target.iterdir())):
+        errors.append('输出目录非空；请选择续采或新目录')
     if config.ros:
         ws = Path(config.ros_workspace or root / 'ros_ws').expanduser().resolve()
         if ws != (root / 'ros_ws').resolve():
@@ -156,4 +164,18 @@ def preflight(config, *, demo=False, root=None):
         except (OSError, ValueError, TypeError) as error:
             errors.append(f'无法校验模型配置: {error}')
     return {'ok': not errors, 'checks': checks, 'errors': errors,
-            'modes': config.modes(), 'cameras': config.cameras}
+            'modes': config.modes(), 'cameras': config.cameras, 'dataset_root': str(target)}
+
+
+def dataset_defaults():
+    """Shared defaults for the form and non-browser callers."""
+    result = {}
+    for arms in ('single_left', 'dual'):
+        for source in ('gamepad', 'gello'):
+            for schema in (('standard', '31d') if arms == 'single_left' and source == 'gamepad' else ('standard',)):
+                config = SessionConfig(arms=arms, source=source, schema=schema)
+                result[f'collect/{arms}/{source}/{schema}'] = config.default_dataset_root()
+        for kind in ('sft', 'rlt'):
+            config = SessionConfig(workflow='deploy', arms=arms, policy_kind=kind)
+            result[f'deploy/{arms}/{kind}'] = config.default_dataset_root()
+    return result

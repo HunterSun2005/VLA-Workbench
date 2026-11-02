@@ -1,6 +1,6 @@
 """Reattach to independently owned sessions; never restart hardware on reconnect."""
 from __future__ import annotations
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import fcntl
 import json
 import os
@@ -52,7 +52,8 @@ class Manager:
             sid = uuid.uuid4().hex
             directory = self.directory/sid
             directory.mkdir(mode=0o700)
-            (directory/'config.json').write_text(json.dumps(asdict(config), ensure_ascii=False, indent=2))
+            runner_config = replace(config, dataset_root=result['dataset_root'])
+            (directory/'config.json').write_text(json.dumps(asdict(runner_config), ensure_ascii=False, indent=2))
             args = ['-m','vla.web.runner','--directory',str(directory),'--root',str(self.root)]
             if self.demo:
                 args.append('--demo')

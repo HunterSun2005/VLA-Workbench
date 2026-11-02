@@ -9,7 +9,8 @@
 <label>遥操作输入源<select name="source"><option value="gamepad">Gamepad</option><option value="gello">GELLO</option></select></label>
 <label id="schemaField">采集格式<select name="schema"><option value="standard">标准</option><option value="31d">31D · 力矩与速度</option></select></label>
 <label>任务描述<textarea name="task" rows="2" placeholder="描述本次操作任务" required>将物体放入目标位置</textarea></label>
-<label>数据集输出目录<input name="dataset_root" placeholder="/绝对路径/数据集"></label>
+<label>数据集输出目录<input name="dataset_root" placeholder="datasets/raw/任务名" required><small id="datasetBase">相对路径基于面板工作目录</small></label>
+<button type="button" id="datasetDefault">使用推荐路径</button>
 <label class="check"><input name="resume" type="checkbox">续采已有数据集</label>
 <label>采集／部署 YAML（GELLO 不使用）<input name="config_path" placeholder="留空使用对应默认配置"></label>
 <div id="modelFields" hidden><label>模型类型<select name="policy_kind"><option value="rlt">RLT · 包含 VLA 主干</option><option value="sft">PI0.5 SFT · 仅 VLA</option></select></label><label>模型目录<input name="policy_path" placeholder="/模型/checkpoint"></label><label>Tokenizer 目录<input name="tokenizer_path" placeholder="/模型/tokenizer"></label><label>分类头目录<input name="handover_path" placeholder="自动模式所需"></label></div>

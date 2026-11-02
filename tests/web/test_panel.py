@@ -108,8 +108,12 @@ def test_http_security_and_packaged_static_files(tmp_path):
 def test_detached_session_reattach_camera_and_cleanup():
     with tempfile.TemporaryDirectory(prefix='vw-') as name:
         manager=Manager(name,demo=True)
-        active=manager.create({'task':'test','arms':'dual','model_python':sys.executable})
+        active=manager.create({'task':'test','arms':'dual','model_python':sys.executable,
+                               'dataset_root':'datasets/raw/test'})
         try:
+            assert active['config']['dataset_root']=='datasets/raw/test'
+            saved=json.loads(Path(active['directory'],'config.json').read_text())
+            assert saved['dataset_root']==str(Path(name)/'datasets/raw/test')
             deadline=time.monotonic()+10
             while True:
                 try:
@@ -125,9 +129,12 @@ def test_detached_session_reattach_camera_and_cleanup():
                 second.create({'task':'second'})
             for role in ('base','left_wrist','right_wrist'):
                 second.rpc('camera',role=role)
-            time.sleep(.3)
-            for role in ('base','left_wrist','right_wrist'):
-                assert second.rpc('camera',role=role)['jpeg']
+            deadline=time.monotonic()+5
+            while True:
+                previews=[second.rpc('camera',role=role)['jpeg'] for role in ('base','left_wrist','right_wrist')]
+                if all(previews):break
+                assert time.monotonic()<deadline, second.rpc('state')
+                time.sleep(.05)
             msg={'command_id':str(uuid.uuid4()),'revision':0,'operation':'stop','args':{}}
             assert second.rpc('command',**msg)['status']=='accepted'
             for _ in range(100):
@@ -243,3 +250,28 @@ def test_startup_cancel_and_slow_monitor_do_not_block_commands(tmp_path):
     finally:
         released.set()
         runtime.close()
+
+
+@pytest.mark.parametrize('path_kind', ['relative', 'absolute', 'default'])
+def test_dataset_path_preflight_and_resume_use_workspace(tmp_path, monkeypatch, path_kind):
+    workspace=tmp_path/'workspace'
+    workspace.mkdir()
+    elsewhere=tmp_path/'elsewhere'
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    value={'relative':'datasets/raw/custom', 'absolute':str(tmp_path/'external'), 'default':''}[path_kind]
+    cfg=SessionConfig(task='test',dataset_root=value)
+    expected=(tmp_path/'external' if path_kind=='absolute' else
+              workspace/('datasets/raw/custom' if path_kind=='relative' else 'datasets/raw/franka_single_left_gamepad_standard'))
+    result=preflight(cfg,root=workspace)
+    assert result['ok'],result
+    assert result['dataset_root']==str(expected)
+    assert not expected.exists()  # A check never creates a dataset.
+    expected.mkdir(parents=True)
+    (expected/'meta').mkdir()
+    (expected/'meta/info.json').write_text('{}')
+    result=preflight(cfg,root=workspace)
+    assert not result['ok'] and any('非空' in error for error in result['errors'])
+    assert preflight(replace(cfg,resume=True),root=workspace)['ok']
+    (expected/'meta/info.json').unlink()
+    assert not preflight(replace(cfg,resume=True),root=workspace)['ok']

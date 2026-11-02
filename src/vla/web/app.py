@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from .config import SessionConfig, preflight
+from .config import SessionConfig, preflight, dataset_defaults
 from .manager import Manager
 
 
@@ -63,7 +63,8 @@ def create_app(root=None, *, demo=False):
     async def bootstrap():
         return {'token':token,'demo':demo,'active':await asyncio.to_thread(manager.active),
                 'defaults':{'model_python':os.environ.get('VLA_PYTHON',__import__('sys').executable)},
-                'camera_roles':['base','left_wrist','right_wrist']}
+                'camera_roles':['base','left_wrist','right_wrist'],
+                'workspace_root':str(manager.root),'dataset_defaults':dataset_defaults()}
 
     @app.post('/api/preflight')
     async def check(request:Request):
