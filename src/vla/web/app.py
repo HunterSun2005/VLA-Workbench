@@ -124,6 +124,17 @@ def create_app(root=None, *, demo=False):
     async def cancel_processing(job_id: str):
         return await processing_call(processing.cancel, job_id)
 
+    @app.get('/api/hardware')
+    async def hardware_profiles():
+        from .hardware import profiles, inventory
+        return {'profiles': await asyncio.to_thread(profiles, manager.root),
+                'inventory': await asyncio.to_thread(inventory)}
+
+    @app.post('/api/hardware')
+    async def save_hardware(request: Request):
+        from .hardware import save
+        return await processing_call(save, manager.root, await request.json())
+
     @app.post('/api/preflight')
     async def check(request:Request):
         try:
@@ -184,7 +195,7 @@ def create_app(root=None, *, demo=False):
                     seq=result.get('seq',seq)
                 except (OSError,RuntimeError,ValueError) as error:
                     result={'status':{'state':'starting' if record and record['alive'] else 'unavailable',
-                                      'error':str(error)},'active':record,'samples':[]}
+                                      'error':str(error) if record else ''},'active':record,'samples':[]}
                 await asyncio.wait_for(ws.send_json(result),timeout=2)
                 await asyncio.sleep(max(0.,.1-(asyncio.get_running_loop().time()-started)))
         except (WebSocketDisconnect,RuntimeError,OSError,asyncio.TimeoutError):

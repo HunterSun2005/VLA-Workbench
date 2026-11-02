@@ -65,7 +65,17 @@ cp src/vla/datacollection/start_teleop/configs/single_left_gamepad_record.yaml r
 # 所有入口统一记录完整状态，不再选择 29D/31D
 ```
 
-**ROS 路线**：先按 README 构建 `ros_ws` 并安装 `ros_ws/python_deps`。面板只接受 `VLA_ROOT/ros_ws`；不读取其他 overlay 或 Conda ROS 包。提供本地 JSON，例如 `runtime/web/config/hardware.json`：
+**ROS 路线**：先按 README 构建 `ros_ws` 并安装 `ros_ws/python_deps`。面板只接受 `VLA_ROOT/ros_ws`；不读取其他 overlay 或 Conda ROS 包。选择 GELLO 或双臂时，会显示 **ROS 硬件 · 预设与设备选择**：
+
+1. 单左臂／双臂自动切换对应预设，预填仓库现有的机械臂 IP、GELLO 串口、夹爪串口和校准 YAML。各自记住上次保存的配置。
+2. 从下拉列表选择当前检测到的串口和 RealSense 序列号，也可直接填写。点击「刷新设备」更新列表，保留已填值。IP 不扫描网络，需要按现场配置确认。
+3. 确认 Base／左腕／右腕相机角色。旧序列号若未检测到会提示；列表顺序不能表示相机安装位置，不自动替换。检测只读取 `/dev/serial/by-id` 和 USB sysfs，不打开设备；检测到不保证有权限、未被占用或能正常工作。
+4. 「保存并使用」生成 `runtime/web/hardware/` 下的本地 JSON；「检查配置」和「启动会话」也会自动保存。保存可离线进行，不表示硬件验收通过。检查会拒绝重复 IP、串口（含 GELLO 与夹爪混用同一端口）和相机角色。
+5. 修改保存采用独立内容版本；每个硬件会话启动时再复制一份到会话目录。刷新页面不会重新启动设备，修改预设不会影响既有会话。
+
+随 wheel 提供 `vla/web/presets/single_left.json`、`dual.json`。预设来自仓库现有 `franka_gello_left/duo.yaml`、`example_fr3_left/duo_config.yaml` 和相应 Robotiq YAML；串口选择只覆盖设备地址，不改写 GELLO 的关节符号、偏置或夹爪标定。更换 GELLO 本体仍需现场确认校准配置。
+
+如需自行管理文件，选择「自定义 JSON 文件」，在下方「环境与 ROS 配置」填写路径。相对 JSON 路径以 `VLA_ROOT` 为基准；该模式不修改自定义文件。可提供本地 JSON，例如 `runtime/web/config/hardware.json`：
 
 ```json
 {

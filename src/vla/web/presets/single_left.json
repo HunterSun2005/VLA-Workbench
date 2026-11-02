@@ -1,0 +1,10 @@
+{
+  "LEFT_ROBOT_IP": "172.16.0.2",
+  "LEFT_ROBOTIQ_PORT": "/dev/serial/by-id/usb-FTDI_USB_TO_RS-485_DABC0KC0-if00-port0",
+  "LEFT_GELLO_SERIAL_ID": "usb-FTDI_USB__-__Serial_Converter_FTBSVZUJ-if00-port0",
+  "BASE_CAMERA_SERIAL": "260722303785",
+  "LEFT_WRIST_CAMERA_SERIAL": "346222073620",
+  "GELLO_CONFIG": "franka_gello_left.yaml",
+  "ROBOT_CONFIG": "example_fr3_left_config.yaml",
+  "GRIPPER_CONFIG": "example_fr3_left_config_robotiq.yaml"
+}

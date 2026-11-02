@@ -56,6 +56,9 @@ class Manager:
             directory = self.directory/sid
             directory.mkdir(mode=0o700)
             runner_config = replace(config, dataset_root=result['dataset_root'])
+            if config.ros and not self.demo:
+                from .hardware import snapshot
+                runner_config = replace(runner_config, ros_config=snapshot(self.root, config.ros_config, directory))
             (directory/'config.json').write_text(json.dumps(asdict(runner_config), ensure_ascii=False, indent=2))
             args = ['-m','vla.web.runner','--directory',str(directory),'--root',str(self.root)]
             if self.demo:

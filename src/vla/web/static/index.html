@@ -14,7 +14,12 @@
 <label class="check"><input name="resume" type="checkbox">续采已有数据集</label>
 <label>采集／部署 YAML（GELLO 不使用）<input name="config_path" placeholder="留空使用对应默认配置"></label>
 <div id="modelFields" hidden><label>模型类型<select name="policy_kind"><option value="rlt">RLT · 包含 VLA 主干</option><option value="sft">PI0.5 SFT · 仅 VLA</option></select></label><label>模型目录<input name="policy_path" placeholder="/模型/checkpoint"></label><label>Tokenizer 目录<input name="tokenizer_path" placeholder="/模型/tokenizer"></label><label>分类头目录<input name="handover_path" placeholder="自动模式所需"></label></div>
-<details><summary>环境与 ROS 配置</summary><label>模型 Python<input name="model_python"></label><label>ROS 工作空间<input name="ros_workspace" placeholder="仅 VLA_ROOT/ros_ws"></label><label>ROS 硬件 JSON<input name="ros_config" placeholder="IP、相机、串口等配置文件"></label></details>
+<details id="hardwareSetup" open hidden><summary>ROS 硬件 · 预设与设备选择</summary>
+<label>配置方式<select id="hardwareMode"><option value="preset">预设与设备选择</option><option value="custom">自定义 JSON 文件</option></select></label>
+<div id="hardwareEditor"><p class="hint">按所选单双臂预填。设备可下拉选择或手动填写；请确认左右臂与相机角色。</p><div class="row"><button type="button" id="hardwareRefresh">刷新设备</button><button type="button" id="hardwareReset">恢复仓库预设</button></div><div id="hardwareFields"></div><button type="button" id="hardwareSave" class="full">保存并使用</button><p class="hint">检查配置／启动时也会自动保存。串口选择不改变 GELLO 校准参数。</p></div>
+<p id="hardwareStatus" class="hint" role="status"></p><p id="hardwareNotice" class="hint"></p>
+</details>
+<details><summary>环境与 ROS 配置</summary><label>模型 Python<input name="model_python"></label><label>ROS 工作空间<input name="ros_workspace" placeholder="仅 VLA_ROOT/ros_ws"></label><label>ROS 硬件 JSON<input name="ros_config" placeholder="由预设自动生成，也可手动填写自定义路径"></label></details>
 <div class="row"><button type="button" id="preflight">检查配置</button><button type="submit" id="start" class="primary">启动会话</button></div>
 </form></details><div id="preflightResult" class="muted"></div></section>
 <section class="card controls"><h2>会话操作</h2><div class="row"><button data-op="enable" class="primary">启用控制</button><button data-op="pause" class="warn">软件暂停</button></div><div class="row"><button data-op="record">开始回合</button><button data-op="save">成功 · 保存</button></div><div class="row"><button data-op="save" data-outcome="failure">失败 · 保存</button><button data-op="discard">丢弃当前回合</button></div><div class="row"><button data-op="critical">Critical 标注</button><button data-op="next_subtask">下一阶段</button></div><div class="row"><button data-op="intervention">接管 / 归还策略</button><button data-op="recover">恢复故障</button></div><button data-op="stop" class="danger full">停止会话</button><p class="hint">关闭网页后任务继续运行；重连可恢复监控。暂停沿用采集端行为，可能丢弃当前回合。</p></section>
@@ -57,4 +62,4 @@
 </article>
 </main>
 <footer>VLA · 本地操作面板 <span>监控与控制进程隔离 · 不自动恢复运动</span></footer>
-<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/processing.js"></script></body></html>
+<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/hardware.js"></script><script src="/static/processing.js"></script></body></html>

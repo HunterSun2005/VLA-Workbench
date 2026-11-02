@@ -63,6 +63,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 vla = [
     "web/static/*",
+    "web/presets/*.json",
     "web/static/vendor/*",
     "core/configs/*.yaml",
     "configs/dataset_features/*.yaml",

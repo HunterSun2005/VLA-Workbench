@@ -124,12 +124,13 @@ def preflight(config, *, demo=False, root=None):
             errors.append(f'ROS 工作空间未构建: {ws}')
         if not Path('/opt/ros/humble/setup.bash').is_file():
             errors.append('需要系统 ROS 2 Humble')
-        if not config.ros_config or not Path(config.ros_config).expanduser().is_file():
-            errors.append('ROS 路线需要显式硬件 JSON 配置（IP、夹爪、GELLO、相机及配置文件路径）')
+        from .hardware import config_path, validate
+        hardware_path = config_path(root, config.ros_config)
+        if not config.ros_config or not hardware_path.is_file():
+            errors.append('ROS 路线需要硬件配置：请使用预设与设备选择，或指定自定义 JSON')
         else:
             try:
-                from .processes import hardware_environment
-                hardware = hardware_environment(json.loads(Path(config.ros_config).expanduser().read_text()))
+                hardware = validate(json.loads(hardware_path.read_text()), config.arms)
                 for arm in (('LEFT','RIGHT') if config.arms == 'dual' else ('LEFT',)):
                     for key in (f'{arm}_ROBOT_IP', f'{arm}_ROBOTIQ_PORT'):
                         if not hardware.get(key):

@@ -61,3 +61,8 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 #processingFrameTitle{font-size:12px}#processingHardware{color:var(--warn)}#processingPanel aside{display:flex}
 @media(max-width:1000px){#processingPanel{grid-template-columns:280px minmax(0,1fr)}}
 @media(max-width:720px){#processingPanel{display:flex}nav{flex-wrap:wrap}header{gap:10px}.processing-table td{padding:6px}}
+
+#hardwareSetup{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+#hardwareFields details{border-top:1px solid var(--line);padding-top:8px}
+#hardwareFields select{font-size:11px}#hardwareStatus,#hardwareNotice{overflow-wrap:anywhere;white-space:pre-line}
+#hardwareNotice{color:var(--warn)}

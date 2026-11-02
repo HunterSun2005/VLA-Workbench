@@ -1,0 +1,85 @@
+/* Passive discovery and editable, per-arm profiles. No device control here. */
+'use strict';
+(()=>{
+ const panel=$('hardwareSetup'),mode=$('hardwareMode'),fields=$('hardwareFields');
+ let profiles=null,inventory={serials:[],cameras:[],warnings:[]},drafts={},shown=null,saving=false;
+ const labels={LEFT_ROBOT_IP:'左臂 IP',RIGHT_ROBOT_IP:'右臂 IP',LEFT_ROBOTIQ_PORT:'左夹爪串口',RIGHT_ROBOTIQ_PORT:'右夹爪串口',LEFT_GELLO_SERIAL_ID:'左 GELLO 串口',RIGHT_GELLO_SERIAL_ID:'右 GELLO 串口',BASE_CAMERA_SERIAL:'Base 全局相机',LEFT_WRIST_CAMERA_SERIAL:'左腕相机',RIGHT_WRIST_CAMERA_SERIAL:'右腕相机',GELLO_CONFIG:'GELLO 校准 YAML',ROBOT_CONFIG:'机械臂 YAML',GRIPPER_CONFIG:'夹爪 YAML'};
+ const usesROS=()=>config().arms==='dual'||config().source==='gello';
+ const running=()=>current?.status ? ['starting','standby','active','recording','saving','fault'].includes(current.status.state)&&!current.status.final : Boolean(active?.alive);
+ const generated=path=>/^runtime\/web\/hardware\/(single_left|dual)-[a-f0-9]{64}\.json$/.test(path);
+ const normalize=value=>value.replace(/^\/dev\/serial\/by-id\//,'');
+ function choices(key){return key.endsWith('_CAMERA_SERIAL')?inventory.cameras:key.endsWith('_PORT')||key.endsWith('_SERIAL_ID')?inventory.serials:null;}
+ function notice(){
+  const missing=[];
+  for(const [key,value] of Object.entries(drafts[shown]||{})){
+   const items=choices(key);if(items&&!items.some(x=>normalize(x.value)===normalize(value)))missing.push(labels[key]);
+  }
+  $('hardwareNotice').textContent=[missing.length?'未检测到所填设备：'+missing.join('、')+'。保留原值，请从列表选择或检查接线。':'',...(inventory.warnings||[]),inventory.note||'',profiles?.[shown]?.warning||''].filter(Boolean).join('\n');
+ }
+ function lock(){
+  const disabled=running()||saving;
+  panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=disabled);
+  // The named path is locked independently of the helper controls.
+  if(usesROS())form.elements.ros_config.readOnly=mode.value==='preset';else form.elements.ros_config.readOnly=false;
+ }
+ function renderFields(){
+  fields.replaceChildren();
+  const values=drafts[shown];if(!values)return;
+  for(const group of [['左臂',k=>k.startsWith('LEFT_')&&!k.includes('CAMERA')],['右臂',k=>k.startsWith('RIGHT_')&&!k.includes('CAMERA')],['相机角色',k=>k.includes('CAMERA')],['校准与启动配置',k=>k.endsWith('_CONFIG')]]){
+   const keys=Object.keys(values).filter(group[1]);if(!keys.length)continue;
+   const detail=document.createElement('details'),summary=document.createElement('summary');detail.open=group[0]==='相机角色';summary.textContent=group[0];detail.append(summary);
+   for(const key of keys){
+    const label=document.createElement('label'),input=document.createElement('input');input.id='hardware-'+key;input.value=values[key];input.setAttribute('aria-label',labels[key]);label.append(document.createTextNode(labels[key]),input);
+    const items=choices(key);
+    if(items){
+     const select=document.createElement('select');select.id='devices-'+key;select.setAttribute('aria-label',labels[key]+' · 检测设备');
+     select.add(new Option('从检测设备选择（或在上方填写）',''));
+     for(const item of items)select.add(new Option(item.label+(item.accessible===false?' · 无读写权限':''),item.value));
+     const matched=items.find(x=>normalize(x.value)===normalize(values[key]));if(matched)select.value=matched.value;
+     select.onchange=()=>{if(!select.value)return;input.value=select.value;input.dispatchEvent(new Event('input'));};
+     label.append(select);
+     input.addEventListener('input',()=>{select.value=items.find(x=>normalize(x.value)===normalize(input.value.trim()))?.value||'';});
+    }
+    input.addEventListener('input',()=>{values[key]=input.value.trim();$('hardwareStatus').textContent='修改待保存；检查或启动时自动保存。';notice();});
+    detail.append(label);
+   }
+   fields.append(detail);
+  }
+  notice();lock();
+ }
+ function view(){
+  panel.hidden=!usesROS();
+  const path=form.elements.ros_config.value.trim();
+  if(path&&!generated(path))mode.value='custom';
+  $('hardwareEditor').hidden=mode.value==='custom';
+  if(mode.value==='custom')$('hardwareStatus').textContent='请在下方「环境与 ROS 配置」填写 JSON 路径；不会覆盖该文件。';
+  const arms=config().arms;if(profiles&&shown!==arms){shown=arms;renderFields();}
+  lock();
+ }
+ const ready=api('/api/hardware').then(result=>{
+  profiles=result.profiles;inventory=result.inventory;
+  for(const arms of Object.keys(profiles))drafts[arms]={...profiles[arms].values};
+  view();
+ }).catch(e=>{$('hardwareStatus').textContent='配置加载失败：'+e.message;});
+ async function save(){
+  await ready;if(!profiles)throw new Error('硬件预设加载失败，请刷新页面或使用自定义 JSON');
+  if(saving)throw new Error('硬件配置正在保存');
+  const c=config(),values={...drafts[c.arms]};saving=true;lock();
+  try{
+   const result=await api('/api/hardware',{arms:c.arms,values});
+   if(config().arms!==c.arms||config().source!==c.source||config().workflow!==c.workflow)throw new Error('配置已切换，请重新检查');
+   form.elements.ros_config.value=result.path;
+   $('hardwareStatus').textContent='已保存：'+(c.arms==='dual'?'双臂':'单左臂')+'配置，JSON 路径已填入下方环境设置。';
+   $('hardwareStatus').title=result.path;
+   return result;
+  }finally{saving=false;lock();}
+ }
+ window.prepareHardware=async()=>{if(usesROS()&&mode.value==='preset'&&!running())await save();};
+ $('hardwareSave').onclick=()=>{error('');save().catch(e=>error(e.message));};
+ $('hardwareRefresh').onclick=async()=>{try{const result=await api('/api/hardware');inventory=result.inventory;renderFields();}catch(e){error(e.message);}};
+ $('hardwareReset').onclick=()=>{if(!profiles||!confirm('恢复当前单双臂的仓库预设？未保存的设备选择将被替换。'))return;drafts[shown]={...profiles[shown].defaults};renderFields();$('hardwareStatus').textContent='已恢复预设，待保存。';};
+ mode.onchange=()=>{if(mode.value==='preset'){form.elements.ros_config.value='';$('hardwareStatus').textContent='检查或启动时自动保存预设。';}view();};
+ form.elements.ros_config.addEventListener('input',()=>{mode.value='custom';view();});
+ window.addEventListener('vla-config-change',view);window.addEventListener('vla-live-status',lock);
+ view();
+})();
