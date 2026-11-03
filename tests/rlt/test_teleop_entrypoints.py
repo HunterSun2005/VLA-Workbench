@@ -172,7 +172,7 @@ def test_single_franky_rollout_entrypoint_only_starts_joy_bridge() -> None:
 def test_teleop_uses_orderly_keyboard_exit_without_forcing_hardware_inactive() -> None:
     backend = _backend_source()
     assert "c|$'\\e'" in backend
-    assert "Ctrl-C exit is disabled" in backend
+    assert "Interrupt requested; shutting down in order." in backend
     assert "set_hardware_component_state" not in backend
 
 
@@ -330,6 +330,7 @@ validate_environment
 '''
     env = {**os.environ, "CONTROL_OWNER": owner, "TELEOP_MODE": "duo",
            "CHECK_ONLY": check_only, "LEFT_JOY_DEVICE_ID": "0", "RIGHT_JOY_DEVICE_ID": "1",
+           "VLA_RUN_MODE": "managed" if managed and owner == "rollout" else "terminal",
            "VLA_WEB_READY_FILE": str(tmp_path / "hardware.ready") if managed else ""}
     result = subprocess.run(["bash", "-c", script, "_", str(TELEOP_DIR / "start_teleop.sh")],
                             cwd=tmp_path, env=env, stdin=subprocess.DEVNULL,
@@ -355,6 +356,7 @@ cleanup_runtime_files() { printf 'EVENT cleanup\n'; }
 monitor_rollout_hardware
 '''
     env = {**os.environ, "CONTROL_OWNER": "rollout", "TELEOP_MODE": "duo",
+           "VLA_RUN_MODE": "managed",
            "VLA_WEB_READY_FILE": str(tmp_path / "hardware.ready"), "FAIL_CHILD": str(int(failure))}
     result = subprocess.run(["bash", "-c", script, "_", str(TELEOP_DIR / "start_teleop.sh")],
                             cwd=tmp_path, env=env, stdin=subprocess.DEVNULL,

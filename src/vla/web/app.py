@@ -167,9 +167,9 @@ def create_app(root=None, *, demo=False):
     @app.get('/api/state')
     async def state():
         try:
-            return await asyncio.to_thread(manager.rpc,'state')
-        except (RuntimeError,OSError) as error:
-            return {'status':{'state':'unavailable','error':str(error)},'active':manager.active()}
+            return await asyncio.to_thread(manager.snapshot)
+        except (RuntimeError, OSError, ValueError) as error:
+            return {'status': {'state': 'unavailable', 'error': str(error)}, 'samples': []}
 
     @app.websocket('/api/live')
     async def live(ws:WebSocket):
@@ -185,17 +185,15 @@ def create_app(root=None, *, demo=False):
         try:
             while True:
                 started=asyncio.get_running_loop().time()
-                record=None
                 try:
-                    record=await asyncio.to_thread(manager.active)
-                    if record and record['session_id'] != session:
-                        session,seq=record['session_id'],-1
-                    result=await asyncio.to_thread(manager.rpc,'state',since=seq)
-                    result['config']=record['config'] if record else None
-                    seq=result.get('seq',seq)
-                except (OSError,RuntimeError,ValueError) as error:
-                    result={'status':{'state':'starting' if record and record['alive'] else 'unavailable',
-                                      'error':str(error) if record else ''},'active':record,'samples':[]}
+                    result = await asyncio.to_thread(manager.snapshot, seq)
+                    new_session = result.get('session_id')
+                    if new_session != session:
+                        session, seq = new_session, -1
+                        result = await asyncio.to_thread(manager.snapshot, seq)
+                    seq = result.get('seq', seq)
+                except (OSError, RuntimeError, ValueError) as error:
+                    result = {'status': {'state': 'unavailable', 'error': str(error)}, 'samples': []}
                 await asyncio.wait_for(ws.send_json(result),timeout=2)
                 await asyncio.sleep(max(0.,.1-(asyncio.get_running_loop().time()-started)))
         except (WebSocketDisconnect,RuntimeError,OSError,asyncio.TimeoutError):

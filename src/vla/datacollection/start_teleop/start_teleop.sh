@@ -11,6 +11,16 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TELEOP_MODE="${TELEOP_MODE:-duo}"
 CONTROL_OWNER="${CONTROL_OWNER:-teleop}"
+VLA_RUN_MODE="${VLA_RUN_MODE:-terminal}"
+case "$VLA_RUN_MODE" in
+  terminal|managed) ;;
+  *) printf 'Unsupported VLA_RUN_MODE: %s\n' "$VLA_RUN_MODE" >&2; exit 2 ;;
+esac
+if [[ "$VLA_RUN_MODE" == managed && "$CONTROL_OWNER" != rollout ]]; then
+  printf 'Managed startup requires CONTROL_OWNER=rollout\n' >&2
+  exit 2
+fi
+
 case "$CONTROL_OWNER" in
   teleop|rollout) ;;
   *)
@@ -116,7 +126,7 @@ source "$SCRIPT_DIR/lib/keyboard.sh"
 
 main() {
   trap on_exit EXIT
-  trap 'log "Ctrl-C exit is disabled; press Esc or c for an orderly shutdown."' INT
+  trap 'log "Interrupt requested; shutting down in order."; exit 130' INT
   trap 'exit 143' TERM
 
   ensure_single_instance

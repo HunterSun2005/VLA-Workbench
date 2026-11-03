@@ -21,12 +21,28 @@ def hardware_environment(values):
     return values
 
 
+def process_failure(name, code, path):
+    """Bounded diagnostic text, never an input to control decisions."""
+    path = Path(path)
+    try:
+        with path.open('rb') as stream:
+            stream.seek(0, 2)
+            stream.seek(max(0, stream.tell() - 8192))
+            lines = stream.read(8192).decode('utf-8', errors='replace').splitlines()
+        important = [line for line in lines if any(word in line.lower() for word in
+                     ('error', 'exception', 'failed', 'fatal', '错误'))]
+        summary = '\n'.join((important or lines)[-6:])[-1500:]
+    except OSError:
+        summary = '诊断日志尚不可读。'
+    return f'{name} exited ({code}); 日志：{path}' + (f'\n{summary}' if summary else '')
+
+
 def clean_environment(root, python, *, ros=False, workspace=None):
     env = dict(os.environ)
     for key in ('PYTHONHOME','PYTHONPATH','AMENT_PREFIX_PATH','COLCON_PREFIX_PATH','CMAKE_PREFIX_PATH',
                 'LD_LIBRARY_PATH','ROS_DISTRO','ROS_VERSION','ROS_PYTHON_VERSION','CONDA_PREFIX','CONDA_DEFAULT_ENV'):
         env.pop(key, None)
-    env.update(VLA_ROOT=str(root), VLA_PYTHON=str(python), PYTHONNOUSERSITE='1',
+    env.update(VLA_RUN_MODE='managed', VLA_ROOT=str(root), VLA_PYTHON=str(python), PYTHONNOUSERSITE='1',
                PYTHONPATH=str(Path(__file__).resolve().parents[2]),
                PATH=f'{Path(python).parent}:/usr/bin:/bin:/usr/sbin:/sbin',
                HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1')
@@ -62,7 +78,7 @@ class Children:
     def check(self):
         for name, process in self.items:
             if process.poll() is not None:
-                raise RuntimeError(f'{name} exited ({process.returncode}); see {name}.log')
+                raise RuntimeError(process_failure(name, process.returncode, self.directory / f'{name}.log'))
 
     def close(self):
         for name, process in reversed(self.items):

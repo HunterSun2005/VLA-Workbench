@@ -78,3 +78,8 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 .preflight-result li+li{border-top:1px solid var(--line)}
 .preflight-result li::marker{color:var(--danger);font-weight:600}
 .preflight-output{margin:0;line-height:1.7;overflow-wrap:anywhere}
+
+.issue-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.issue-row+.issue-row{border-top:1px solid var(--error-line);padding-top:10px;margin-top:10px}
+.issue-row span{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}.issue-row button{font-size:12px;padding:4px 8px;flex:none}
+.session-notice{color:var(--warn);white-space:pre-wrap;overflow-wrap:anywhere}

@@ -23,7 +23,7 @@ is_enabled() {
 }
 
 is_managed_rollout() {
-  [[ "$CONTROL_OWNER" == "rollout" && -n "${VLA_WEB_READY_FILE:-}" ]]
+  [[ "$CONTROL_OWNER" == "rollout" && "$VLA_RUN_MODE" == "managed" ]]
 }
 
 require_file() {

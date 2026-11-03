@@ -405,7 +405,7 @@ class ROSBackend(BaseBackend):
             rollout = self.start_policy(rollout)
         # Both arm/gripper command routes go through managed coordinators, including GELLO.
         env = clean_environment(root,'/usr/bin/python3',ros=True)
-        env.update(self.hardware, CONTROL_OWNER='rollout', TELEOP_MODE='duo' if config.arms == 'dual' else 'single_left',
+        env.update(self.hardware, VLA_RUN_MODE='managed', CONTROL_OWNER='rollout', TELEOP_MODE='duo' if config.arms == 'dual' else 'single_left',
                    ROS2_WS=str(config.ros_workspace or Path(root)/'ros_ws'),
                    VLA_WEB_READY_FILE=str(self.directory/'hardware.ready'),
                    LOG_DIR=str(self.directory/'ros'), STATE_DIR=str(self.directory/'ros-state'), START_CAMERAS='0')
