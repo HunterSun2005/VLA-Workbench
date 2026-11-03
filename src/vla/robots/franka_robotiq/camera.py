@@ -151,6 +151,16 @@ class RealSenseCapture:
             self._last_snapshot = snapshot
         return snapshot
 
+    def latest_frames(self) -> dict[str, tuple[float, np.ndarray]]:
+        """Independent preview references; no synchronized selection or device IO.
+
+        Worker-published arrays are replaced, never mutated. Preview consumers must
+        treat them as read-only. A failed camera retains its last timestamp so the
+        monitor can mark it stale without blocking healthy cameras.
+        """
+        with self._lock:
+            return {role: frames[-1] for role, frames in self._frames.items() if frames}
+
     def images(self) -> dict[str, np.ndarray]:
         return self.snapshot().images
 

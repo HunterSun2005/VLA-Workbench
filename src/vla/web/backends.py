@@ -364,8 +364,7 @@ class FrankyBackend(BaseBackend):
         return status
 
     def images(self):
-        snapshot = self.robot.get_camera_preview_snapshot()
-        return {role:(snapshot.timestamps[role],image) for role,image in snapshot.images.items()}
+        return self.robot.get_camera_preview_frames()
 
 
 class ROSBackend(BaseBackend):

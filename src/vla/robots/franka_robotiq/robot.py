@@ -526,6 +526,12 @@ class FrankaRobotiqRobot(Robot):
         }
         return observation
 
+    def get_camera_preview_frames(self):
+        """Latest independent RGB caches for Web previews; no FCI or camera IO."""
+        if self._camera is None:
+            return {}
+        return self._camera.latest_frames()
+
     def get_camera_preview_snapshot(self):
         """Read existing RGB buffers only; no FCI access or new camera pipeline."""
         if self._camera is None:

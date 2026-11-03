@@ -210,18 +210,36 @@ def create_app(root=None, *, demo=False):
         app.state.streams+=1
         async def frames():
             previous=None
+            clock = asyncio.get_running_loop()
+            deadline = clock.time()
+            fps = 10
             try:
                 while True:
+                    delivered = False
+                    available = False
                     try:
                         frame=await asyncio.to_thread(manager.rpc,'camera',role=role)
+                        fps = frame.get('preview_fps', 10)
+                        available = bool(frame['jpeg'])
                         if frame['jpeg'] and previous!=frame['captured_at']:
+                            delivered = True
                             previous=frame['captured_at']
                             data=base64.b64decode(frame['jpeg'])
-                            yield (b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: '+str(len(data)).encode()+
-                                   b'\r\n\r\n'+data+b'\r\n')
+                            headers = (f'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {len(data)}\r\n'
+                                       f'X-Captured-At: {frame["captured_at"]:.9f}\r\n'
+                                       f'X-Encoded-At: {frame.get("encoded_at", frame["captured_at"]):.9f}\r\n\r\n')
+                            yield headers.encode() + data + b'\r\n'
                     except (OSError,RuntimeError,ValueError):
                         pass
-                    await asyncio.sleep(.1)
+                    if delivered:
+                        deadline += 1 / fps
+                        if deadline < clock.time():
+                            deadline = clock.time() + 1 / fps
+                        await asyncio.sleep(max(0., deadline - clock.time()))
+                    else:
+                        # Do not consume a delivery slot before the next JPEG exists.
+                        # Camera/encoder phases differ; a full-period retry loses frames.
+                        await asyncio.sleep(1 / (4 * fps) if available else .1)
             finally:
                 app.state.streams-=1
         return StreamingResponse(frames(),media_type='multipart/x-mixed-replace; boundary=frame')

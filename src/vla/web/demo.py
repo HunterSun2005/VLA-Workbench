@@ -36,7 +36,7 @@ class DemoBackend:
         self.arms = ['left','right'] if config.arms == 'dual' else ['left']
         self.signals = descriptors(self.arms)
         self._images = {}
-        self._next_image = 0.
+        self._image_index = -1
         self._next_auto = 0.
         self._votes = 0
         self._last = time.monotonic()
@@ -131,10 +131,13 @@ class DemoBackend:
 
     def images(self):
         now = time.monotonic()
-        if now >= self._next_image:
-            self._next_image = now + .1
+        fps = 30 if self.config.workflow == 'collect' else 10
+        index = int((now-self.started) * fps)
+        if index != self._image_index:
+            self._image_index = index
+            captured_at = self.started + index/fps
             yy, xx = np.mgrid[:240, :320]
-            self._images = {role: (now, np.stack(((xx+int(now*30)+i*40)%256,
+            self._images = {role: (captured_at, np.stack(((xx+int(now*30)+i*40)%256,
                               (yy*2+i*60)%256, ((xx+yy)//2+i*90)%256), axis=-1).astype(np.uint8))
                             for i, role in enumerate(self.config.cameras)}
         return self._images
