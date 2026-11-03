@@ -2,7 +2,7 @@
 (() => {
  const el=id=>document.getElementById(id), base='/api/processing';
  let info=null,draft=null,page=0,episode=null,length=0,frameNumber=0,frameData=null,job=null;
- let writes=Promise.resolve(),saveBusy=0,frameSeq=0,frameAbort=null,playing=false,playTimer=null,frameTimer=null,lastDefault='',initialized=false;
+ let writes=Promise.resolve(),saveBusy=0,frameSeq=0,frameAbort=null,playing=false,playTimer=null,frameTimer=null,playSeq=0,lastDefault='',initialized=false;
  const error=message=>{el('processingError').textContent=message||'';el('processingError').hidden=!message;};
  const attempt=fn=>async()=>{try{error('');await fn();}catch(e){error(e.message);}};
  const endpoint=suffix=>`${base}/datasets/${draft.dataset_id}${suffix}`;
@@ -24,20 +24,53 @@
  }
  async function fieldsChanged(names){draft.state_fields=names;updateDefault();selectionLabel();buildFields();renderValues();await persist();}
  async function refreshList(){const data=await api(base+'/datasets');el('processingDatasets').replaceChildren(...data.datasets.map(v=>{const o=document.createElement('option');o.value=v;return o;}));return data;}
- async function load(summary){stopPlayback();frameSeq++;frameAbort?.abort();info=summary;draft=summary.draft;page=0;episode=null;frameData=null;lastDefault=pathDefault();el('processingSource').value=draft.source_root;el('processingOutput').value=draft.output_root;el('processingSummary').textContent=`${summary.robot_type||'Franka'} · ${summary.total_episodes} 回合 · ${summary.total_frames} 帧 · ${summary.fps} FPS · ${summary.cameras.length} 视角`;el('processingPreset').replaceChildren(...Object.keys(info.presets).map(name=>{const o=text('option',name);o.value=name;return o;}));el('processingImages').replaceChildren();el('processingFrameTitle').textContent='选择一个回合';el('processingTime').textContent='';el('processingValues').replaceChildren();el('processingActions').replaceChildren();el('processingSaved').textContent='选择已保存';buildFields();selectionLabel();await listEpisodes();if(summary.source_changed)error('源数据已变化，原处理选择已重置为全部保留，请重新确认。');}
+ async function load(summary){stopPlayback();frameSeq++;frameAbort?.abort();frameStatus('');info=summary;draft=summary.draft;page=0;episode=null;frameData=null;lastDefault=pathDefault();el('processingSource').value=draft.source_root;el('processingOutput').value=draft.output_root;el('processingSummary').textContent=`${summary.robot_type||'Franka'} · ${summary.total_episodes} 回合 · ${summary.total_frames} 帧 · ${summary.fps} FPS · ${summary.cameras.length} 视角`;el('processingPreset').replaceChildren(...Object.keys(info.presets).map(name=>{const o=text('option',name);o.value=name;return o;}));el('processingImages').replaceChildren();el('processingFrameTitle').textContent='选择一个回合';el('processingTime').textContent='';el('processingValues').replaceChildren();el('processingActions').replaceChildren();el('processingSaved').textContent='选择已保存';buildFields();selectionLabel();await listEpisodes();if(summary.source_changed)error('源数据已变化，原处理选择已重置为全部保留，请重新确认。');}
  async function listEpisodes(){const result=await api(endpoint(`/episodes?offset=${page*25}&limit=25`));el('processingEpisodes').replaceChildren();for(const e of result.episodes){const row=document.createElement('tr');row.classList.toggle('excluded',!draft.episodes.includes(e.episode));const check=document.createElement('input');check.type='checkbox';check.checked=!draft.episodes.includes(e.episode);check.setAttribute('aria-label',`剔除回合 ${e.episode}`);check.onchange=attempt(async()=>{const kept=new Set(draft.episodes);check.checked?kept.delete(e.episode):kept.add(e.episode);draft.episodes=[...kept].sort((a,b)=>a-b);row.classList.toggle('excluded',check.checked);selectionLabel();await persist();});const cell=document.createElement('td');cell.append(check);row.append(cell,text('td',String(e.episode)),text('td',`${(e.tasks||[]).join(' / ')} · ${e.outcome??'未标注'}`),text('td',`${e.length} / ${e.duration.toFixed(2)}s`));const view=document.createElement('button');view.textContent='查看';view.onclick=attempt(async()=>{stopPlayback();episode=e.episode;length=e.length;el('processingTimeline').max=el('processingFrameNumber').max=String(length-1);await showFrame(0);});const end=document.createElement('td');end.append(view);row.append(end);el('processingEpisodes').append(row);}el('processingPage').textContent=`${page+1} / ${Math.max(1,Math.ceil(result.total/25))}`;el('processingPrevPage').disabled=page===0;el('processingNextPage').disabled=(page+1)*25>=result.total;}
  function renderValues(){if(!frameData||!info)return;el('processingValues').replaceChildren();const values=frameData['observation.state'];for(let i=0;i<info.fields.length;i++){const d=info.fields[i],chosen=draft.state_fields.includes(d.name);if(!el('processingShowAll').checked&&!chosen)continue;const row=document.createElement('tr');row.append(text('td',d.name),text('td',number(Array.isArray(values)?values[i]:i===0?values:null)),text('td',d.unit),text('td',chosen?'✓':'—'));el('processingValues').append(row);}el('processingActions').replaceChildren();const actions=frameData.action;for(let i=0;i<info.action_names.length;i++){const row=document.createElement('tr');row.append(text('td',info.action_names[i]),text('td',number(Array.isArray(actions)?actions[i]:actions)),text('td',info.action_units?.[i]||'未声明'));el('processingActions').append(row);}for(const [key,value]of Object.entries(frameData)){if(key==='observation.state'||key==='action')continue;const row=document.createElement('tr');row.append(text('td',key),text('td',number(value)));el('processingActions').append(row);}}
- async function showFrame(value){if(episode==null)return;frameNumber=Math.max(0,Math.min(length-1,Number(value)||0));const requested=frameNumber,ep=episode,seq=++frameSeq;frameAbort?.abort();frameAbort=new AbortController();const signal=frameAbort.signal;el('processingTimeline').value=el('processingFrameNumber').value=String(requested);el('processingFrameTitle').textContent=`Episode ${ep} · 帧 ${requested} · 加载中`;el('processingImages').classList.add('loading');frameData=null;el('processingValues').replaceChildren();el('processingActions').replaceChildren();
+ function frameStatus(message){el('processingFrameStatus').textContent=message;el('processingImages').setAttribute('aria-busy',String(Boolean(message)));}
+ async function showFrame(value){
+  if(episode==null)return;
+  frameNumber=Math.max(0,Math.min(length-1,Number(value)||0));
+  const requested=frameNumber,ep=episode,seq=++frameSeq,cameras=[...info.cameras];
+  frameAbort?.abort();frameAbort=new AbortController();const signal=frameAbort.signal;
+  el('processingTimeline').value=el('processingFrameNumber').value=String(requested);
+  frameStatus(`正在加载 Episode ${ep} · 帧 ${requested}${frameData?'（仍显示上一帧）':''}`);
   const url=endpoint(`/episodes/${ep}/frames/${requested}`);
-  async function fetchValue(path,image=false){const response=await fetch(path,{signal});if(!response.ok){const e=await response.json();throw Error(e.detail||response.statusText);}return image?response.blob():response.json();}
-  try{const result=await Promise.allSettled([fetchValue(url),...info.cameras.map(c=>fetchValue(url+'/image/'+encodeURIComponent(c),true))]);if(seq!==frameSeq)return;el('processingImages').replaceChildren();for(let i=0;i<info.cameras.length;i++){const card=document.createElement('div');card.className='offline-camera';card.append(text('strong',info.cameras[i].replace('observation.images.','')));const value=result[i+1];if(value.status==='fulfilled'){const img=document.createElement('img'),objectURL=URL.createObjectURL(value.value);img.alt=`${info.cameras[i]} · episode ${ep} · frame ${requested}`;img.onload=img.onerror=()=>URL.revokeObjectURL(objectURL);img.src=objectURL;card.append(img);}else card.append(text('p','图像不可用：'+value.reason.message));el('processingImages').append(card);}if(result[0].status==='rejected')throw result[0].reason;frameData=result[0].value;renderValues();el('processingFrameTitle').textContent=`Episode ${ep} · 帧 ${requested} / ${length-1}`;el('processingTime').textContent=`${Number(frameData.timestamp).toFixed(3)} s`;
-  }catch(e){if(e.name!=='AbortError'&&seq===frameSeq){el('processingFrameTitle').textContent='当前帧加载失败';el('processingImages').replaceChildren(text('p','当前帧不可用，请重新加载数据集。'));el('processingTime').textContent='';error(e.message);}}finally{if(seq===frameSeq)el('processingImages').classList.remove('loading');}
+  async function fetchValue(path,image=false){
+   const response=await fetch(path,{signal});
+   if(!response.ok){const e=await response.json();throw Error(e.detail||response.statusText);}
+   if(!image)return response.json();
+   const objectURL=URL.createObjectURL(await response.blob()),img=new Image();
+   try{img.src=objectURL;await img.decode();return img;}
+   finally{URL.revokeObjectURL(objectURL);}
+  }
+  try{
+   const result=await Promise.allSettled([fetchValue(url),...cameras.map(c=>fetchValue(url+'/image/'+encodeURIComponent(c),true))]);
+   if(seq!==frameSeq)return;
+   if(result[0].status==='rejected')throw result[0].reason;
+   // Keep stable camera cards and the previous decoded frame until all new
+   // images are ready. Commit images and values together in this browser task.
+   for(let i=0;i<cameras.length;i++){
+    let card=el('processingImages').children[i];
+    if(!card){card=document.createElement('div');card.className='offline-camera';const media=document.createElement('div');media.className='offline-camera-media';card.append(text('strong',cameras[i].replace('observation.images.','')),media);el('processingImages').append(card);}
+    const value=result[i+1],media=card.querySelector('.offline-camera-media');
+    if(value.status==='fulfilled'){value.value.alt=`${cameras[i]} · episode ${ep} · frame ${requested}`;media.replaceChildren(value.value);}
+    else media.replaceChildren(text('p','图像不可用：'+value.reason.message));
+   }
+   frameData=result[0].value;renderValues();
+   el('processingFrameTitle').textContent=`Episode ${ep} · 帧 ${requested} / ${length-1}`;
+   el('processingTime').textContent=`${Number(frameData.timestamp).toFixed(3)} s`;
+  }catch(e){
+   if(e.name!=='AbortError'&&seq===frameSeq){
+    stopPlayback();frameStatus(`帧 ${requested} 加载失败${frameData?'，保留上一帧图像与数值':''}`);error(e.message);
+   }
+  }finally{if(seq===frameSeq){el('processingImages').setAttribute('aria-busy','false');if(!el('processingFrameStatus').textContent.includes('加载失败'))frameStatus('');}}
  }
- function stopPlayback(){playing=false;clearTimeout(playTimer);el('processingPlay').textContent='播放';}
- async function tick(){if(!playing)return;const started=performance.now();if(frameNumber>=length-1){stopPlayback();return;}await showFrame(Math.min(length-1,frameNumber+Math.max(1,Math.round(info.fps/10))));if(playing)playTimer=setTimeout(tick,Math.max(0,100-(performance.now()-started)));}
+ function stopPlayback(){playing=false;playSeq++;clearTimeout(playTimer);clearTimeout(frameTimer);el('processingPlay').textContent='播放';}
+ async function tick(){if(!playing)return;const generation=playSeq,started=performance.now();if(frameNumber>=length-1){stopPlayback();return;}await showFrame(Math.min(length-1,frameNumber+Math.max(1,Math.round(info.fps/10))));if(playing&&generation===playSeq)playTimer=setTimeout(tick,Math.max(0,100-(performance.now()-started)));}
  async function poll(){try{job=await api(base+'/job');const x=el('processingJob');x.textContent=job?`${job.stage||job.state}${job.total?` · ${job.done}/${job.total}`:''}${job.error?' · '+job.error:''}${job.output_root?'\n'+job.output_root:''}`:'尚无任务';const progress=el('processingProgress');if(job?.alive&&!job.total)progress.removeAttribute('value');else progress.value=job?.state==='succeeded'?1:job?.total?(job.done||0)/job.total:0;el('processingCancel').disabled=!job?.alive;el('processingResult').hidden=job?.state!=='succeeded';selectionLabel();}catch(e){error(e.message);} }
  async function activate(){el('processingBase').textContent=`相对路径基准：${document.getElementById('datasetBase').textContent.replace('相对路径基准：','')}`;if(!initialized){initialized=true;try{const data=await refreshList();if(data.last){el('processingSource').value=data.last.source_root;await load(await api(`${base}/datasets/${data.last.dataset_id}`));}}catch(e){error(e.message);initialized=false;}}await poll();}
- window.addEventListener('vla-page-change',e=>{if(e.detail==='processing')activate();else{stopPlayback();frameSeq++;frameAbort?.abort();}});
+ window.addEventListener('vla-page-change',e=>{if(e.detail==='processing')activate();else{stopPlayback();frameSeq++;frameAbort?.abort();frameStatus('');}});
  window.addEventListener('vla-live-status',()=>{const running=hardwareRunning();el('processingHardware').hidden=!running;el('processingHardware').textContent=running?'硬件会话仍在运行。可预览其他已完成数据集；转换前请返回监控并停止会话。':'';selectionLabel();});
  el('processingOpen').onclick=attempt(async()=>{await writes;await load(await api(base+'/open',{path:el('processingSource').value}));});
  el('processingRefresh').onclick=attempt(refreshList);

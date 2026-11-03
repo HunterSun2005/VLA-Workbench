@@ -57,11 +57,11 @@
 <section class="card"><div class="section-title"><h2>离线帧预览</h2><strong id="processingFrameTitle">选择一个回合</strong></div>
 <div class="row compact processing-transport"><button id="processingPrevFrame">上一帧</button><button id="processingPlay">播放</button><button id="processingNextFrame">下一帧</button><label>帧 <input id="processingFrameNumber" type="number" min="0" value="0"></label><span id="processingTime" class="muted"></span></div>
 <input id="processingTimeline" type="range" min="0" max="0" value="0" aria-label="离线帧时间轴">
-<div id="processingImages" class="cameras"></div><p class="muted">离线图像与数值对应同一帧；播放预览最高 10 Hz，可暂停逐帧检查。</p></section>
+<p id="processingFrameStatus" class="muted" role="status"></p><div id="processingImages" class="cameras"></div><p class="muted">离线图像与数值对应同一帧；播放预览最高 10 Hz，可暂停逐帧检查。</p></section>
 <section class="card"><div class="section-title"><h2>当前帧数值</h2><label><input id="processingShowAll" type="checkbox" checked> 显示全部状态（不改变导出选择）</label></div>
 <div class="processing-table-scroll values"><table class="processing-table"><thead><tr><th>状态字段</th><th>数值</th><th>单位</th><th>导出</th></tr></thead><tbody id="processingValues"></tbody></table></div>
 <details open><summary>动作与帧标注</summary><div class="processing-table-scroll"><table class="processing-table"><tbody id="processingActions"></tbody></table></div></details></section>
 </article>
 </main>
 <footer>VLA · 本地操作面板 <span>监控与控制进程隔离 · 不自动恢复运动</span></footer>
-<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/hardware.js"></script><script src="/static/processing.js"></script></body></html>
+<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/hardware.js"></script><script src="/static/processing.js"></script><script src="/static/layout.js"></script></body></html>
