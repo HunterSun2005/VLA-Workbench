@@ -22,6 +22,10 @@ is_enabled() {
   esac
 }
 
+is_managed_rollout() {
+  [[ "$CONTROL_OWNER" == "rollout" && -n "${VLA_WEB_READY_FILE:-}" ]]
+}
+
 require_file() {
   [[ -f "$1" ]] || die "Missing required file: $1"
 }
@@ -116,7 +120,7 @@ validate_environment() {
     fi
   fi
 
-  if ! is_enabled "$CHECK_ONLY" && [[ ! -t 0 ]]; then
+  if ! is_enabled "$CHECK_ONLY" && [[ ! -t 0 ]] && ! is_managed_rollout; then
     die "An interactive terminal is required for keyboard shutdown"
   fi
 

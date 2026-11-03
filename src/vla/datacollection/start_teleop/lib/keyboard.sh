@@ -45,6 +45,14 @@ monitor_with_keyboard() {
 }
 
 monitor_rollout_hardware() {
+  if is_managed_rollout; then
+    log "Managed rollout hardware is ready; session runner owns shutdown via SIGTERM."
+    while true; do
+      assert_tasks_alive
+      # stdin is /dev/null in a Web session: timed read would return immediately.
+      sleep 0.1
+    done
+  fi
   log "Rollout hardware is ready; use the collector terminal for episode controls. Esc/c stops hardware."
   while true; do
     local key=""

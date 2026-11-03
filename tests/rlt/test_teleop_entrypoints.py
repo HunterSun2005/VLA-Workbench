@@ -308,3 +308,59 @@ trap - EXIT INT TERM
             expected.append("deactivate-arms")
         expected.append(f"stop {task}")
     assert events == [*expected, "cleanup"]
+
+
+@pytest.mark.parametrize("owner,managed,check_only,accepted", [
+    ("rollout", True, "0", True),
+    ("rollout", False, "0", False),
+    ("teleop", True, "0", False),
+    ("teleop", False, "0", False),
+    ("rollout", False, "1", True),
+    ("teleop", False, "1", True),
+])
+def test_launcher_terminal_validation_for_managed_web(tmp_path, owner, managed, check_only, accepted):
+    # Exercise real validation with /dev/null stdin, as used by Children.start.
+    # Only ROS/library lookups are replaced; no ROS nodes or devices are opened.
+    script = r'''
+source "$1"
+require_file() { :; }
+bash() { :; }
+OPENROBOTS_LIB_DIR="$PWD"
+validate_environment
+'''
+    env = {**os.environ, "CONTROL_OWNER": owner, "TELEOP_MODE": "duo",
+           "CHECK_ONLY": check_only, "LEFT_JOY_DEVICE_ID": "0", "RIGHT_JOY_DEVICE_ID": "1",
+           "VLA_WEB_READY_FILE": str(tmp_path / "hardware.ready") if managed else ""}
+    result = subprocess.run(["bash", "-c", script, "_", str(TELEOP_DIR / "start_teleop.sh")],
+                            cwd=tmp_path, env=env, stdin=subprocess.DEVNULL,
+                            capture_output=True, text=True, timeout=5)
+    assert (result.returncode == 0) == accepted, result.stderr
+    if not accepted:
+        assert "An interactive terminal is required" in result.stderr
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_managed_monitor_checks_children_and_exits_without_stdin(tmp_path, failure):
+    script = r'''
+source "$1"
+trap on_exit EXIT
+trap 'exit 143' TERM
+read() { die "managed monitor must not read stdin"; }
+assert_tasks_alive() {
+  printf 'EVENT health-check\n'
+  if [[ "$FAIL_CHILD" == 1 ]]; then die "mock child exited"; fi
+}
+sleep() { printf 'EVENT sleep\n'; kill -TERM "$$"; }
+cleanup_runtime_files() { printf 'EVENT cleanup\n'; }
+monitor_rollout_hardware
+'''
+    env = {**os.environ, "CONTROL_OWNER": "rollout", "TELEOP_MODE": "duo",
+           "VLA_WEB_READY_FILE": str(tmp_path / "hardware.ready"), "FAIL_CHILD": str(int(failure))}
+    result = subprocess.run(["bash", "-c", script, "_", str(TELEOP_DIR / "start_teleop.sh")],
+                            cwd=tmp_path, env=env, stdin=subprocess.DEVNULL,
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == (1 if failure else 143), result.stderr
+    events = [line for line in result.stdout.splitlines() if line.startswith("EVENT ")]
+    assert events == (["EVENT health-check", "EVENT cleanup"] if failure else
+                      ["EVENT health-check", "EVENT sleep", "EVENT cleanup"])
+    assert "must not read stdin" not in result.stderr

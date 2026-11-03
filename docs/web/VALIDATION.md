@@ -59,3 +59,12 @@ python scripts/web_demo_soak.py --web-pid <PID> --seconds 600 --output runtime/w
 配置检查结果移到主区域独立卡片，显示采集／部署、通过状态或错误数量。错误逐条编号与分隔，长路径换行；检查按钮与启动前检查使用相同布局，避免重复输出整段错误。手动修改配置或切换页面后清除旧结果。
 
 使用 Chromium 临时 demo 页面复现四条检查错误，确认独立条目、标题计数、无重复横幅、失败时不创建会话、旧结果清除、成功状态、深浅主题及 390px 移动布局；无 JavaScript 异常、无横向溢出。本次仅修改前端排布，未启动机器人会话。
+
+
+## 2026-11-03 · Web 管理的 ROS 启动无需交互终端
+
+现场会话 `386670f729704c99ad5d5fb153706e04` 在环境校验阶段退出，hardware.log 为 `An interactive terminal is required for keyboard shutdown`。Web 子进程使用 `/dev/null` stdin，原启动脚本却对所有控制路线要求终端；此时尚未启动硬件任务。
+
+现在仅对 `CONTROL_OWNER=rollout` 且具有 Web 就绪文件的受管理启动豁免终端要求。后台监控每 0.1 秒检查子进程，不读取空 stdin，避免 EOF 空转；沿用 SIGTERM 和既有 EXIT 清理。独立 CLI 仍保留原终端要求与键盘退出。
+
+`tests/rlt/test_teleop_entrypoints.py tests/web/test_panel.py`：54 passed。新增回归覆盖真实终端校验分支（模拟 ROS 依赖）、无终端的受管理启动、独立 CLI 拒绝无终端、check-only、后台故障监控、轮询等待及 SIGTERM 清理；Shell 语法检查通过。未启动硬件或自动重试现场会话；后续 ROS、设备通信与实机控制仍需现场验收。
