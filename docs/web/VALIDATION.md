@@ -68,3 +68,24 @@ python scripts/web_demo_soak.py --web-pid <PID> --seconds 600 --output runtime/w
 现在仅对 `CONTROL_OWNER=rollout` 且具有 Web 就绪文件的受管理启动豁免终端要求。后台监控每 0.1 秒检查子进程，不读取空 stdin，避免 EOF 空转；沿用 SIGTERM 和既有 EXIT 清理。独立 CLI 仍保留原终端要求与键盘退出。
 
 `tests/rlt/test_teleop_entrypoints.py tests/web/test_panel.py`：54 passed。新增回归覆盖真实终端校验分支（模拟 ROS 依赖）、无终端的受管理启动、独立 CLI 拒绝无终端、check-only、后台故障监控、轮询等待及 SIGTERM 清理；Shell 语法检查通过。未启动硬件或自动重试现场会话；后续 ROS、设备通信与实机控制仍需现场验收。
+
+
+## 2026-11-03 · Web／终端路线优化与 30 FPS 复验
+
+Web 连接状态与业务故障分离，10 秒通信启动宽限；故障恢复按来源清除，命令失败可关闭且不重复弹出。`VLA_RUN_MODE` 明确区分 managed／terminal；终端按键与确认不进入 Web 业务调用。新增终端后台有界 reporter、持久日志和一次非阻塞丢弃确认；GELLO直接启动、暂停数据语义和既有安全检查保留。
+
+离线全仓回归：918 passed，6 skipped；后续共享提示文案与状态行竞态修正的针对性回归251 passed（含新增竞态用例）；跳过项依赖未配置的真实模型资源，未计作通过。新增覆盖连接恢复／真实缺文件、抖动30 FPS源、单相机故障与恢复、无订阅停编码、慢输出／有界队列、按键确认取消／超时及暂停／EOF优先级。Chromium检查启动提示、真实错误显示、遥测／相机独立恢复、失败命令关闭不重放、跨会话重置、三视角双标签、明暗及移动布局通过，无JavaScript异常。
+
+最终三视角采集demo连续600.023秒。完整测量见 [PERFORMANCE_30FPS.json](PERFORMANCE_30FPS.json)，使用独立帧时间戳和完整MJPEG帧计数；未用重复帧补足FPS：
+
+| 视角 | 实际接收 FPS | 重复帧 | 接收帧年龄 p50 / p95 |
+|---|---:|---:|---:|
+| base | 29.998 | 0 | 24.64 / 25.67 ms |
+| left_wrist | 30.000 | 0 | 24.27 / 25.44 ms |
+| right_wrist | 30.000 | 0 | 24.41 / 25.55 ms |
+
+WebSocket 9.93 Hz、遥测19.95 Hz。五分钟历史缓冲填满后，最后四分钟runner RSS为72.61–76.03 MiB、Web RSS为47.73–49.27 MiB；CPU中位数分别为17.5%和4.5%（100%代表一个逻辑核）。缓冲数量保持有界，RSS在上述范围波动；首五分钟的增长来自遥测历史填充。与先前10 FPS基线分开保留，未覆盖旧测量。
+
+本次性能结果来自320×240合成图与本机HTTP接收时刻，不代表实际相机端到端屏幕延迟。真实RealSense、SSH隧道及硬件控制负载下的30 FPS仍待现场验收。未连接机器人，未重启或终止用户现有会话。
+
+最终 wheel 构建并仅更新 vla 环境内本项目包。在源码目录之外验证 vla-web --help、已安装 HTML/JS/CSS 与启动脚本、连接状态 API、独立三相机 demo、30 FPS 元数据及退出清理通过。终端轻量模块可由系统 Python 3.10 导入，不加载 Torch/rclpy。现有 Web 服务和用户会话未重启；更新需要正常结束旧会话后重启 Web 并创建新会话。

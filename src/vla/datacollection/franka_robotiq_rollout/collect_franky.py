@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
+                          TerminalConfirmation, diagnostic_path, current_reporter)
+
 import argparse
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -574,7 +577,7 @@ class FrankyRolloutCollector:
             was_priming or self._last_action_log % self.log_actions_every == 0
         ):
             debug = self.robot.command_debug_snapshot()
-            print(
+            console_debug(
                 "Franky action applied "
                 f"source={COLLECTOR_NAMES[source]} phase={self._phase} "
                 f"policy_xyz={np.round(self._latest_policy_action[:3], 4).tolist()} "
@@ -873,7 +876,7 @@ class FrankyRolloutCollector:
 
     def enable_teleop(self) -> None:
         if self._faulted or self._episode_active:
-            print("Cannot enable: finish the episode or recover the fault first; Space=intervention", flush=True)
+            print("无法启用：请先结束回合或恢复故障；回合中可使用人工接管。", flush=True)
             return
         if self._setup_teleop.mode == "active":
             return
@@ -887,7 +890,7 @@ class FrankyRolloutCollector:
                 # One session origin for both unrecorded positioning and intervention.
                 self._setup_teleop._initial_position = controls._initial_position.copy()
                 self._setup_teleop._initial_upright_rotation = controls._initial_upright_rotation.copy()
-                print("TELEOP: not recording; n=RLT inference+record, d=pause", flush=True)
+                print("遥操作已启用，尚未录制；可开始推理回合或暂停。", flush=True)
         except (OSError, RuntimeError, ValueError) as error:
             self._latch_fault(error)
 
@@ -914,10 +917,10 @@ class FrankyRolloutCollector:
             if getattr(self, "_sft_interface", False):
                 setup = self._setup_teleop
                 if setup.mode != "active":
-                    print("Press s to enable teleop before n=inference+record", flush=True)
+                    print("请先启用遥操作，再开始推理与录制。", flush=True)
                     return
                 if not setup._neutral(setup._packet()):
-                    print("Release sticks, triggers and buttons before n=inference+record", flush=True)
+                    print("开始推理与录制前，请松开摇杆、扳机及按钮。", flush=True)
                     return
                 # No motion while begin_episode reconciles data or trains pending work.
                 setup.pause("starting RLT episode")
@@ -1138,7 +1141,7 @@ class FrankyRolloutCollector:
             self._clear_episode()
             self.update_preview()
             if getattr(self, "_sft_interface", False) and not self._faulted:
-                print("STANDBY: s=teleop, n=inference+record after enabling", flush=True)
+                print("已返回待命；重新启用遥操作后可开始推理与录制。", flush=True)
 
     def toggle_intervention(self) -> None:
         if not self._episode_active:
@@ -1158,7 +1161,7 @@ class FrankyRolloutCollector:
                 self.joy_receiver.require_fresh(self.config.gamepad_joy_timeout_s)
                 if getattr(self, "_sft_interface", False):
                     if not self._gamepad_controls._neutral(self.joy_receiver.require_fresh(self.config.gamepad_joy_timeout_s)):
-                        print("Release gamepad controls, then press Space again for HUMAN", flush=True)
+                        print("请松开手柄输入，然后重新请求人工接管。", flush=True)
                         return
                 self.policy_client.invalidate()
                 self._latest_policy_result = None
@@ -1176,7 +1179,7 @@ class FrankyRolloutCollector:
             else:
                 if getattr(self, "_sft_interface", False):
                     if not self._gamepad_controls._neutral(self.joy_receiver.require_fresh(self.config.gamepad_joy_timeout_s)):
-                        print("Release gamepad controls, then press Space again to return to RLT", flush=True)
+                        print("请松开手柄输入，然后重新请求归还策略控制。", flush=True)
                         return
                 self.robot.end_human_control()
                 if getattr(self, "_gamepad_controls", None) is not None:
@@ -1247,10 +1250,10 @@ class FrankyRolloutCollector:
 
     def toggle_phase(self) -> None:
         if getattr(self, "_sft_only", False):
-            print("SFT-only rollout: Space toggles human/policy control", flush=True)
+            print("SFT 部署可切换人工／策略控制。", flush=True)
             return
         if getattr(self, "_full_episode", False):
-            print("Full-episode RLT: phase switching disabled; Space toggles HUMAN control", flush=True)
+            print("完整回合 RLT 不支持阶段切换，可使用人工接管。", flush=True)
             return
         if not self._episode_active:
             print("Ignoring phase toggle outside an active episode", flush=True)
@@ -1293,7 +1296,7 @@ class FrankyRolloutCollector:
     def discard_latest(self) -> None:
         if self._faulted:
             print(
-                f"Cannot discard while fault is latched; press {'r' if getattr(self, '_sft_interface', False) else 'c'} to recover", flush=True
+                "故障锁定时不能丢弃回合；请先执行故障恢复。", flush=True
             )
             return
         if self._episode_active:
@@ -1373,9 +1376,9 @@ class FrankyRolloutCollector:
         self._emit("collector_fault_recovered", previous_reason=previous_reason)
         self.update_preview()
         print(
-            ("Rollout fault cleared; STANDBY. s=teleop, then n=inference+record"
+            ("故障已清除，当前待命；启用遥操作后可开始推理与录制。"
              if getattr(self, "_sft_interface", False) else
-             "Rollout fault cleared; no episode is active. Right=start when the scene is safe"),
+             "故障已清除，当前无活动回合；确认现场状态后可开始新回合。"),
             flush=True,
         )
         return True
@@ -1411,7 +1414,7 @@ class FrankyRolloutCollector:
         self.update_preview()
         print(
             "\nROLLOUT FAULT LATCHED; Franky commands disabled. "
-            f"Press {'r' if getattr(self, '_sft_interface', False) else 'c'} to verify health and recover in this terminal: "
+            "请排查健康状态并执行故障恢复： "
             f"{self._fault_reason}\n{traceback.format_exc()}",
             file=sys.stderr,
             flush=True,
@@ -1451,7 +1454,7 @@ def parse_args() -> argparse.Namespace:
         "--log-actions-every",
         type=int,
         default=0,
-        help="Print every Nth applied policy action; 0 disables action-value logs.",
+        help="Record every Nth applied policy action in diagnostic logs; 0 disables action-value logs.",
     )
     return parser.parse_args()
 
@@ -1495,8 +1498,7 @@ def _confirm_execute(execute: bool, *, sft: bool = False) -> None:
     if sft:
         print("Connecting in STANDBY; no home/open target. Clear workspace and keep emergency stop accessible. s=enable teleop", flush=True)
         return
-    if input("Type ARM to enable Franky rollout commands: ") != "ARM":
-        raise PermissionError("arming cancelled")
+    print("已接受 --execute；连接后按 Right 开始回合。", flush=True)
 
 
 def next_control_deadline(started: float, finished: float, period: float) -> float:
@@ -1521,6 +1523,7 @@ def dispatch_event(collector, event: str) -> bool:
     return False
 
 
+@terminal_session("franky-rollout")
 def main() -> None:
     args = parse_args()
     config = load_rollout_config(args.config)
@@ -1558,9 +1561,7 @@ def main() -> None:
                                human_angular_velocity_control=True, human_gripper_immediate_hold=True)
     _confirm_execute(args.execute, sft=sft_interface)
     _configure_affinity(deployment, robot_config.realtime_cpu)
-    debug_path = args.debug_log or Path(
-        f"logs/franka_rollout_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
-    )
+    debug_path = args.debug_log or diagnostic_path("rollout.jsonl", f"logs/franka_rollout_{datetime.now():%Y%m%d_%H%M%S}.jsonl")
     trace = JsonlDebugTrace(debug_path)
     robot = FrankaRobotiqRobot(robot_config)
     collector: FrankyRolloutCollector | None = None
@@ -1599,10 +1600,11 @@ def main() -> None:
                 preview.start()
             except (OSError, RuntimeError, ValueError) as error:
                 print(f"Camera preview unavailable: {error}; collector remains available", flush=True)
-        keyboard = KeyboardEvents(sft=sft_interface)
+        confirmation = TerminalConfirmation()
+        keyboard = KeyboardEvents(sft=sft_interface, confirmation=confirmation)
         print(
             ("STANDBY: s=teleop, n=RLT inference+record, Space=human/RLT, "
-             "y=success/save, f=failure/save, x=discard, d=pause, h=demo mean home, r=recover, c/q/Esc=exit"
+             "y=success/save, f=failure/save, x=discard (confirm), d=pause+discard immediately, h=demo mean home, r=recover, c/q/Esc=exit"
              if sft_interface else
              "Franky rollout ready; Right=start, r=phase, Space=human, s/f=outcome, Left=discard-active, c=recover, q=quit"),
             flush=True,
@@ -1613,7 +1615,19 @@ def main() -> None:
         next_communication_sample = next_control
         stop = False
         while not stop:
-            for event in keyboard.consume():
+            confirmation.expire()
+            for event in confirmation.prioritize(keyboard.consume()):
+                if event == "force_quit":
+                    stop = True
+                    break
+                active = collector.episode_active is True
+                index = collector.writer.next_episode_index()
+                destructive = event == "quit" and active or event == "left" and (active or not collector.require_online and index > 0)
+                event = confirmation.route(event, destructive=destructive,
+                    valid=lambda recording=active, episode=index: collector.episode_active is recording and collector.writer.next_episode_index() == episode and not collector.faulted,
+                    label="退出并丢弃当前未保存回合" if event == "quit" else "丢弃当前或最近已保存回合")
+                if event is None:
+                    continue
                 stop = dispatch_event(collector, event)
                 if stop or sft_interface:
                     break
@@ -1634,6 +1648,7 @@ def main() -> None:
                     keyboard.consume()
             collector.update_preview()
             if time.monotonic() >= next_communication_sample:
+                console_status(f"{ 'FAULT' if collector.faulted else 'RECORDING' if collector.episode_active else 'STANDBY' } episode={collector.writer.next_episode_index()} frames={len(collector._states)} source={'HUMAN' if collector._intervention else collector._phase.upper()}")
                 collector._emit(
                     "communication_sample", episode_active=collector.episode_active,
                     **robot.communication_debug_snapshot(),

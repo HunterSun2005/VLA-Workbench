@@ -31,15 +31,16 @@ def test_legacy_keyboard_unchanged():
     assert keyboard_event(b"n") is None
 
 
-def test_sft_standby_needs_execute_and_terminal_but_no_arm(monkeypatch):
+@pytest.mark.parametrize("sft", [False, True])
+def test_sft_standby_needs_execute_and_terminal_but_no_arm(monkeypatch, sft):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("must not prompt for ARM"))
-    _confirm_execute(True, sft=True)
+    _confirm_execute(True, sft=sft)
     with pytest.raises(PermissionError, match="execute"):
-        _confirm_execute(False, sft=True)
+        _confirm_execute(False, sft=sft)
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     with pytest.raises(PermissionError, match="interactive"):
-        _confirm_execute(True, sft=True)
+        _confirm_execute(True, sft=sft)
 
 
 def test_dispatch_s_does_not_save_and_quit_does_not_start():

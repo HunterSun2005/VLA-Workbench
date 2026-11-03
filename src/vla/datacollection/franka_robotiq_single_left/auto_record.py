@@ -7,6 +7,9 @@ Run this module with the ROS Python 3.10 interpreter from the repository root::
 
 from __future__ import annotations
 
+from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
+                          TerminalConfirmation, diagnostic_path, current_reporter)
+
 import os
 import queue
 import select
@@ -80,6 +83,10 @@ def report_exception(context: str) -> None:
     details = traceback.format_exc()
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     message = f"[{timestamp}] {context}\n{details}"
+    reporter = current_reporter()
+    if reporter is not None:
+        reporter.event(f"{context}；详细堆栈：{reporter.path}", level="error", details=details)
+        return
     print(f"\n{message}", file=sys.stderr, flush=True)
     try:
         ERROR_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -282,7 +289,8 @@ class AsyncVideoWriter:
 
 
 class KeyboardEvents:
-    def __init__(self, keymap: dict[bytes, str] | None = None) -> None:
+    def __init__(self, keymap: dict[bytes, str] | None = None, *, confirmation=None) -> None:
+        self.confirmation = confirmation
         self._keymap = keymap or {}
         self._events = deque()
         self._lock = threading.Lock()
@@ -304,9 +312,17 @@ class KeyboardEvents:
             if not ready:
                 continue
             char = os.read(self._fd, 1)
+            if self.confirmation is not None and char in (b"", b"\x03", b"\x04"):
+                self._push("force_quit")
+                return
             if char == b"\x1b":
                 suffix = os.read(self._fd, 2) if select.select([self._fd], [], [], 0.05)[0] else b""
+                if self.confirmation is not None and self.confirmation.pending and not suffix:
+                    self._push("cancel")
+                    continue
                 self._push("right" if suffix == b"[C" else "left" if suffix == b"[D" else "quit")
+            elif self.confirmation is not None and self.confirmation.key_event(char):
+                self._push(self.confirmation.key_event(char))
             elif char.lower() in self._keymap:
                 self._push(self._keymap[char.lower()])
             elif char in {b"q", b"Q", b"\x03", b"\x04", b""}:
@@ -616,8 +632,9 @@ class DirectLeRobotRecorder(Node):
                 self._previous_rotation = rotation.copy()
                 self._previous_pose_time_ns = now_ns
                 self._last_frame_time_ns = now_ns
-                if len(self._states) % (FPS * 5) == 0:
-                    print(f"Recorded {len(self._states)} frames; encoders={self._diagnostics()}", flush=True)
+                if len(self._states) % FPS == 0:
+                    console_status(f"RECORDING frames={len(self._states)} elapsed={len(self._states)/FPS:.1f}s")
+                    console_debug(f"Recorded {len(self._states)} frames; encoders={self._diagnostics()}")
             except (KeyError, ValueError, RuntimeError) as error:
                 self._skip_reasons[f"invalid frame: {error}"] += 1
 
@@ -703,8 +720,8 @@ class DirectLeRobotRecorder(Node):
             f"action_rotation_span={report['rotation_span_rad']:.4f}rad, "
             f"gripper_command=[{actions[:, 9].min():.4f}, {actions[:, 9].max():.4f}], encoders={self._diagnostics()}"
         )
-        print(f"State ranges ({len(schema.STATE_FIELDS)}D): {np.asarray(report['state_range']).tolist()}")
-        print(f"Action ranges ({len(schema.ACTION_FIELDS)}D): {np.asarray(report['action_range']).tolist()}")
+        console_debug(f"State ranges ({len(schema.STATE_FIELDS)}D): {np.asarray(report['state_range']).tolist()}")
+        console_debug(f"Action ranges ({len(schema.ACTION_FIELDS)}D): {np.asarray(report['action_range']).tolist()}")
         if self._skip_reasons:
             print("Skipped base frames: " + ", ".join(f"{key}={value}" for key, value in self._skip_reasons.most_common()))
 
@@ -763,6 +780,7 @@ class DirectLeRobotRecorder(Node):
         self._camera_capture.close()
 
 
+@terminal_session("gello-single-record")
 def main() -> None:
     rclpy.init()
     recorder = DirectLeRobotRecorder()
@@ -770,12 +788,24 @@ def main() -> None:
     executor.add_node(recorder)
     spin_thread = threading.Thread(target=executor.spin, daemon=True)
     spin_thread.start()
-    keyboard = KeyboardEvents()
+    confirmation = TerminalConfirmation()
+    keyboard = KeyboardEvents(confirmation=confirmation)
     try:
         should_quit = False
         while not should_quit:
-            for event in keyboard.consume():
+            confirmation.expire()
+            for event in confirmation.prioritize(keyboard.consume()):
+                if event == "force_quit":
+                    should_quit = True
+                    break  # EOF/forced exit must not return to the command loop after a save failure.
                 try:
+                    states, saved, recording = recorder._states, recorder._last_saved_episode, recorder.is_recording
+                    event = confirmation.route(event,
+                        destructive=event == "left" and (recording or saved is not None),
+                        valid=lambda frames=states, previous=saved, active=recording: recorder._states is frames and recorder._last_saved_episode == previous and recorder.is_recording == active,
+                        label="丢弃当前未保存回合" if recording else "删除本次会话最近已保存回合")
+                    if event is None:
+                        continue
                     if event == "right":
                         recorder.stop_recording() if recorder.is_recording else recorder.start_recording()
                     elif event == "left":
@@ -784,18 +814,20 @@ def main() -> None:
                         recorder.close(save_active=True)
                         should_quit = True
                         break
-                except BaseException:
+                except Exception:
                     report_exception(f"keyboard command {event!r} failed; recorder remains active")
             time.sleep(0.03)
     except KeyboardInterrupt:
         print("Interrupted; saving active recording before exit.")
     finally:
-        recorder.close(save_active=True)
-        keyboard.close()
-        executor.shutdown()
-        spin_thread.join(timeout=5.0)
-        recorder.destroy_node()
-        rclpy.try_shutdown()
+        try:
+            recorder.close(save_active=True)
+        finally:
+            keyboard.close()
+            executor.shutdown()
+            spin_thread.join(timeout=5.0)
+            recorder.destroy_node()
+            rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

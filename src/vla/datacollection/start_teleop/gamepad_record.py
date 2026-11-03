@@ -1,7 +1,11 @@
 """Single-left gamepad demonstrations: no GELLO, policy server or online training."""
 from __future__ import annotations
 
+from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
+                          TerminalConfirmation, diagnostic_path, current_reporter)
+
 import argparse
+from contextlib import nullcontext
 from dataclasses import replace
 import importlib.util
 import os
@@ -53,7 +57,7 @@ class RecordingSession:
             self.report("Cannot record: previous save/cleanup pending or storage fault; restart with --resume after a storage fault")
             return
         if self.controller.mode != "active":
-            self.report("Press s to enable teleop before n=record")
+            self.report("请先启用遥操作，再开始录制。")
             return
         try:
             packet = self.controller._packet()
@@ -75,7 +79,7 @@ class RecordingSession:
             self.last_snapshot = snapshot
             self.started_at = snapshot.observed_at_ns / 1e9
             self.next_sample = self.started_at + 1 / self.recording.fps
-            self.report(f"RECORDING episode={self.worker.index}: n=start, y=success/save, f=failure/save, x=discard; RB=critical ON/OFF")
+            self.report(f"RECORDING episode={self.worker.index}；可标记成功／失败并保存，或丢弃当前回合。")
         except Exception as error:
             self.controller.pause(f"recording start failed: {error}")
 
@@ -155,7 +159,7 @@ class RecordingSession:
                         self.next_sample += 1 / self.recording.fps
                 if now - self.last_report >= 1:
                     self.last_report = now
-                    self.report(f"RECORDING episode={self.worker.index} frames={self.worker.frames} elapsed={now-self.started_at:.1f}s "
+                    console_status(f"RECORDING episode={self.worker.index} frames={self.worker.frames} elapsed={now-self.started_at:.1f}s "
                                 f"speed={'HIGH' if self.controller.high_speed else 'LOW'} critical={self.phase.state}")
             except Exception as error:
                 self.finish(False, str(error))
@@ -222,26 +226,50 @@ def run(control, recording, root, task, resume, *, preview=True):
             runtime = Path(directory)
             receiver = JoyReceiver(runtime / "joy.sock")
             try:
-                with JoySidecars(control, receiver.path, runtime) as sidecars, AsyncReporter() as reporter:
+                with JoySidecars(control, receiver.path, runtime) as sidecars, (nullcontext(print) if current_reporter() else AsyncReporter()) as reporter:
                     robot = FrankaRobotiqRobot(replace(control.robot, calibration_dir=runtime / "calibration"))
                     robot.connect()
                     session = RecordingSession(control, recording, robot, receiver, store, report=reporter)
                     viewer = CameraPreview(runtime, robot.get_camera_preview_snapshot, enabled=preview, report=reporter)
-                    print("STANDBY: s=enable, n=record, y=success/save, f=failure/save, x=discard, d=pause, r=recover, c/Esc/Ctrl+C=exit; RB=critical")
+                    print("STANDBY: s=enable, n=record, y=success/save, f=failure/save, x=discard (confirm), d=pause+discard immediately, r=recover, c/Esc=exit, Ctrl+C=immediate stop; RB=critical")
                     try:
                         viewer.start()
                         session.preview = viewer
+                        confirmation = TerminalConfirmation()
                         with keyboard() as fd:
                             while True:
                                 started = time.monotonic()
                                 sidecars.check()
                                 session.tick()
+                                confirmation.expire()
                                 if select.select([fd], [], [], 0)[0]:
                                     keys = os.read(fd, 32).decode(errors="ignore").lower()
-                                    if not keys or any(k in keys for k in ("c", "\x1b", "\x04")):
+                                    if not keys or "\x04" in keys or "\x03" in keys:
                                         break
+                                    if "d" in keys:
+                                        # A pause in the same input batch must never be swallowed
+                                        # while dropping keys typed before a confirmation prompt.
+                                        confirmation.route("d")
+                                        session.key("d")
+                                        continue
+                                    should_exit = False
                                     for key in keys:
-                                        session.key(key)
+                                        event = confirmation.key_event(key.encode()) or key
+                                        worker = session.worker
+                                        destructive = worker is not None and not session.saving and event in ("x", "c", "\x1b")
+                                        event = confirmation.route(event, destructive=destructive,
+                                            valid=lambda target=worker: session.worker is target and not session.saving and session.controller.mode != "fault",
+                                            label="退出并丢弃当前未保存回合" if event != "x" else "丢弃当前未保存回合")
+                                        if event is None:
+                                            if confirmation.pending:
+                                                break  # Drop keys buffered before the prompt was displayed.
+                                            continue
+                                        if event in ("c", "\x1b"):
+                                            should_exit = True
+                                            break
+                                        session.key(event)
+                                    if should_exit:
+                                        break
                                 time.sleep(max(0, 1 / control.control.control_rate - (time.monotonic() - started)))
                     finally:
                         session.finish(False, "shutdown")
@@ -257,6 +285,7 @@ def run(control, recording, root, task, resume, *, preview=True):
             store.close()
 
 
+@terminal_session("gamepad-record")
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)

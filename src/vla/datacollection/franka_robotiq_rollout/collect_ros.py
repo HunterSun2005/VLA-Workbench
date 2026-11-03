@@ -9,6 +9,9 @@ Run from the repository root with the ROS2 Python interpreter::
 
 from __future__ import annotations
 
+from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
+                          TerminalConfirmation, diagnostic_path, current_reporter)
+
 import argparse
 import sys
 import threading
@@ -1047,7 +1050,7 @@ class RolloutCollector(Node):
         )
         now = time.monotonic()
         if active_inputs and now - self._last_gamepad_input_log >= 0.5:
-            print("Gamepad input " + "; ".join(active_inputs), flush=True)
+            console_debug("Gamepad input " + "; ".join(active_inputs))
             self._last_gamepad_input_log = now
         return True
 
@@ -1386,7 +1389,7 @@ class RolloutCollector(Node):
                 )
                 return
             if self.demonstration and (not self._teleop_enabled or not self._neutral_gamepads()):
-                print("Press s to enable; release BOTH gamepads before n=record", flush=True)
+                print("请先启用遥操作；开始录制前松开双侧手柄输入。", flush=True)
                 return
             problems = self._preflight_problems()
             if problems:
@@ -1451,7 +1454,7 @@ class RolloutCollector(Node):
                 discard = True
             if (not discard and outcome == "success" and self.config.subtasks
                     and self._subtask_index != len(self.config.subtasks) - 1):
-                print("Success requires the final subtask; Tab advances a completed stage", flush=True)
+                print("成功保存需要完成最后阶段；完成当前阶段后执行下一阶段操作。", flush=True)
                 return
             should_save = (
                 not discard
@@ -1561,7 +1564,7 @@ class RolloutCollector(Node):
     def toggle_intervention(self) -> None:
         with self._lock:
             if self.demonstration and self._intervention:
-                print("Demonstration remains HUMAN; use d to pause/discard", flush=True)
+                print("演示采集保持人工控制；暂停会丢弃当前回合。", flush=True)
                 return
             if not self._intervention:
                 if not (self._recording or self._teleop_enabled):
@@ -1690,6 +1693,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+@terminal_session("ros-rollout")
 def main() -> None:
     config = load_rollout_config(parse_args().config)
     run(config)
@@ -1723,15 +1727,32 @@ def _run(config: RolloutConfig, *, demonstration: bool = False) -> None:
         keymap.update({b"s": "enable", b"n": "right", b"y": "success",
                        b"x": "discard", b"d": "pause", b"c": "quit"})
         print("STANDBY: s=enable both gamepads, n=record, y=success/save, x=discard, "
-              "d=pause, r=critical ON/OFF, Tab=next subtask, c/Esc=exit. "
+              "d=pause+discard immediately, r=critical ON/OFF, Tab=next subtask, c/Esc=exit. "
               "ROS control faults require a restart.", flush=True)
     else:
         print("Rollout task selection: press t between episodes to cycle configured prompts.", flush=True)
-    keyboard = KeyboardEvents(keymap=keymap)
+    confirmation = TerminalConfirmation()
+    keyboard = KeyboardEvents(keymap=keymap, confirmation=confirmation)
     try:
         stop = False
+        next_status = 0.0
         while not stop:
-            for event in keyboard.consume():
+            confirmation.expire()
+            if time.monotonic() >= next_status:
+                console_status(f"{'FAULT' if collector._faulted else 'RECORDING' if collector._recording else 'STANDBY'} episode={collector.writer.next_episode_index()} frames={len(collector._states)} source={'GAMEPAD' if collector.demonstration or collector._intervention else collector._phase.upper()}")
+                next_status = time.monotonic() + 1.0
+            for event in confirmation.prioritize(keyboard.consume()):
+                if event == "force_quit":
+                    stop = True
+                    break
+                recording, index = collector._recording, collector.writer.next_episode_index()
+                destructive = (event in ("discard", "left") and (recording or not demonstration and index > 0)
+                               or event == "quit" and recording)
+                event = confirmation.route(event, destructive=destructive,
+                    valid=lambda active=recording, episode=index: collector._recording == active and collector.writer.next_episode_index() == episode and not collector._faulted,
+                    label="退出并丢弃当前未保存回合" if event == "quit" else "丢弃当前或最近已保存回合")
+                if event is None:
+                    continue
                 if event == "enable":
                     collector.enable_teleop()
                 elif event == "pause":

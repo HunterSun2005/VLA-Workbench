@@ -32,8 +32,9 @@ def test_preview_status_is_bounded_and_does_not_access_hardware(mode):
     assert not c.robot.mock_calls and not c.writer.mock_calls
 
 
+@pytest.mark.parametrize("keys", [["quit"], ["enable", "force_quit"]])
 @pytest.mark.parametrize("disabled,fail", [(False, False), (True, False), (False, True)])
-def test_collector_preview_lifecycle_uses_existing_buffer_and_closes_first(tmp_path, monkeypatch, disabled, fail):
+def test_collector_preview_lifecycle_uses_existing_buffer_and_closes_first(tmp_path, monkeypatch, disabled, fail, keys):
     events = []
     robot = Mock()
     robot.connect.side_effect = lambda: events.append("connect")
@@ -53,11 +54,12 @@ def test_collector_preview_lifecycle_uses_existing_buffer_and_closes_first(tmp_p
     monkeypatch.setattr(entry, "JsonlDebugTrace", Mock())
     monkeypatch.setattr(entry, "_configure_affinity", Mock())
     monkeypatch.setattr(entry, "_confirm_execute", Mock())
-    monkeypatch.setattr(entry, "KeyboardEvents", Mock(return_value=SimpleNamespace(consume=lambda: ["quit"], close=lambda: None)))
+    monkeypatch.setattr(entry, "KeyboardEvents", Mock(return_value=SimpleNamespace(consume=lambda: keys, close=lambda: None)))
     config = Path(__file__).parents[2] / "src/vla/datacollection/franka_robotiq_rollout/configs/single_left.yaml"
     monkeypatch.setattr("sys.argv", ["collect", "--config", str(config), "--execute", "--online",
                                     "--dataset-root", str(tmp_path), *(["--no-preview"] if disabled else [])])
     entry.main()
+    collector.enable_teleop.assert_not_called()
     robot.prepare_for_control.assert_not_called()
     if disabled:
         preview_factory.assert_not_called()

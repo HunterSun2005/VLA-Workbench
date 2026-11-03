@@ -50,7 +50,13 @@ FRANKA_ROS2_WS="${FRANKA_ROS2_WS:-$ROS2_WS}"
 ROBOTIQ_ROS2_SETUP="${ROBOTIQ_ROS2_SETUP:-$ROS2_WS/install/local_setup.bash}"
 OPENROBOTS_LIB_DIR="${OPENROBOTS_LIB_DIR:-/opt/openrobots/lib}"
 FRANKA_HARDWARE_LIBRARY="${FRANKA_HARDWARE_LIBRARY:-$FRANKA_ROS2_WS/install/franka_hardware/lib/libfranka_hardware.so}"
-LOG_DIR="${LOG_DIR:-$ROS2_WS/log/${TELEOP_MODE}_${CONTROL_OWNER}}"
+if [[ "$VLA_RUN_MODE" == terminal ]]; then
+  export VLA_TERMINAL_LOG_DIR="${VLA_TERMINAL_LOG_DIR:-${VLA_ROOT:-$PWD}/runtime/terminal/$(date +%Y%m%d-%H%M%S)-${TELEOP_MODE}-${CONTROL_OWNER}-$$}"
+  LOG_DIR="${LOG_DIR:-$VLA_TERMINAL_LOG_DIR/ros}"
+  VLA_LAUNCHER_LOG="$VLA_TERMINAL_LOG_DIR/launcher.log"
+else
+  LOG_DIR="${LOG_DIR:-$ROS2_WS/log/${TELEOP_MODE}_${CONTROL_OWNER}}"
+fi
 STATE_DIR="${STATE_DIR:-${VLA_ROOT:-$PWD}/runtime/fr3_fine_teleop_${UID}}"
 
 FINE_TELEOP_NODE="$SCRIPT_DIR/fine_teleop.py"
@@ -130,6 +136,8 @@ main() {
   trap 'exit 143' TERM
 
   ensure_single_instance
+  log "阶段：检查配置与运行环境"
+  log "诊断目录：$LOG_DIR"
   validate_environment
   prepare_runtime_configs
 
@@ -147,6 +155,7 @@ main() {
     return 0
   fi
 
+  log "阶段：连接设备并等待控制器就绪"
   local environment gello_pythonpath
   environment="$(ros_env_cmd)"
   gello_pythonpath="$ROS2_WS/build/franka_gello_state_publisher:$ROS2_WS/src/franka_gello_state_publisher"
@@ -226,7 +235,7 @@ main() {
   else
     log "Single-left FR3 teleoperation stack is ready."
   fi
-  log "Logs: $LOG_DIR"
+  log "阶段：就绪；诊断目录：$LOG_DIR"
   if [[ -n "${VLA_WEB_READY_FILE:-}" ]]; then
     printf '%s\n' "$$" >"$VLA_WEB_READY_FILE"
   fi

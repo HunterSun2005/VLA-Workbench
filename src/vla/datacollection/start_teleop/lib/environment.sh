@@ -7,7 +7,21 @@ timestamp() {
 }
 
 log() {
-  printf '[%s] %s\n' "$(timestamp)" "$*"
+  local line
+  printf -v line '[%s] %s' "$(timestamp)" "$*"
+  printf '%s\n' "$line"
+  if [[ -n "${VLA_LAUNCHER_LOG:-}" && -d "${VLA_TERMINAL_LOG_DIR:-}" ]]; then
+    printf '%s\n' "$line" >>"$VLA_LAUNCHER_LOG" || true
+  fi
+}
+
+report_task_failure() {
+  local name="$1" code="$2" path="$3"
+  log "ERROR: 子进程 $name 已退出（退出码：$code）；诊断日志：$path"
+  if [[ -f "$path" ]]; then
+    # Bounded diagnostic output only; it never determines startup/control state.
+    tail -c 4096 -- "$path" | tail -n 6 >&2 || true
+  fi
 }
 
 die() {

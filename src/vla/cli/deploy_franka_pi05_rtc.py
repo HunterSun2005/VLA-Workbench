@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
+                          TerminalConfirmation, diagnostic_path, current_reporter)
+
 import argparse
 import dataclasses
 import json
@@ -676,6 +679,7 @@ def _load_pi05_config(config_class, contract):
                 return draccus.parse(config_class, stream.name, args=[])
 
 
+@terminal_session("rtc-deploy")
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.mock and args.execute:
@@ -922,7 +926,7 @@ def main(argv: list[str] | None = None) -> int:
         debug_path = args.debug_log
         if debug_path is None:
             debug_dir = Path(deployment.get("debug_log_dir", "logs"))
-            debug_path = debug_dir / f"franka_pi05_rtc_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
+            debug_path = diagnostic_path("rtc.jsonl", debug_dir / f"franka_pi05_rtc_{datetime.now():%Y%m%d_%H%M%S}.jsonl")
         trace = JsonlDebugTrace(debug_path)
         log.info("Writing deployment debug trace to %s", trace.path)
         trace.emit(

@@ -243,7 +243,8 @@ def keyboard_event(char: bytes, *, sft: bool = False) -> str | None:
 
 
 class KeyboardEvents:
-    def __init__(self, *, sft: bool = False) -> None:
+    def __init__(self, *, sft: bool = False, confirmation=None) -> None:
+        self.confirmation = confirmation
         self._sft = sft
         self._events: deque[str] = deque()
         self._lock = threading.Lock()
@@ -265,12 +266,18 @@ class KeyboardEvents:
             if not ready:
                 continue
             char = os.read(self._fd, 1)
+            if self.confirmation is not None and char in (b"", b"\x03", b"\x04"):
+                self._push("force_quit")
+                return
             if char == b"\x1b":
                 suffix = os.read(self._fd, 2) if select.select([self._fd], [], [], 0.05)[0] else b""
+                if self.confirmation is not None and self.confirmation.pending and not suffix:
+                    self._push("cancel")
+                    continue
                 if not self._sft or not suffix:
                     self._push("right" if suffix == b"[C" else "left" if suffix == b"[D" else "quit")
             else:
-                event = keyboard_event(char, sft=self._sft)
+                event = (self.confirmation.key_event(char) if self.confirmation is not None else None) or keyboard_event(char, sft=self._sft)
                 if event is not None:
                     self._push(event)
 

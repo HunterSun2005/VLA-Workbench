@@ -7,6 +7,9 @@ Run this module with the ROS Python 3.10 interpreter from the repository root::
 
 from __future__ import annotations
 
+from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
+                          TerminalConfirmation, diagnostic_path, current_reporter)
+
 import sys
 import threading
 import time
@@ -51,6 +54,10 @@ def report_exception(context: str) -> None:
     details = traceback.format_exc()
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     message = f"[{timestamp}] {context}\n{details}"
+    reporter = current_reporter()
+    if reporter is not None:
+        reporter.event(f"{context}；详细堆栈：{reporter.path}", level="error", details=details)
+        return
     print(f"\n{message}", file=sys.stderr, flush=True)
     try:
         ERROR_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -301,11 +308,9 @@ class DualLeRobotRecorder(Node):
                 self._frame_times_ns.append(now_ns)
                 self._previous_pose = current_poses
                 self._last_frame_time_ns = now_ns
-                if len(self._states) % (FPS * 5) == 0:
-                    print(
-                        f"Recorded {len(self._states)} frames; encoders={self._diagnostics()}",
-                        flush=True,
-                    )
+                if len(self._states) % FPS == 0:
+                    console_status(f"RECORDING frames={len(self._states)} elapsed={len(self._states)/FPS:.1f}s")
+                    console_debug(f"Recorded {len(self._states)} frames; encoders={self._diagnostics()}")
             except (KeyError, ValueError, RuntimeError) as error:
                 self._skip_reasons[f"invalid frame: {error}"] += 1
 
@@ -496,6 +501,7 @@ class DualLeRobotRecorder(Node):
         self._camera_capture.close()
 
 
+@terminal_session("gello-dual-record")
 def main() -> None:
     rclpy.init()
     recorder = DualLeRobotRecorder()
@@ -503,12 +509,24 @@ def main() -> None:
     executor.add_node(recorder)
     spin_thread = threading.Thread(target=executor.spin, daemon=True)
     spin_thread.start()
-    keyboard = KeyboardEvents()
+    confirmation = TerminalConfirmation()
+    keyboard = KeyboardEvents(confirmation=confirmation)
     try:
         should_quit = False
         while not should_quit:
-            for event in keyboard.consume():
+            confirmation.expire()
+            for event in confirmation.prioritize(keyboard.consume()):
+                if event == "force_quit":
+                    should_quit = True
+                    break  # EOF/forced exit must not return to the command loop after a save failure.
                 try:
+                    states, saved, recording = recorder._states, recorder._last_saved_episode, recorder.is_recording
+                    event = confirmation.route(event,
+                        destructive=event == "left" and (recording or saved is not None),
+                        valid=lambda frames=states, previous=saved, active=recording: recorder._states is frames and recorder._last_saved_episode == previous and recorder.is_recording == active,
+                        label="丢弃当前未保存回合" if recording else "删除本次会话最近已保存回合")
+                    if event is None:
+                        continue
                     if event == "right":
                         (
                             recorder.stop_recording()
@@ -521,7 +539,7 @@ def main() -> None:
                         recorder.close(save_active=True)
                         should_quit = True
                         break
-                except BaseException:
+                except Exception:
                     report_exception(
                         f"keyboard command {event!r} failed; recorder remains active"
                     )
@@ -529,12 +547,14 @@ def main() -> None:
     except KeyboardInterrupt:
         print("Interrupted; saving active recording before exit.")
     finally:
-        recorder.close(save_active=True)
-        keyboard.close()
-        executor.shutdown()
-        spin_thread.join(timeout=5.0)
-        recorder.destroy_node()
-        rclpy.try_shutdown()
+        try:
+            recorder.close(save_active=True)
+        finally:
+            keyboard.close()
+            executor.shutdown()
+            spin_thread.join(timeout=5.0)
+            recorder.destroy_node()
+            rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

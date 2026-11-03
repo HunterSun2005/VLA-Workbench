@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
+                          TerminalConfirmation, diagnostic_path, current_reporter)
+
 import argparse
 from collections import deque
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 import importlib.util
 import os
@@ -312,7 +315,7 @@ class GamepadTeleop:
 
     def enable(self):
         if self.mode == "fault":
-            self.report(f"Control fault latched: {self.reason}. Clear the scene and press r to recover.")
+            self.report(f"Control fault latched: {self.reason}. 排查现场后执行故障恢复。")
             return
         if self.mode == "active":
             return
@@ -561,7 +564,7 @@ class GamepadTeleop:
 
     def recover(self):
         if self.mode != "fault":
-            self.report("No fault to recover. s=enable, d=pause")
+            self.report("当前没有待恢复故障，可启用或暂停控制。")
             return
         try:
             self.robot.recover_motion_fault()
@@ -577,7 +580,7 @@ class GamepadTeleop:
         self._pose_return = None
         self._pose_return_path = []
         self._view_button_ready = self._menu_button_ready = False
-        self.report("Recovered to standby. Release gamepad controls, then press s.")
+        self.report("已恢复到待命；松开手柄输入后重新启用控制。")
 
     def tick(self):
         now = self.clock()
@@ -727,7 +730,7 @@ class JoySidecars:
         ]
         try:
             for name, command in commands:
-                log = self.runtime / f"{name}.log"
+                log = diagnostic_path(f"{name}.log", self.runtime / f"{name}.log")
                 with log.open("wb") as stream:
                     child = subprocess.Popen(command, env=ros_environment(), start_new_session=True,
                                              stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT)
@@ -792,17 +795,21 @@ def run(config):
         robot = None
         try:
             robot = FrankaRobotiqRobot(replace(config.robot, calibration_dir=runtime / "calibration"))
-            with JoySidecars(config, receiver.path, runtime) as sidecars, AsyncReporter() as reporter:
+            with JoySidecars(config, receiver.path, runtime) as sidecars, (nullcontext(print) if current_reporter() else AsyncReporter()) as reporter:
                 robot.connect()
                 controller = GamepadTeleop(config, robot, receiver, report=reporter)
                 print("STANDBY: s=enable, d=pause, r=recover, c/Esc/Ctrl+C=exit", flush=True)
                 try:
                     with keyboard() as fd:
                         period = 1 / config.control.control_rate
+                        next_status = 0.0
                         while True:
                             started = time.monotonic()
                             sidecars.check()
                             controller.tick()
+                            if started >= next_status:
+                                console_status(f"{controller.mode.upper()} source=GAMEPAD speed={'Fast' if controller.high_speed else 'Normal'}")
+                                next_status = started + 1.0
                             if select.select([fd], [], [], 0)[0]:
                                 keys = os.read(fd, 32).decode(errors="ignore").lower()
                                 if not keys or any(key in keys for key in ("c", "\x1b", "\x04")):
@@ -826,6 +833,7 @@ def run(config):
                 receiver.close()
 
 
+@terminal_session("gamepad-teleop")
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)

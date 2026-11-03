@@ -57,8 +57,12 @@ task_is_alive() {
 assert_tasks_alive() {
   local index
   for index in "${!TASK_NAMES[@]}"; do
-    task_is_alive "${TASK_PIDS[$index]}" ||
-      die "Task ${TASK_NAMES[$index]} exited; see $LOG_DIR/${TASK_NAMES[$index]}.log"
+    if ! task_is_alive "${TASK_PIDS[$index]}"; then
+      local status=0
+      wait "${TASK_PIDS[$index]}" || status=$?
+      report_task_failure "${TASK_NAMES[$index]}" "$status" "$LOG_DIR/${TASK_NAMES[$index]}.log"
+      die "硬件任务已退出，正在清理；请检查以上诊断。"
+    fi
   done
 }
 

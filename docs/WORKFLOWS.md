@@ -42,6 +42,18 @@ SFT 服务使用 `vla-serve-franka-sft --checkpoint <SFT目录> --tokenizer-path
 
 ROS 运行 YAML 和日志写入 `runtime/`，不会改写包的安装目录。`vla_bringup` 提供 `teleop.launch.py`，接收绝对路径的 `robot_config_file`、`config_file` 和 `control_owner`。
 
+## 终端显示、日志与确认
+
+终端默认保留简洁事件与运行状态：TTY 最多每秒原位刷新一次；重定向输出时只有普通文本事件。任务进入检查、连接、就绪、录制、保存或故障时显示对应事件；高频手柄数值、编码器详情、状态范围及完整堆栈保留在诊断文件中。输出队列有界；输出拥堵可能丢弃低优先级消息并报告数量，控制循环不等待终端或磁盘 IO。
+
+Python CLI 默认创建 `runtime/terminal/<时间-入口-唯一标识>/`，保存 `terminal.log`，及适用的 `joy.log`、`bridge.log`、`rollout.jsonl`、`rtc.jsonl`。ROS 终端启动器同样创建持久目录，其 `launcher.log` 记录启动事件，`ros/` 保留各子进程日志。退出后诊断保留，socket 等临时资源正常清理；可用 `VLA_TERMINAL_LOG_DIR` 指定会话目录，已有显式 trace 路径继续优先使用。
+
+- GELLO 终端保留启动即跟随；不新增启用确认，`s` 仍是切换 fine 模式。
+- Gamepad 保留 `--execute` 和待命启用；非 SFT Franky 不再要求重复输入 `ARM`。健康、中立、独占及动作契约检查保留。
+- 保存和模式切换直接执行。显式丢弃、删除最近已保存回合、普通退出将丢失未保存回合时，提示一次 `y` 确认、`n/Esc` 取消；10 秒超时或回合状态改变自动取消。等待确认期间控制监控继续。
+- `d` 暂停立即执行，原先会丢弃当前回合的采集路线仍会丢弃；本轮没有新增冻结回合。GELLO 正常退出保留原自动保存行为。
+- Ctrl-C、EOF、故障与断连不等待确认；ROS 启动器 Ctrl-C 走原有序清理，Web 仍通过 SIGTERM 退出。停止优先级不会被同批按键中的丢弃确认遮挡。
+
 ## 后续真实资产验收
 
 提供新的本地模型和数据后，设置 `VLA_TEST_SFT_PI05_DIR` 运行需要 processor 文件的测试；基础 PI0.5 权重测试按测试说明指定本地模型。再比较模型输出、训练恢复、RTC 时序和真实机器人行为。当前模拟/离线验收不能替代这些检查。

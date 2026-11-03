@@ -1,6 +1,9 @@
 """Dual ROS2 gamepad demonstrations without a model server or GELLO."""
 from __future__ import annotations
 
+from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
+                          TerminalConfirmation, diagnostic_path, current_reporter)
+
 import argparse
 from dataclasses import asdict, replace
 import json
@@ -66,6 +69,7 @@ def validate_resume_contract(config):
         raise ValueError("existing dataset recording_contract differs; use the original settings or a new root")
 
 
+@terminal_session("gamepad-dual-record")
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
