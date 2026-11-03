@@ -80,6 +80,10 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 .preflight-output{margin:0;line-height:1.7;overflow-wrap:anywhere}
 
 .issue-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.issue-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;white-space:normal}
+.issue-copy{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;font-size:12px}
+.issue-copy button{font-size:12px;padding:4px 8px}
+.clipboard-fallback{position:fixed;left:-9999px;top:0}
 .issue-row+.issue-row{border-top:1px solid var(--error-line);padding-top:10px;margin-top:10px}
 .issue-row span{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}.issue-row button{font-size:12px;padding:4px 8px;flex:none}
 .session-notice{color:var(--warn);white-space:pre-wrap;overflow-wrap:anywhere}

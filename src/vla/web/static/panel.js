@@ -13,8 +13,24 @@ let selected; try {selected=JSON.parse(localStorage.getItem('vla.signals')||'nul
 const labels={standby:'待命',active:'已启用',recording:'运行 / 记录中',saving:'保存中',fault:'故障',stopped:'已停止',starting:'启动中',unavailable:'等待会话'};
 const groups={tcp:'TCP 位置',orientation:'TCP 旋转向量',joint:'关节位置',velocity:'关节速度',torque:'关节力矩',gripper:'夹爪',health:'控制健康',target_tcp:'TCP 目标',target_joint:'关节目标',target_linear:'指令线速度',target_angular:'指令角速度'};
 const issueMessages=new Map(), seenFailedCommands=new Set();
+let copyFeedbackTimer;
+async function copyDiagnosticText(text){
+ try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);return;}}catch{}
+ // Older browsers and non-secure origins still get a user-initiated fallback.
+ const previous=document.activeElement,area=document.createElement('textarea');
+ area.className='clipboard-fallback';area.value=text;area.readOnly=true;document.body.append(area);
+ try{area.focus({preventScroll:true});area.select();if(!document.execCommand('copy'))throw new Error('Clipboard unavailable');}
+ finally{area.remove();previous?.focus({preventScroll:true});}
+}
+$('copyErrors').onclick=async()=>{
+ const text=[...issueMessages.values()].map(issue=>issue.text).join('\n\n');if(!text)return;
+ const button=$('copyErrors'),feedback=$('copyErrorsStatus');clearTimeout(copyFeedbackTimer);button.disabled=true;feedback.textContent='正在复制…';
+ try{await copyDiagnosticText(text);feedback.textContent='已复制';}
+ catch{feedback.textContent='复制失败，请手动选择错误文本';}
+ finally{button.disabled=false;copyFeedbackTimer=setTimeout(()=>{feedback.textContent='';},4000);}
+};
 function drawIssues(){
- const box=$('error');box.replaceChildren();box.hidden=issueMessages.size===0;
+ const box=$('errorItems');box.replaceChildren();$('error').hidden=issueMessages.size===0;
  for(const [key,issue] of issueMessages){const row=document.createElement('div'),text=document.createElement('span');row.className='issue-row';row.dataset.issue=key;text.textContent=issue.text;row.append(text);if(issue.dismiss){const close=document.createElement('button');close.type='button';close.textContent='关闭';close.setAttribute('aria-label','关闭错误提示');close.onclick=()=>setIssue(key,'');row.append(close);}box.append(row);}
 }
 function setIssue(key,text,dismiss=false){

@@ -611,6 +611,31 @@ def test_franka_health_monitor_latches_errors_and_sustained_low_success_rate() -
         monitor.check("right", _robot_health_state(mode=4))
 
 
+@pytest.mark.parametrize("rate", [0.9, np.nextafter(0.9, -np.inf), float(np.float32(0.9))])
+def test_franka_health_monitor_accepts_threshold_representations_and_resets(rate) -> None:
+    monitor = FrankaHealthMonitor(0.90, 3)
+    for _ in range(4):
+        monitor.check("left", _robot_health_state(rate=0.89))
+        monitor.check("left", _robot_health_state(rate=0.89))
+        monitor.check("left", _robot_health_state(rate=rate))
+
+
+@pytest.mark.parametrize(
+    "rate", [0.8999, 0.89, float(np.nextafter(np.float32(0.9), np.float32(0)))],
+)
+def test_franka_health_monitor_rejects_real_low_rates_with_precise_diagnostics(rate) -> None:
+    monitor = FrankaHealthMonitor(0.90, 3)
+    for _ in range(2):
+        monitor.check("left", _robot_health_state(rate=rate))
+        monitor.check("right", _robot_health_state(rate=1.0))
+    with pytest.raises(RuntimeError) as caught:
+        monitor.check("left", _robot_health_state(rate=rate))
+    message = str(caught.value)
+    assert f"control_command_success_rate={rate:.17g}" in message
+    assert "below 0.900 for 3 samples" in message
+    assert "comparison boundary=" in message
+
+
 def test_rollout_episode_validation_accepts_stationary_failure_but_rejects_bad_gripper() -> (
     None
 ):
@@ -1167,7 +1192,7 @@ def test_fault_latch_blocks_historical_discard(capsys) -> None:
     collector.discard_latest()
 
     assert deleted == []
-    assert "press c to recover" in capsys.readouterr().out
+    assert "请先执行故障恢复" in capsys.readouterr().out
 
 
 def test_franky_collector_aborts_partial_video_setup(

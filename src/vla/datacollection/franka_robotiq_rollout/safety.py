@@ -73,6 +73,13 @@ class FrankaHealthMonitor:
         if low_rate_samples < 1:
             raise ValueError("low_rate_samples must be positive")
         self.minimum_success_rate = float(minimum_success_rate)
+        # Match the gamepad monitor: accept the threshold's float32
+        # representation (or adjacent float64 rounding), not the next lower
+        # float32 value. Do not apply a general tolerance to low rates.
+        self._success_rate_boundary = min(
+            float(np.float32(self.minimum_success_rate)),
+            np.nextafter(self.minimum_success_rate, -np.inf),
+        )
         self.low_rate_samples = int(low_rate_samples)
         self._low_rate_counts: dict[str, int] = {}
 
@@ -93,12 +100,13 @@ class FrankaHealthMonitor:
         if not np.isfinite(success_rate):
             raise RuntimeError(f"{arm_name} Franka control_command_success_rate is non-finite")
         count = self._low_rate_counts.get(arm_name, 0)
-        count = count + 1 if success_rate < self.minimum_success_rate else 0
+        count = count + 1 if success_rate < self._success_rate_boundary else 0
         self._low_rate_counts[arm_name] = count
         if count >= self.low_rate_samples:
             raise RuntimeError(
-                f"{arm_name} Franka control_command_success_rate={success_rate:.3f} "
-                f"below {self.minimum_success_rate:.3f} for {count} samples"
+                f"{arm_name} Franka control_command_success_rate={success_rate:.17g} "
+                f"below {self.minimum_success_rate:.3f} for {count} samples "
+                f"(comparison boundary={self._success_rate_boundary:.17g})"
             )
 
 
