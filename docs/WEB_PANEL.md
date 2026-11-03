@@ -133,6 +133,8 @@ Web 显式使用 `VLA_RUN_MODE=managed`，由 runner 管理停止，不读取终
 
 本地 HTTP 检查 Host、Origin、写请求令牌；Unix socket 使用版本化协议和 0600 权限。轻量协议、ROS 适配模块可用系统 Python 导入，不导入 Torch。前端 uPlot 1.6.32 本地打包，MIT 许可、下载来源及 SHA256 位于 `src/vla/web/static/vendor/`；浏览器无 CDN、Node 或数据库依赖。
 
+实时监控的「显示维度」包含 TCP 外力 XYZ（N）与外力矩 XYZ（N·m），按手臂分别选择、分图展示，默认仍只显示 TCP 位置与夹爪。这些通道标为估计值：Franky 使用 `O_F_ext_hat_K`，ROS 使用 `o_f_ext_hat_k.wrench`，与原始数据集的 `base_tcp_force_*` / `base_tcp_torque_*` 一致；表示作用于刚度坐标系 K 原点、以基座坐标系 O 表达的外部 wrench，不是关节力矩或额外六维力传感器读数。没有读取到的维度和过期 ROS 状态留空，不补零。
+
 ## 验收和限制
 
 见 [Web 验收记录](web/VALIDATION.md)。真实模型输出、现场 ROS 控制、相机硬件、采集数据质量、存储故障恢复和机器人时延均待实机验收；demo 与 mock 通过不等于这些项目通过。首次接入应使用现场确认的配置和模型。

@@ -19,6 +19,17 @@ def pose_values(values, arm, position, rotation):
     vector(values, arm, 'orientation', ('rx','ry','rz'), Rotation.from_matrix(rotation).as_rotvec())
 
 
+def wrench_values(values, arm, wrench):
+    """External wrench at K, expressed in base O; never substitute K-frame data."""
+    if wrench is None:
+        return
+    wrench = np.asarray(wrench, dtype=float).reshape(-1)
+    if wrench.shape != (6,):
+        return
+    vector(values, arm, 'tcp_force', ('x', 'y', 'z'), wrench[:3])
+    vector(values, arm, 'tcp_torque', ('x', 'y', 'z'), wrench[3:])
+
+
 def franky_values(state, width=None):
     from vla.robots.franka_robotiq.robot import pose_matrix
     values = {}
@@ -27,6 +38,7 @@ def franky_values(state, width=None):
     vector(values, 'left', 'health', ['success_rate'], getattr(state,'control_command_success_rate',None))
     pose = pose_matrix(state.O_T_EE)
     pose_values(values, 'left', pose[:3,3], pose[:3,:3])
+    wrench_values(values, 'left', getattr(state, 'O_F_ext_hat_K', None))
     for attr, group, prefix in [('q','joint','q'),('dq','velocity','dq'),('tau_J','torque','tau')]:
         vector(values, 'left', group, [f'{prefix}{i}' for i in range(1,8)], getattr(state, attr, None))
     vector(values, 'left','gripper', ['width'], [width] if width is not None else None)
@@ -45,6 +57,10 @@ def ros_values(latest, arms):
         vector(values, arm, 'health', ['success_rate'], getattr(state,'control_command_success_rate',None))
         pos, rot = schema.measured_pose_from_robot_state(state)
         pose_values(values, arm, pos, rot)
+        wrench = getattr(getattr(state, 'o_f_ext_hat_k', None), 'wrench', None)
+        if wrench is not None:
+            wrench_values(values, arm, [wrench.force.x, wrench.force.y, wrench.force.z,
+                                       wrench.torque.x, wrench.torque.y, wrench.torque.z])
         vector(values, arm, 'joint', [f'q{i}' for i in range(1,8)], schema.measured_joint_positions(state))
         measured = getattr(state, 'measured_joint_state', None)
         if measured is not None:

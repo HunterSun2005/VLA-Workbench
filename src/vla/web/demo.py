@@ -12,10 +12,13 @@ def descriptors(arms):
                                    ('joint', tuple(f'q{i}' for i in range(1,8)), 'rad'),
                                    ('velocity', tuple(f'dq{i}' for i in range(1,8)), 'rad/s'),
                                    ('torque', tuple(f'tau{i}' for i in range(1,8)), 'Nm'),
+                                   ('tcp_force', ('x','y','z'), 'N'),
+                                   ('tcp_torque', ('x','y','z'), 'N·m'),
                                    ('gripper', ('width',), 'm')]:
             for name in names:
                 result.append({'key': f'{arm}.{group}.{name}', 'arm': arm, 'group': group,
-                               'label': name, 'unit': unit, 'source': 'measured',
+                               'label': name, 'unit': unit,
+                               'source': 'estimated' if group in ('tcp_force','tcp_torque') else 'measured',
                                'default': group in ('tcp','gripper')})
     return result
 
