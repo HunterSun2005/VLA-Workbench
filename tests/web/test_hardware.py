@@ -27,7 +27,7 @@ def test_presets_match_repository_calibration(arms):
             assert values[arm + key] == expected['robot_ip' if field == 'ROBOT_CONFIG' else 'com_port']
 
 
-def test_passive_inventory_deduplicates_usb_and_keeps_stable_ports(tmp_path):
+def test_inventory_maps_usb_to_sdk_and_keeps_stable_ports(tmp_path):
     serials, usb = tmp_path / 'serial', tmp_path / 'usb'
     serials.mkdir(); usb.mkdir()
     node = tmp_path / 'ttyUSB1'; node.touch()
@@ -39,11 +39,13 @@ def test_passive_inventory_deduplicates_usb_and_keeps_stable_ports(tmp_path):
         device = usb / name; device.mkdir()
         for field, value in [('idVendor', vendor), ('product', product), ('serial', serial)]:
             (device / field).write_text(value)
-    result = inventory(serial_root=serials, usb_root=usb)
+    sdk = [{'serial': 'sdk-789', 'port': str(usb / '1' / '1:1.0/video4linux/video0')}]
+    result = inventory(serial_root=serials, usb_root=usb, sdk_devices=sdk)
     assert [s['value'] for s in result['serials']] == [str(serials / 'stable-gello')]
-    assert [c['value'] for c in result['cameras']] == ['123']
+    assert result['cameras'] == [{'value': 'sdk-789', 'label': '123', 'usb_serial': '123',
+                                  'sdk_serial': 'sdk-789', 'selectable': True}]
     assert not result['warnings']
-    assert inventory(serial_root=tmp_path / 'missing', usb_root=usb)['warnings']
+    assert inventory(serial_root=tmp_path / 'missing', usb_root=usb, sdk_devices=sdk)['warnings']
 
 
 @pytest.mark.parametrize('key,value', [
@@ -135,3 +137,23 @@ def test_session_profile_uses_frozen_values_not_latest_editor_save(tmp_path):
         assert result.json()['values']['BASE_CAMERA_SERIAL']==values['BASE_CAMERA_SERIAL']
     (directory/'config.json').write_text(json.dumps(asdict(replace(config,arms='single_left',source='gamepad'))))
     assert session_profile(tmp_path,record) is None
+
+
+def test_unresolved_usb_is_not_submitted_as_sdk_serial(tmp_path, monkeypatch):
+    import subprocess
+    usb = tmp_path/'usb'; usb.mkdir()
+    device = usb/'4-1'; device.mkdir()
+    for field, value in [('idVendor','8086'), ('product','RealSense D435i'), ('serial','USB-123')]:
+        (device/field).write_text(value)
+    # Similar port prefix is a different physical device; never guess by order.
+    result = inventory(serial_root=tmp_path, usb_root=usb,
+                       sdk_devices=[{'serial':'SDK-456','port':str(usb/'4-10'/'video0')}])
+    assert result['cameras'][0]['value'] == ''
+    assert result['cameras'][0]['selectable'] is False
+    assert result['warnings']
+    def timeout():
+        raise subprocess.TimeoutExpired('query', 5)
+    monkeypatch.setattr('vla.web.hardware._sdk_cameras', timeout)
+    result = inventory(serial_root=tmp_path, usb_root=usb)
+    assert not result['cameras'][0]['selectable']
+    assert any('无法读取 RealSense' in w for w in result['warnings'])

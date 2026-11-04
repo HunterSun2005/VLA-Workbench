@@ -14,15 +14,15 @@
  function notice(){
   const missing=[];
   for(const [key,value] of Object.entries(displayedValues()||{})){
-   if(key.endsWith('_CAMERA_SERIAL')){const info=$('hardware-camera-status-'+key),found=inventory.cameras.some(item=>item.value===value);if(info){info.textContent=`配置值：${value||'未填写'} · ${found?'已检测到设备':'未检测到，请按实际安装位置选择设备'}`;info.dataset.missing=String(!found);}}
-   const items=choices(key);if(items&&!items.some(x=>normalize(x.value)===normalize(value)))missing.push(labels[key]+(key.endsWith('_CAMERA_SERIAL')?'（'+value+'）':''));
+   if(key.endsWith('_CAMERA_SERIAL')){const info=$('hardware-camera-status-'+key),found=inventory.cameras.some(item=>item.value===value);if(info){info.textContent=`USB：${cameraLabel(inventory.cameras,value)||'未填写'} · ${found?'已检测到设备':'未检测到，请按实际安装位置选择设备'}`;info.dataset.missing=String(!found);}}
+   const items=choices(key);if(items&&!items.some(x=>normalize(x.value)===normalize(value)))missing.push(labels[key]+(key.endsWith('_CAMERA_SERIAL')?'（'+cameraLabel(inventory.cameras,value)+'）':''));
   }
   $('hardwareNotice').textContent=[missing.length?'未检测到所填设备：'+missing.join('、')+'。保留原值，请从列表选择或检查接线。':'',...(inventory.warnings||[]),inventory.note||'',profiles?.[shown]?.warning||''].filter(Boolean).join('\n');
  }
  function renderSide(){
-  const selected=side.value;
+  const selected=cameraValue(inventory.cameras,side.value);
   side.replaceChildren(new Option('不添加 · 标准 base + wrist',''));
-  for(const camera of inventory.cameras)side.add(new Option(camera.value,camera.value));
+  for(const camera of inventory.cameras)side.add(cameraOption(camera));
   if(selected&&!inventory.cameras.some(c=>c.value===selected)){const option=new Option(selected,selected);option.title='当前未检测到该设备';side.add(option);}
   side.value=selected;
  }
@@ -40,20 +40,21 @@
   const values=displayedValues();if(!values)return;
   for(const group of [['左臂',k=>k.startsWith('LEFT_')&&!k.includes('CAMERA')],['右臂',k=>k.startsWith('RIGHT_')&&!k.includes('CAMERA')],['相机角色',k=>k.includes('CAMERA')],['校准与启动配置',k=>k.endsWith('_CONFIG')]]){
    const keys=Object.keys(values).filter(group[1]);if(!keys.length)continue;
+   for(const key of keys)if(key.endsWith('_CAMERA_SERIAL')&&!sessionRunning())values[key]=cameraValue(inventory.cameras,values[key]);
    const detail=document.createElement('details'),summary=document.createElement('summary');detail.open=group[0]==='相机角色';summary.textContent=group[0];detail.append(summary);
    for(const key of keys){
-    const label=document.createElement('label'),input=document.createElement('input');input.id='hardware-'+key;input.value=values[key];input.setAttribute('aria-label',labels[key]);label.append(document.createTextNode(labels[key]),input);
+    const label=document.createElement('label'),input=document.createElement('input');input.id='hardware-'+key;input.value=key.endsWith('_CAMERA_SERIAL')?cameraLabel(inventory.cameras,values[key]):values[key];input.setAttribute('aria-label',labels[key]);label.append(document.createTextNode(labels[key]),input);
     const items=choices(key);
     if(items){
      const select=document.createElement('select');select.id='devices-'+key;select.setAttribute('aria-label',labels[key]+' · 检测设备');
      select.add(new Option('从检测设备选择（或在上方填写）',''));
-     for(const item of items)select.add(new Option(key.endsWith('_CAMERA_SERIAL')?item.value:item.label+(item.accessible===false?' · 无读写权限':''),item.value));
+     for(const item of items)select.add(key.endsWith('_CAMERA_SERIAL')?cameraOption(item):new Option(item.label+(item.accessible===false?' · 无读写权限':''),item.value));
      const matched=items.find(x=>normalize(x.value)===normalize(values[key]));if(matched)select.value=matched.value;
-     select.onchange=()=>{if(!select.value)return;input.value=select.value;input.dispatchEvent(new Event('input'));};
+     select.onchange=()=>{if(!select.value)return;input.value=key.endsWith('_CAMERA_SERIAL')?cameraLabel(inventory.cameras,select.value):select.value;input.dispatchEvent(new Event('input'));};
      label.append(select);
-     input.addEventListener('input',()=>{select.value=items.find(x=>normalize(x.value)===normalize(input.value.trim()))?.value||'';});
+     input.addEventListener('input',()=>{select.value=items.find(x=>normalize(x.value)===normalize(key.endsWith('_CAMERA_SERIAL')?cameraValue(inventory.cameras,input.value.trim()):input.value.trim()))?.value||'';});
     }
-    input.addEventListener('input',()=>{values[key]=input.value.trim();$('hardwareStatus').textContent='修改待保存；检查或启动时自动保存。';notice();});
+    input.addEventListener('input',()=>{values[key]=key.endsWith('_CAMERA_SERIAL')?cameraValue(inventory.cameras,input.value.trim()):input.value.trim();$('hardwareStatus').textContent='修改待保存；检查或启动时自动保存。';notice();});
     if(key.endsWith('_CAMERA_SERIAL')){const info=document.createElement('small');info.id='hardware-camera-status-'+key;info.className='camera-binding-status';info.setAttribute('role','status');label.append(info);}
     detail.append(label);
    }

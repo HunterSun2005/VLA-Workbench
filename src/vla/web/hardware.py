@@ -1,4 +1,4 @@
-"""Passive hardware inventory and immutable web hardware profiles. No device SDKs."""
+"""Camera identity inventory and immutable web hardware profiles. No streaming."""
 from __future__ import annotations
 
 import hashlib
@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 
 from .processes import hardware_environment
 
@@ -51,8 +53,27 @@ def validate(values, arms, *, complete=False):
     return values
 
 
-def inventory(*, serial_root=Path('/dev/serial/by-id'), usb_root=Path('/sys/bus/usb/devices')):
-    """Read OS metadata only; never open serial ports, camera streams or robot sockets."""
+def _sdk_cameras():
+    """Bounded metadata query in an isolated process; never create a pipeline."""
+    script = """
+import json
+import pyrealsense2 as rs
+context = rs.context()
+print(json.dumps([
+    {'serial': d.get_info(rs.camera_info.serial_number),
+     'port': d.get_info(rs.camera_info.physical_port)}
+    for d in context.query_devices()
+]))
+"""
+    env = dict(os.environ)
+    env.pop('PYTHONPATH', None)
+    result = subprocess.run([sys.executable, '-c', script], env=env,
+                            capture_output=True, text=True, timeout=5, check=True)
+    return json.loads(result.stdout)
+
+
+def inventory(*, serial_root=Path('/dev/serial/by-id'), usb_root=Path('/sys/bus/usb/devices'), sdk_devices=None):
+    """Join USB descriptors with SDK identities by physical path, never list order."""
     serials, cameras, warnings = [], [], []
     try:
         entries = sorted(serial_root.iterdir())
@@ -68,6 +89,12 @@ def inventory(*, serial_root=Path('/dev/serial/by-id'), usb_root=Path('/sys/bus/
     except OSError as error:
         devices = []
         warnings.append(f'USB 信息不可读：{error.strerror}')
+    if sdk_devices is None:
+        try:
+            sdk_devices = _sdk_cameras()
+        except (OSError, subprocess.SubprocessError, ValueError):
+            sdk_devices = []
+            warnings.append('无法读取 RealSense 设备标识；USB 编号不能直接用于采集。请刷新检测。')
     seen = set()
     for device in devices:
         try:
@@ -78,9 +105,18 @@ def inventory(*, serial_root=Path('/dev/serial/by-id'), usb_root=Path('/sys/bus/
             continue
         if vendor == '8086' and 'realsense' in product.lower() and serial and serial not in seen:
             seen.add(serial)
-            cameras.append({'value': serial, 'label': serial})
+            # SDK physical_port names a video interface below this USB device.
+            # Match full ancestors, never a prefix (4-1 would also match 4-10).
+            matches = {item['serial'] for item in sdk_devices
+                       if device.resolve() in Path(item['port']).resolve().parents}
+            sdk_serial = next(iter(matches)) if len(matches) == 1 else ''
+            cameras.append({'value': sdk_serial, 'label': serial,
+                            'usb_serial': serial, 'sdk_serial': sdk_serial,
+                            'selectable': bool(sdk_serial)})
+            if not sdk_serial:
+                warnings.append(f'USB {serial} 未取得唯一 RealSense 标识，暂不可选择。')
     return {'serials': serials, 'cameras': cameras, 'warnings': warnings,
-            'note': '仅枚举 USB / 串口信息；不连接机械臂，不打开设备。检测到不代表可用或未被占用。'}
+            'note': '仅枚举 USB / RealSense 标识和串口信息，不开启图像流或连接机械臂。显示 USB 编号，采集使用对应 SDK 编号；检测到不代表未被占用。'}
 
 
 def profiles(root):
