@@ -63,6 +63,19 @@ def create_app(root=None, *, demo=False):
     async def index():
         return FileResponse(static/'index.html')
 
+    @app.post('/api/camera-defaults')
+    async def camera_defaults(request: Request):
+        from dataclasses import replace
+        from .config import collection_camera_serials
+        try:
+            config = SessionConfig.parse(await request.json())
+            if config.workflow != 'collect' or config.ros:
+                raise ValueError('此接口用于单臂 gamepad 采集；ROS 相机由硬件配置指定')
+            config = replace(config, camera_serials=None, side_camera_serial='')
+            return {'serials': await asyncio.to_thread(collection_camera_serials, config)}
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            raise HTTPException(422, str(error)) from error
+
     @app.post('/api/workspace')
     async def workspace(request: Request):
         from .config import workspace_defaults

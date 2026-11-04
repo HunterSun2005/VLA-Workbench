@@ -111,3 +111,46 @@ def test_side_video_timestamps_and_offline_preview_roundtrip(tmp_path):
         'state_fields':source.names[:10], 'episodes':[0],
     })
     assert 'observation.images.side' in DatasetIndex(output).cameras
+
+
+def test_franky_camera_role_overrides_and_recording_contract():
+    from vla.datacollection.start_teleop.gamepad_recording import dataset_contract
+    cfg = SessionConfig.parse({'task':'test','camera_serials':{'base':'NEW_BASE','left_wrist':'NEW_WRIST'},'side_camera_serial':'SIDE'})
+    serials = collection_camera_serials(cfg)
+    assert serials == {'base':'NEW_BASE','left_wrist':'NEW_WRIST','side':'SIDE'}
+    control, recording = load_recording_config(DEFAULT_CONFIG)
+    control = replace(control,robot=replace(control.robot,camera_serials=serials))
+    assert dataset_contract(control,recording,'test')['settings']['robot']['camera_serials'] == serials
+    partial = replace(cfg,camera_serials={'base':'NEW_BASE'},side_camera_serial='')
+    assert collection_camera_serials(partial)['left_wrist'] == collection_camera_serials(SessionConfig())['left_wrist']
+    partial = replace(partial,camera_serials={'base':collection_camera_serials(SessionConfig())['left_wrist']})
+    with pytest.raises(ValueError,match='同一设备'):
+        collection_camera_serials(partial)
+
+
+@pytest.mark.parametrize('extra', [
+    {'camera_serials':[]}, {'camera_serials':{'right_wrist':'R'}},
+    {'camera_serials':{'base':''}}, {'camera_serials':{'base':None}},
+    {'camera_serials':{'base':'B','left_wrist':'B'}},
+    {'camera_serials':{'base':'B'},'side_camera_serial':'B'},
+    {'camera_serials':{'base':'B'},'source':'gello'},
+    {'camera_serials':{'base':'B'},'arms':'dual'},
+    {'camera_serials':{'base':'B'},'workflow':'deploy'},
+])
+def test_camera_override_validation(extra):
+    with pytest.raises(ValueError):
+        SessionConfig.parse({'task':'test',**extra})
+
+
+def test_camera_default_api_uses_yaml_and_requires_token(tmp_path):
+    from fastapi.testclient import TestClient
+    from vla.web.app import create_app
+    with TestClient(create_app(tmp_path,demo=True),base_url='http://127.0.0.1') as client:
+        data={'task':'test','camera_serials':{'base':'OVERRIDE'}}
+        assert client.post('/api/camera-defaults',json=data).status_code == 403
+        headers={'x-vla-token':client.get('/api/bootstrap').json()['token']}
+        result=client.post('/api/camera-defaults',json=data,headers=headers)
+        assert result.status_code == 200
+        assert result.json()['serials'] == collection_camera_serials(SessionConfig())
+        invalid={**data,'camera_serials':{'base':'B','left_wrist':'B'}}
+        assert client.post('/api/preflight',json=invalid,headers=headers).status_code == 422

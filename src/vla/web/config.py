@@ -30,6 +30,7 @@ class SessionConfig:
     ros_workspace: str = ''
     ros_config: str = ''
     side_camera_serial: str = ''
+    camera_serials: dict | None = None
     workspace_bounds: dict | None = None
 
     @classmethod
@@ -61,8 +62,24 @@ class SessionConfig:
             raise ValueError('task is required')
         if result.workflow == 'deploy' and result.policy_kind == 'sft' and result.mode != 'vla':
             raise ValueError('SFT supports VLA only')
+        result.validate_camera_serials()
         result.validate_workspace()
         return result
+
+    def validate_camera_serials(self):
+        if self.camera_serials is None:
+            return
+        if self.workflow != 'collect' or self.ros:
+            raise ValueError('独立相机角色设置仅用于单臂 gamepad 采集；ROS 路线请使用硬件配置')
+        import re
+        if not isinstance(self.camera_serials, dict) or set(self.camera_serials) - {'base', 'left_wrist'}:
+            raise ValueError('相机角色仅支持 base / left_wrist')
+        for value in self.camera_serials.values():
+            if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value):
+                raise ValueError('相机序列号不能为空或包含非法字符')
+        serials = list(self.camera_serials.values()) + ([self.side_camera_serial] if self.side_camera_serial else [])
+        if len(serials) != len(set(serials)):
+            raise ValueError('各相机角色不能使用同一设备')
 
     def validate_workspace(self):
         if self.workspace_bounds is None:
@@ -150,6 +167,7 @@ def workspace_defaults(config):
 
 def collection_camera_serials(config, hardware=None):
     """Resolve the selected collection cameras without opening any device."""
+    config.validate_camera_serials()
     if config.ros:
         from .hardware import preset
         values = {**preset(config.arms), **(hardware or {})}
@@ -160,6 +178,8 @@ def collection_camera_serials(config, hardware=None):
         import yaml
         raw = yaml.safe_load(config.default_config().read_text())
         serials = {role:str(raw['robot']['cameras'][role]['serial']) for role in ('base','left_wrist')}
+    if config.camera_serials:
+        serials.update(config.camera_serials)
     if config.side_camera_serial:
         serials['side'] = config.side_camera_serial
     if len(set(serials.values())) != len(serials):
@@ -170,6 +190,7 @@ def collection_camera_serials(config, hardware=None):
 def preflight(config, *, demo=False, root=None):
     checks, errors = [], []
     config.validate_workspace()
+    config.validate_camera_serials()
     root = Path(root or os.environ.get('VLA_ROOT', Path.cwd())).expanduser().resolve()
     target = config.dataset_path(root)
     if demo:
