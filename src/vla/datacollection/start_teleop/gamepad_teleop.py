@@ -283,7 +283,11 @@ class GamepadTeleop:
         if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-5) or not np.isclose(np.linalg.det(rotation), 1):
             raise ValueError("invalid Franka rotation")
         if np.any(pose[:3, 3] < self.config.robot.workspace_min) or np.any(pose[:3, 3] > self.config.robot.workspace_max):
-            raise ValueError("TCP is outside the configured workspace; refusing to pull it into bounds")
+            raise ValueError(
+                "TCP is outside the configured workspace; refusing to pull it into bounds; "
+                f"TCP XYZ={pose[:3, 3].round(4).tolist()} m, "
+                f"min={list(self.config.robot.workspace_min)}, max={list(self.config.robot.workspace_max)}"
+            )
         return state
 
     def _packet(self):

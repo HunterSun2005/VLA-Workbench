@@ -9,6 +9,7 @@
 <label>遥操作输入源<select name="source"><option value="gamepad">Gamepad</option><option value="gello">GELLO</option></select></label>
 <label id="schemaField">采集格式<select name="schema" aria-label="完整采集格式"><option value="full">完整状态 · 50D</option></select></label>
 <div id="sideCameraField"><label>Side 相机（可选）<select id="sideCamera" name="side_camera_serial"><option value="">不添加 · 标准 base + wrist</option></select></label><button id="sideCameraRefresh" type="button">刷新摄像头列表</button><p id="sideCameraNotice" class="hint">选中后额外预览并保存 side 视角；留空使用标准相机组合。</p></div>
+<details id="workspaceSetup"><summary>TCP 工作空间（米）</summary><p class="hint">各机械臂自身基座坐标系下的 XYZ 范围，仅在启动新 gamepad 采集会话时生效。</p><label class="check"><input id="workspaceCustom" type="checkbox">手动设置范围</label><div id="workspaceFields"></div><button id="workspaceReset" type="button">恢复配置文件范围</button><p id="workspaceStatus" class="hint" role="status"></p></details>
 <label>任务描述<textarea name="task" rows="2" placeholder="描述本次操作任务" required>将物体放入目标位置</textarea></label>
 <label>数据集输出目录<input name="dataset_root" placeholder="datasets/raw/任务名" required><small id="datasetBase">相对路径基于面板工作目录</small></label>
 <button type="button" id="datasetDefault">使用推荐路径</button>
@@ -65,4 +66,4 @@
 </article>
 </main>
 <footer>VLA · 本地操作面板 <span>监控与控制进程隔离 · 不自动恢复运动</span></footer>
-<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/hardware.js"></script><script src="/static/processing.js"></script><script src="/static/layout.js"></script></body></html>
+<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/hardware.js"></script><script src="/static/processing.js"></script><script src="/static/layout.js"></script><script src="/static/workspace.js"></script></body></html>

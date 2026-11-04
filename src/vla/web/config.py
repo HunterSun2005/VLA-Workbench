@@ -1,8 +1,9 @@
 """Session settings and static preflight. Never opens a device."""
 from __future__ import annotations
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict, fields, replace
 from pathlib import Path
 import json
+import math
 import os
 import sys
 
@@ -29,6 +30,7 @@ class SessionConfig:
     ros_workspace: str = ''
     ros_config: str = ''
     side_camera_serial: str = ''
+    workspace_bounds: dict | None = None
 
     @classmethod
     def parse(cls, data):
@@ -59,7 +61,43 @@ class SessionConfig:
             raise ValueError('task is required')
         if result.workflow == 'deploy' and result.policy_kind == 'sft' and result.mode != 'vla':
             raise ValueError('SFT supports VLA only')
+        result.validate_workspace()
         return result
+
+    def validate_workspace(self):
+        if self.workspace_bounds is None:
+            return
+        if self.workflow != 'collect' or self.source != 'gamepad':
+            raise ValueError('面板自定义工作空间仅用于 gamepad 数据采集')
+        expected = {'left', 'right'} if self.arms == 'dual' else {'left'}
+        if not isinstance(self.workspace_bounds, dict) or set(self.workspace_bounds) != expected:
+            raise ValueError('工作空间必须包含所选机械臂的完整范围')
+        for arm, bounds in self.workspace_bounds.items():
+            if not isinstance(bounds, dict) or set(bounds) != {'min', 'max'}:
+                raise ValueError(f'{arm} 工作空间需要 min / max')
+            for name in ('min', 'max'):
+                values = bounds[name]
+                if not isinstance(values, (list, tuple)) or len(values) != 3 or any(
+                    isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values
+                ):
+                    raise ValueError(f'{arm} 工作空间 {name} 必须为三个有限数值（米）')
+            if any(lo >= hi for lo, hi in zip(bounds['min'], bounds['max'])):
+                raise ValueError(f'{arm} 工作空间各轴最小值必须小于最大值')
+
+    def apply_robot_workspace(self, robot):
+        self.validate_workspace()
+        if self.workspace_bounds is None:
+            return robot
+        bounds = self.workspace_bounds['left']
+        return replace(robot, workspace_min=tuple(bounds['min']), workspace_max=tuple(bounds['max']))
+
+    def apply_rollout_workspace(self, rollout):
+        self.validate_workspace()
+        if self.workspace_bounds is None:
+            return rollout
+        return replace(rollout, arms=tuple(replace(arm,
+            workspace_min=tuple(self.workspace_bounds[arm.name]['min']),
+            workspace_max=tuple(self.workspace_bounds[arm.name]['max'])) for arm in rollout.arms))
 
     def default_dataset_root(self):
         if self.workflow == 'collect':
@@ -95,6 +133,21 @@ class SessionConfig:
         return ['vla','rlt'] + (['auto'] if demo or self.handover_path else [])
 
 
+def workspace_defaults(config):
+    """Read configured Cartesian bounds without loading robot/model libraries."""
+    import yaml
+    if config.workflow != 'collect' or config.source != 'gamepad':
+        return {}
+    raw = yaml.safe_load(config.default_config().read_text())
+    if config.arms == 'single_left':
+        bounds = raw['robot']['workspace']
+        result = {'left': {'min': bounds['min'], 'max': bounds['max']}}
+    else:
+        result = {arm['name']: {'min':arm['workspace_min'], 'max':arm['workspace_max']} for arm in raw['arms']}
+    replace(config, workspace_bounds=result).validate_workspace()
+    return result
+
+
 def collection_camera_serials(config, hardware=None):
     """Resolve the selected collection cameras without opening any device."""
     if config.ros:
@@ -116,6 +169,7 @@ def collection_camera_serials(config, hardware=None):
 
 def preflight(config, *, demo=False, root=None):
     checks, errors = [], []
+    config.validate_workspace()
     root = Path(root or os.environ.get('VLA_ROOT', Path.cwd())).expanduser().resolve()
     target = config.dataset_path(root)
     if demo:
@@ -184,6 +238,9 @@ def preflight(config, *, demo=False, root=None):
                 from .hardware import config_path
                 hardware = json.loads(config_path(root, config.ros_config).read_text())
             collection_camera_serials(config, hardware)
+            if config.source == 'gamepad':
+                bounds = config.workspace_bounds if config.workspace_bounds is not None else workspace_defaults(config)
+                checks.append('TCP 工作空间（各臂基座坐标系，米）: ' + json.dumps(bounds, ensure_ascii=False))
         except (OSError, ValueError, KeyError, TypeError) as error:
             errors.append(f'无法配置采集相机: {error}')
     if config.workflow == 'deploy':

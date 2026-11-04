@@ -63,6 +63,15 @@ def create_app(root=None, *, demo=False):
     async def index():
         return FileResponse(static/'index.html')
 
+    @app.post('/api/workspace')
+    async def workspace(request: Request):
+        from .config import workspace_defaults
+        try:
+            config = SessionConfig.parse(await request.json())
+            return {'bounds': await asyncio.to_thread(workspace_defaults, config)}
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            raise HTTPException(422, str(error)) from error
+
     @app.get('/api/bootstrap')
     async def bootstrap():
         return {'token':token,'demo':demo,'active':await asyncio.to_thread(manager.active),

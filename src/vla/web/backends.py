@@ -89,6 +89,7 @@ class BaseBackend:
         expected = ('left','right') if self.config.arms == 'dual' else ('left',)
         if tuple(a.name for a in c.arms) != expected:
             raise ValueError('arm configuration mismatch')
+        c = self.config.apply_rollout_workspace(c)
         return replace(c, dataset_root=Path(self.config.dataset_root), task=self.config.task,
                        tasks=(self.config.task,), joy_socket_path=self.directory/'joy.sock')
 
@@ -202,6 +203,7 @@ class FrankyBackend(BaseBackend):
             control, recording = module.load_recording_config(config.default_config())
             from .config import collection_camera_serials
             control = replace(control, robot=replace(control.robot, camera_serials=collection_camera_serials(config)))
+            control = replace(control, robot=config.apply_robot_workspace(control.robot))
             module.recording_preflight(control,recording)
             # Preserve configured realtime core for Franky's control thread.
             if control.robot.realtime_cpu is not None:

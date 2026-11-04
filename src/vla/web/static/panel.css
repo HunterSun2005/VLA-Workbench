@@ -87,6 +87,9 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 .issue-row+.issue-row{border-top:1px solid var(--error-line);padding-top:10px;margin-top:10px}
 .issue-row span{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}.issue-row button{font-size:12px;padding:4px 8px;flex:none}
 .session-notice{color:var(--warn);white-space:pre-wrap;overflow-wrap:anywhere}
+.workspace-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin:6px 0 14px}
+.workspace-table th:first-child{width:26px}.workspace-table td{padding:3px}.workspace-table input{width:100%;min-width:0;padding:6px}
+#workspaceStatus{overflow-wrap:anywhere}
 
 /* Preserve preview geometry while decoding; only replace a fully decoded frame. */
 #processingFrameStatus{min-height:1.5em;margin:4px 0}
