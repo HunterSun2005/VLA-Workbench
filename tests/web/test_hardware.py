@@ -39,10 +39,11 @@ def test_inventory_maps_usb_to_sdk_and_keeps_stable_ports(tmp_path):
         device = usb / name; device.mkdir()
         for field, value in [('idVendor', vendor), ('product', product), ('serial', serial)]:
             (device / field).write_text(value)
-    sdk = [{'serial': 'sdk-789', 'port': str(usb / '1' / '1:1.0/video4linux/video0')}]
+    sdk = [{'serial': 'sdk-789', 'model': 'RealSense D435I', 'port': str(usb / '1' / '1:1.0/video4linux/video0')}]
     result = inventory(serial_root=serials, usb_root=usb, sdk_devices=sdk)
     assert [s['value'] for s in result['serials']] == [str(serials / 'stable-gello')]
-    assert result['cameras'] == [{'value': 'sdk-789', 'label': '123', 'usb_serial': '123',
+    assert result['cameras'] == [{'value': 'sdk-789', 'label': 'sdk-789 · RealSense D435I',
+                                  'model': 'RealSense D435I', 'usb_serial': '123',
                                   'sdk_serial': 'sdk-789', 'selectable': True}]
     assert not result['warnings']
     assert inventory(serial_root=tmp_path / 'missing', usb_root=usb, sdk_devices=sdk)['warnings']

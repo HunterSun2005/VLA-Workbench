@@ -175,3 +175,9 @@ WebSocket 9.93 Hz、遥测19.95 Hz。五分钟历史缓冲填满后，最后四�
 - 通过 SDK `physical_port` 的 USB 祖先路径关联，不按列表顺序推测。界面显示 USB，参数／JSON 保留 SDK；无法唯一匹配时禁选并提示。SDK 元数据枚举使用独立子进程和 5 秒超时，不启动图像流。
 - `tests/web`：110 passed；覆盖异编号映射、类似 USB 路径不误匹配、超时禁选及既有 Web 流程。临时 demo 浏览器使用模拟设备清单，验证 Base／腕／Side／ROS 的 USB 显示、SDK 提交、手填 USB 转换和默认值识别，无 JavaScript 异常。
 - wheel 更新后需重启 Web 并刷新页面，重新检查相机选择后创建新会话。未改写既有会话或自定义硬件 JSON；手写 JSON 需使用 SDK 编号。真实采集未执行，留待现场验证。
+
+## 2026-11-04 · 统一显示 RealSense SDK 编号与型号
+
+- 按最新界面要求，输入框、默认值及状态提示统一显示 SDK 序列号；所有相机下拉选项显示 `SDK 编号 · 相机型号`。型号来自 SDK `camera_info.name`，缺失时使用 USB 产品名称。
+- 保留旧 USB 选择到 SDK 编号的兼容转换，底层采集参数仍为 SDK 编号。
+- `tests/web/test_hardware.py`：13 passed。临时 demo 浏览器使用模拟设备清单验证 Base／左腕／Side／ROS／右腕选项及输入框、默认提示和实际提交参数，无 JavaScript 异常；未开启真实设备或采集任务。

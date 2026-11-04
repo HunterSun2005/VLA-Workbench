@@ -14,7 +14,7 @@
  function notice(){
   const missing=[];
   for(const [key,value] of Object.entries(displayedValues()||{})){
-   if(key.endsWith('_CAMERA_SERIAL')){const info=$('hardware-camera-status-'+key),found=inventory.cameras.some(item=>item.value===value);if(info){info.textContent=`USB：${cameraLabel(inventory.cameras,value)||'未填写'} · ${found?'已检测到设备':'未检测到，请按实际安装位置选择设备'}`;info.dataset.missing=String(!found);}}
+   if(key.endsWith('_CAMERA_SERIAL')){const info=$('hardware-camera-status-'+key),found=inventory.cameras.some(item=>item.value===value);if(info){info.textContent=`RealSense SDK：${cameraLabel(inventory.cameras,value)||'未填写'} · ${found?'已检测到设备':'未检测到，请按实际安装位置选择设备'}`;info.dataset.missing=String(!found);}}
    const items=choices(key);if(items&&!items.some(x=>normalize(x.value)===normalize(value)))missing.push(labels[key]+(key.endsWith('_CAMERA_SERIAL')?'（'+cameraLabel(inventory.cameras,value)+'）':''));
   }
   $('hardwareNotice').textContent=[missing.length?'未检测到所填设备：'+missing.join('、')+'。保留原值，请从列表选择或检查接线。':'',...(inventory.warnings||[]),inventory.note||'',profiles?.[shown]?.warning||''].filter(Boolean).join('\n');

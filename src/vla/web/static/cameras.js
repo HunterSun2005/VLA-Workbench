@@ -18,13 +18,13 @@
    info.dataset.missing=String(detected&&Boolean(serial)&&!found);
    if(detected&&serial&&!found)missing.push(title+'：'+cameraLabel(inventory,serial));
   }
-  if(detected)status.textContent=`检测到 ${inventory.length} 台 RealSense。`+(missing.length?'以下配置设备未检测到：'+missing.join('；')+'。':'所选设备均已检测到。')+(inventoryWarnings.length?' '+inventoryWarnings.join('；'):'')+' USB 检测无法判断安装视角，请按实际位置分配 Base／左腕。';
+  if(detected)status.textContent=`检测到 ${inventory.length} 台 RealSense。`+(missing.length?'以下配置设备未检测到：'+missing.join('；')+'。':'所选设备均已检测到。')+(inventoryWarnings.length?' '+inventoryWarnings.join('；'):'')+' 设备检测无法判断安装视角，请按实际位置分配 Base／左腕。';
  }
  function draw(){
   fields.replaceChildren();
   for(const [role,title] of Object.entries(roles)){
    const label=document.createElement('label'),input=document.createElement('input'),select=document.createElement('select');
-   input.id='camera-'+role;input.value=cameraLabel(inventory,values[role]||'');input.placeholder='YAML 默认：'+(cameraLabel(inventory,defaults[role])||'读取中');input.setAttribute('aria-label',title+'序列号');input.maxLength=128;
+   input.id='camera-'+role;input.value=cameraLabel(inventory,values[role]||'');input.placeholder='YAML 默认：'+(cameraLabel(inventory,defaults[role])||'读取中');input.setAttribute('aria-label',title+' RealSense SDK 序列号');input.maxLength=128;
    select.id='camera-device-'+role;select.setAttribute('aria-label',title+'设备选择');select.add(new Option('使用 YAML 默认'+(defaults[role]?' · '+cameraLabel(inventory,defaults[role])+(detected&&!inventory.some(item=>item.value===defaults[role])?'（未检测到）':''):''),''));
    for(const item of inventory)select.add(cameraOption(item));
    if(values[role]&&!inventory.some(x=>x.value===values[role])){const option=new Option(values[role],values[role]);option.title='当前未检测到该设备';select.add(option);}

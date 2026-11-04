@@ -61,6 +61,7 @@ import pyrealsense2 as rs
 context = rs.context()
 print(json.dumps([
     {'serial': d.get_info(rs.camera_info.serial_number),
+     'model': d.get_info(rs.camera_info.name),
      'port': d.get_info(rs.camera_info.physical_port)}
     for d in context.query_devices()
 ]))
@@ -110,13 +111,16 @@ def inventory(*, serial_root=Path('/dev/serial/by-id'), usb_root=Path('/sys/bus/
             matches = {item['serial'] for item in sdk_devices
                        if device.resolve() in Path(item['port']).resolve().parents}
             sdk_serial = next(iter(matches)) if len(matches) == 1 else ''
-            cameras.append({'value': sdk_serial, 'label': serial,
+            model = next((item.get('model') for item in sdk_devices
+                          if item['serial'] == sdk_serial and item.get('model')), product)
+            label = f'{sdk_serial or "SDK 编号不可用"} · {model}'
+            cameras.append({'value': sdk_serial, 'label': label, 'model': model,
                             'usb_serial': serial, 'sdk_serial': sdk_serial,
                             'selectable': bool(sdk_serial)})
             if not sdk_serial:
-                warnings.append(f'USB {serial} 未取得唯一 RealSense 标识，暂不可选择。')
+                warnings.append(f'{model} 未取得唯一 RealSense SDK 编号，暂不可选择。')
     return {'serials': serials, 'cameras': cameras, 'warnings': warnings,
-            'note': '仅枚举 USB / RealSense 标识和串口信息，不开启图像流或连接机械臂。显示 USB 编号，采集使用对应 SDK 编号；检测到不代表未被占用。'}
+            'note': '仅枚举 USB / RealSense 标识和串口信息，不开启图像流或连接机械臂。显示和采集统一使用 RealSense SDK 编号，下拉列表附相机型号；检测到不代表未被占用。'}
 
 
 def profiles(root):
