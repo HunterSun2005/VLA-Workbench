@@ -406,6 +406,14 @@ class FrankaRobotiqRobot(Robot):
                     self.config.robot_ip, self.config.gripper_port,
                 )
             self._connect_arm()
+            if self.config.collision_behavior_profile == "gello":
+                from vla.robots.franka_robotiq.collision import GELLO_COLLISION_THRESHOLDS
+
+                try:
+                    self._arm.set_collision_behavior(*GELLO_COLLISION_THRESHOLDS)
+                except Exception as error:
+                    raise RuntimeError(f"Failed to apply GELLO collision profile before motion: {error}") from error
+                log.info("Applied GELLO collision profile before motion: %s", GELLO_COLLISION_THRESHOLDS)
             self.configure()
             self._gripper.connect()
             measured_gripper = self._gripper.position()

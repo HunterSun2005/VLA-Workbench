@@ -154,6 +154,10 @@ class FakeArm:
         self.join_result = True
         self.recovery_error = None
         self.recovery_result = True
+        self.collision_calls = []
+
+    def set_collision_behavior(self, *thresholds):
+        self.collision_calls.append(thresholds)
 
     def move(self, motion, asynchronous=False):
         if self.motion_error is not None:

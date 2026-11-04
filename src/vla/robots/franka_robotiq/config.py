@@ -15,6 +15,9 @@ class FrankaRobotiqConfig(RobotConfig):
     robot_ip: str = "172.16.0.2"
     cameras_enabled: bool = True
     automatic_motion_recovery: bool = True
+    # "default" leaves Franky's initialization unchanged; gamepad profiles
+    # explicitly select GELLO's existing full collision thresholds.
+    collision_behavior_profile: str = "default"
     human_angular_velocity_control: bool = False
     human_linear_velocity_control: bool = False
     human_gripper_immediate_hold: bool = False
@@ -74,6 +77,8 @@ class FrankaRobotiqConfig(RobotConfig):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if self.collision_behavior_profile not in ("default", "gello"):
+            raise ValueError("collision_behavior_profile must be 'default' or 'gello'")
         if type(self.human_angular_velocity_control) is not bool:
             raise ValueError("human_angular_velocity_control must be a boolean")
         if type(self.human_linear_velocity_control) is not bool:

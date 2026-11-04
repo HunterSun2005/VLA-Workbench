@@ -3,6 +3,7 @@ robot:
   robot_ip: 172.16.0.2
   cameras_enabled: false
   automatic_motion_recovery: false
+  collision_behavior_profile: gello
   human_angular_velocity_control: true
   human_linear_velocity_control: true
   human_gripper_immediate_hold: true
