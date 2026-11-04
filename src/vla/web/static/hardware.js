@@ -21,8 +21,8 @@
  function renderSide(){
   const selected=side.value;
   side.replaceChildren(new Option('不添加 · 标准 base + wrist',''));
-  for(const camera of inventory.cameras)side.add(new Option(camera.label,camera.value));
-  if(selected&&!inventory.cameras.some(c=>c.value===selected))side.add(new Option(selected+' · 当前未检测到',selected));
+  for(const camera of inventory.cameras)side.add(new Option(camera.value,camera.value));
+  if(selected&&!inventory.cameras.some(c=>c.value===selected)){const option=new Option(selected,selected);option.title='当前未检测到该设备';side.add(option);}
   side.value=selected;
  }
  side.onchange=()=>{updateDatasetPath();clearPreflight();};
@@ -46,7 +46,7 @@
     if(items){
      const select=document.createElement('select');select.id='devices-'+key;select.setAttribute('aria-label',labels[key]+' · 检测设备');
      select.add(new Option('从检测设备选择（或在上方填写）',''));
-     for(const item of items)select.add(new Option(item.label+(item.accessible===false?' · 无读写权限':''),item.value));
+     for(const item of items)select.add(new Option(key.endsWith('_CAMERA_SERIAL')?item.value:item.label+(item.accessible===false?' · 无读写权限':''),item.value));
      const matched=items.find(x=>normalize(x.value)===normalize(values[key]));if(matched)select.value=matched.value;
      select.onchange=()=>{if(!select.value)return;input.value=select.value;input.dispatchEvent(new Event('input'));};
      label.append(select);
@@ -60,6 +60,7 @@
   notice();lock();
  }
  function view(){
+  renderSide();
   panel.hidden=!usesROS();
   const path=form.elements.ros_config.value.trim(),id=current?.session_id||active?.session_id;
   if(id&&id!==restoredMode){restoredMode=id;mode.value=path&&!generated(path)?'custom':'preset';}

@@ -78,7 +78,7 @@ def inventory(*, serial_root=Path('/dev/serial/by-id'), usb_root=Path('/sys/bus/
             continue
         if vendor == '8086' and 'realsense' in product.lower() and serial and serial not in seen:
             seen.add(serial)
-            cameras.append({'value': serial, 'label': product + ' · ' + serial})
+            cameras.append({'value': serial, 'label': serial})
     return {'serials': serials, 'cameras': cameras, 'warnings': warnings,
             'note': '仅枚举 USB / 串口信息；不连接机械臂，不打开设备。检测到不代表可用或未被占用。'}
 

@@ -13,7 +13,7 @@ function restoreSessionConfig(saved){
  for(const [key,value] of Object.entries(saved)){
   const el=form.elements[key];if(!el)continue;
   if(el.type==='checkbox')el.checked=Boolean(value);
-  else{if(el.tagName==='SELECT'&&value&&!Array.from(el.options).some(o=>o.value===value))el.add(new Option(value+' · 会话配置',value));el.value=value??'';}
+  else{if(el.tagName==='SELECT'&&value&&!Array.from(el.options).some(o=>o.value===value))el.add(new Option(key==='side_camera_serial'?value:value+' · 会话配置',value));el.value=value??'';}
  }
  workflow=saved.workflow;if(selectedPage!=='processing')selectedPage=workflow;
  const key=saved.workflow==='collect'?`collect/${saved.arms}/${saved.source}/${saved.schema}`:`deploy/${saved.arms}/${saved.policy_kind}`;

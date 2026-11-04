@@ -14,8 +14,8 @@
    const label=document.createElement('label'),input=document.createElement('input'),select=document.createElement('select');
    input.id='camera-'+role;input.value=values[role]||'';input.placeholder='YAML 默认：'+(defaults[role]||'读取中');input.setAttribute('aria-label',title+'序列号');input.maxLength=128;
    select.id='camera-device-'+role;select.setAttribute('aria-label',title+'设备选择');select.add(new Option('使用 YAML 默认'+(defaults[role]?' · '+defaults[role]:''),''));
-   for(const item of inventory)select.add(new Option(item.label,item.value));
-   if(values[role]&&!inventory.some(x=>x.value===values[role]))select.add(new Option(values[role]+' · 当前未检测到',values[role]));
+   for(const item of inventory)select.add(new Option(item.value,item.value));
+   if(values[role]&&!inventory.some(x=>x.value===values[role])){const option=new Option(values[role],values[role]);option.title='当前未检测到该设备';select.add(option);}
    select.value=values[role]||'';
    input.oninput=()=>{const value=input.value.trim();if(value)values[role]=value;else delete values[role];select.value=value;clearPreflight();};
    select.onchange=()=>{input.value=select.value;if(select.value)values[role]=select.value;else delete values[role];clearPreflight();};
