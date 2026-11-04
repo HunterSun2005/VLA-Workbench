@@ -116,7 +116,8 @@ class Runtime:
         cid, op = message['command_id'], message['operation']
         try:
             args = message.get('args', {})
-            if set(args) - {'mode', 'outcome'} or args.get('outcome', 'success') not in ('success', 'failure'):
+            allowed = {'pose_capture': {'arm', 'note'}, 'pose_restore': {'pose_id'}}.get(op, {'mode', 'outcome'})
+            if set(args) - allowed or args.get('outcome', 'success') not in ('success', 'failure'):
                 raise ValueError('invalid operation arguments')
             if op == 'save':
                 with self.lock:

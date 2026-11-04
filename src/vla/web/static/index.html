@@ -25,6 +25,16 @@
 <div class="row"><button type="button" id="preflight">检查配置</button><button type="submit" id="start" class="primary">启动会话</button></div>
 </form></details></section>
 <section class="card controls"><h2>会话操作</h2><div class="row"><button data-op="enable" class="primary">启用控制</button><button data-op="pause" class="warn">软件暂停</button></div><div class="row"><button data-op="record">开始回合</button><button data-op="save">成功 · 保存</button></div><div class="row"><button data-op="save" data-outcome="failure">失败 · 保存</button><button data-op="discard">丢弃当前回合</button></div><div class="row"><button data-op="critical">Critical 标注</button><button data-op="next_subtask">下一阶段</button></div><div class="row"><button data-op="intervention">接管 / 归还策略</button><button data-op="recover">恢复故障</button></div><button data-op="stop" class="danger full">停止会话</button><p class="hint">关闭网页后任务继续运行；重连可恢复监控。暂停沿用采集端行为，可能丢弃当前回合。</p></section>
+<section id="posePanel" class="card"><h2>采集前 · 姿态库</h2>
+<p class="hint">先保存回合并软件暂停，再记录或恢复。只恢复所选机械臂 TCP 位置和朝向，夹爪保持当前状态。</p>
+<label class="processing-label">记录机械臂<select id="poseArm"><option value="left">左臂</option><option value="right">右臂</option></select></label>
+<label class="processing-label">备注<input id="poseNote" maxlength="200" placeholder="例如：桌面上方起始位置"></label>
+<div class="row"><button id="poseCapture">记录当前姿态</button><button id="poseRefresh">刷新列表</button></div>
+<label class="processing-label">已保存姿态<select id="poseRecords"><option value="">暂无记录</option></select></label>
+<p id="poseDetail" class="hint"></p><div class="row"><button id="poseRestore" class="warn">恢复所选姿态</button><button id="poseCancel">停止恢复</button></div>
+<div class="row"><button id="poseRename">修改备注</button><button id="poseDelete">删除记录</button></div>
+<p id="poseStatus" class="hint" role="status"></p><p id="poseError" class="error" role="alert" hidden></p>
+<p class="hint">恢复采用低速笛卡尔定位，不自动规划避障路径；请先确认路径畅通。完成后保持待命，需手动启用遥操作。</p></section>
 </aside><article>
 <section class="status-bar card"><div><span class="eyebrow">当前状态</span><strong id="state">尚未启动</strong></div><div><span class="eyebrow">EPISODE</span><strong id="episode">—</strong></div><div><span class="eyebrow">帧数 / 时长</span><strong id="frames">—</strong></div><div><span class="eyebrow">实际控制来源</span><strong id="source">—</strong></div><div><span class="eyebrow">更新状态</span><strong id="freshness">等待数据</strong></div></section>
 <section id="preflightResult" class="card preflight-result" role="status" aria-live="polite" tabindex="-1" hidden></section>
@@ -66,4 +76,4 @@
 </article>
 </main>
 <footer>VLA · 本地操作面板 <span>监控与控制进程隔离 · 不自动恢复运动</span></footer>
-<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/hardware.js"></script><script src="/static/processing.js"></script><script src="/static/layout.js"></script><script src="/static/workspace.js"></script></body></html>
+<script src="/static/vendor/uPlot.iife.min.js"></script><script src="/static/panel.js"></script><script src="/static/hardware.js"></script><script src="/static/processing.js"></script><script src="/static/layout.js"></script><script src="/static/workspace.js"></script><script src="/static/poses.js"></script></body></html>

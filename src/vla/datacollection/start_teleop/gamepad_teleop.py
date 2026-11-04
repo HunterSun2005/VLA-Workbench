@@ -526,6 +526,8 @@ class GamepadTeleop:
             fraction = min(1.0, (distance - shortcuts.final_approach_distance_m)
                            / (shortcuts.slowdown_distance_m - shortcuts.final_approach_distance_m))
             speed_cap = approach_speed + fraction * (params.max_linear_speed - approach_speed)
+        if target.label == "saved pose":
+            speed_cap = min(speed_cap, .03)
         if linear_norm > speed_cap:
             linear_base *= speed_cap / linear_norm
         angular_base = (
@@ -533,8 +535,9 @@ class GamepadTeleop:
             if not rotation_done else np.zeros(3)
         )
         angular_norm = float(np.linalg.norm(angular_base))
-        if angular_norm > params.gamepad_max_angular_speed:
-            angular_base *= params.gamepad_max_angular_speed / angular_norm
+        angular_cap = min(params.gamepad_max_angular_speed, .15) if target.label == "saved pose" else params.gamepad_max_angular_speed
+        if angular_norm > angular_cap:
+            angular_base *= angular_cap / angular_norm
         # send_human_command accepts angular velocity in the measured tool frame.
         return linear_base, pose[:3, :3].T @ angular_base
 
@@ -610,6 +613,12 @@ class GamepadTeleop:
         dt = min(elapsed, 2 / self.config.control.control_rate)
         # Ramp and pose integration share the same bounded control time step.
         try:
+            # Recheck the packet read by THIS tick: the managed adapter may have
+            # checked an earlier packet. Cancellation must not apply one frame
+            # of manual/gripper input or replace the saved target with a shortcut.
+            if self._pose_return is not None and self._pose_return.label == "saved pose" and not self._neutral(packet):
+                self.pause("saved pose return cancelled by gamepad input")
+                return
             self._update_speed(packet)
             self._advance_speed(dt)
             params = self.control

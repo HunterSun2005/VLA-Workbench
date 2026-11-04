@@ -24,8 +24,12 @@ def descriptors(arms):
 
 
 class DemoBackend:
-    def __init__(self, config, directory):
+    def __init__(self, config, directory, root=None):
         self.config = config
+        from pathlib import Path
+        from .pose_control import PoseActions
+        self._demo_poses = {}
+        self.poses = PoseActions(self, root or Path(directory), demo=True)
         self.started = time.monotonic()
         self.enabled = self.recording = self.human = self.fault = False
         self.episode = self.frames = 0
@@ -46,6 +50,7 @@ class DemoBackend:
         self._recorded = 0.
 
     def tick(self):
+        self.poses.tick()
         now = time.monotonic()
         if self.recording and self.enabled:
             self._recorded += now - self._last
@@ -64,6 +69,8 @@ class DemoBackend:
                 self.actual = self.mode
 
     def command(self, op, args):
+        if self.poses.command(op, args):
+            return
         if op == 'enable':
             if self.fault:
                 raise RuntimeError('recover first')
@@ -118,8 +125,14 @@ class DemoBackend:
             values[item['key']] = (.4 + .04*value if group == 'tcp' else
                                   .04 + .02*value if group == 'gripper' else
                                   2*value if group == 'torque' else .2*value)
+        for arm, pose in self._demo_poses.items():
+            from scipy.spatial.transform import Rotation
+            for axis, value in zip('xyz', pose['position']):
+                values[f'{arm}.tcp.{axis}'] = value
+            for axis, value in zip('xyz', Rotation.from_matrix(pose['rotation']).as_rotvec()):
+                values[f'{arm}.orientation.r{axis}'] = float(value)
         source = ('human' if self.human else self.actual) if self.config.workflow == 'deploy' else self.config.source
-        return {'state': 'fault' if self.fault else 'recording' if self.recording else 'active' if self.enabled else 'standby',
+        status = {'state': 'fault' if self.fault else 'recording' if self.recording else 'active' if self.enabled else 'standby',
                 'enabled': self.enabled, 'recording': self.recording, 'episode': self.episode,
                 'frames': self.frames, 'elapsed_s': self._recorded, 'saving': False, 'critical': self.critical,
                 'requested_mode': self.mode, 'actual_source': source, 'switch_pending': False,
@@ -131,6 +144,7 @@ class DemoBackend:
                 'available_commands': ['enable','pause','record','save','discard','recover','stop','critical'] +
                     (['mode','intervention'] if self.config.workflow == 'deploy' else []),
                 'modes': self.config.modes(True), 'outcomes':['success','failure'] if self.config.workflow == 'deploy' or (self.config.arms == 'single_left' and self.config.source == 'gamepad') else ['success'], 'demo': True}
+        return self.poses.decorate(status)
 
     def images(self):
         now = time.monotonic()
@@ -146,4 +160,6 @@ class DemoBackend:
         return self._images
 
     def close(self):
+        if self.poses.moving:
+            self.poses.finish("cancelled", "会话结束")
         self.closed = True

@@ -133,6 +133,25 @@ def create_app(root=None, *, demo=False):
     async def cancel_processing(job_id: str):
         return await processing_call(processing.cancel, job_id)
 
+    from .poses import PoseStore
+    poses = PoseStore(manager.root, demo=demo)
+
+    @app.get('/api/poses')
+    async def pose_records():
+        return {'records': await processing_call(poses.list), 'demo': demo}
+
+    @app.post('/api/poses/{record_id}')
+    async def edit_pose(record_id: str, request: Request):
+        data = await request.json()
+        if not isinstance(data, dict) or data.get('operation') not in ('rename', 'delete'):
+            raise HTTPException(422, 'invalid pose edit')
+        if data['operation'] == 'rename':
+            from .poses import note_text
+            note = await processing_call(note_text, data.get('note'))
+        else:
+            note = None
+        return await processing_call(poses.edit, record_id, note)
+
     @app.get('/api/hardware')
     async def hardware_profiles():
         from .hardware import profiles, inventory

@@ -38,6 +38,8 @@ class BaseBackend:
         self._next_control = 0.
         self._next_health = 0.
         self.events = []
+        from .pose_control import PoseActions
+        self.poses = PoseActions(self, root)
 
     def report(self, text):
         print(text, flush=True)
@@ -191,6 +193,8 @@ class BaseBackend:
                 'rtc': c.policy_client.contract.get('rtc_enabled',False) if c.policy_client else False}
 
     def close(self):
+        if self.poses.moving:
+            self.poses.finish("cancelled", "会话结束")
         self.resources.close()
 
 
@@ -260,6 +264,8 @@ class FrankyBackend(BaseBackend):
                             save_failure=not discard and outcome == 'failure')
 
     def command(self, op, args):
+        if self.poses.command(op, args):
+            return
         if self.collector:
             return self.collector_command(op,args)
         s = self.session
@@ -315,6 +321,7 @@ class FrankyBackend(BaseBackend):
         if time.monotonic() < self._next_control:
             return
         if self.session:
+            self.poses.tick()
             self.session.tick()
             self._next_control = time.monotonic()+1/self.session.controller.config.control.control_rate
         else:
@@ -344,6 +351,7 @@ class FrankyBackend(BaseBackend):
                       'available_commands':['enable','pause','record','save','discard','recover','stop','critical'],
                       'modes':[], 'actual_source':'gamepad',
                       'outcomes':['success','failure']}
+        self.poses.decorate(status)
         state = getattr(self.robot,'_telemetry_state',None)
         stamp = getattr(state,'time',None)
         if stamp != self._state_time:
@@ -496,6 +504,8 @@ class ROSBackend(BaseBackend):
         self.resources.callback(self.recorder.close,save_active=False)
 
     def command(self, op, args):
+        if self.poses.command(op, args):
+            return
         if self.collector:
             return self.collector_command(op,args)
         r = self.recorder
@@ -576,6 +586,7 @@ class ROSBackend(BaseBackend):
                     node.managed_pause()
             if self.recorder.is_recording:
                 self.recorder.stop_recording(discard=True)
+        self.poses.tick()
 
     def sample(self):
         node = self.collector or self.recorder
@@ -594,6 +605,7 @@ class ROSBackend(BaseBackend):
                       'actual_source':'gello','arms':{a:{'source':n.mode.value,'speed':'fixed','speed_scale':None,'transition':n.mode.value=='returning_to_gello'}
                                                       for a,n in zip(self.arms,self.arbiters)},
                       'available_commands':['enable','pause','record','save','discard','recover','stop'],'modes':[], 'outcomes':['success']}
+        self.poses.decorate(status)
         values = ros_values(latest,self.arms)
         if self.collector:
             command = self.collector._last_command_snapshot

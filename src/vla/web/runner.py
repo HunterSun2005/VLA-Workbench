@@ -32,7 +32,7 @@ def main():
             runtime.start()
             if args.demo:
                 from .demo import DemoBackend
-                backend = DemoBackend(config, args.directory)
+                backend = DemoBackend(config, args.directory, args.root)
             else:
                 from .backends import make_backend
                 backend = make_backend(config, args.directory, args.root, cancelled=runtime.cancel_start.is_set)
@@ -59,6 +59,8 @@ def main():
                 if command['status'] == 'accepted':
                     runtime.results[cid] = {**command, 'status':'completed' if command['operation']=='stop' and runtime.cancel_start.is_set() else 'failed',
                                             'error':None if runtime.cancel_start.is_set() else 'session ended before completion'}
+            if backend is not None and hasattr(backend, 'poses'):
+                runtime.status = {**runtime.status, 'pose_operation': backend.poses.status}
             result = {'session_id': runtime.id, 'revision': runtime.revision, 'seq': runtime.seq,
                       'status': {**runtime.status, 'final': True}, 'samples': [], 'commands': list(runtime.results.values()),
                       'now': time.monotonic(), 'cameras': {}}
