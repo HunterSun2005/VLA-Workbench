@@ -179,7 +179,9 @@ class BaseBackend:
         if self.config.workflow == 'deploy':
             ops += ['mode','intervention']
         else:
-            ops += ['critical','next_subtask']
+            ops.append('critical')
+            if getattr(c.config, 'subtasks', ()):
+                ops.append('next_subtask')
         return {'state': 'fault' if c._faulted else 'recording' if active else 'active' if self.enabled else 'standby',
                 'enabled': self.enabled, 'recording': active, 'episode': c.writer.episode_count,
                 'frames': len(c._states), 'elapsed_s': time.monotonic()-self.record_started if active and self.record_started else 0.,
@@ -190,6 +192,10 @@ class BaseBackend:
                 'inference_ms': result.latency_s*1000 if result else None,
                 'arms': arms, 'available_commands': ops, 'modes': self.config.modes(),
                 'outcomes': ['success','failure'] if self.config.workflow == 'deploy' else ['success'],
+                'critical': c._phase == 'rl' if self.config.workflow == 'collect' else None,
+                'subtask': ({'index':c._subtask_index, 'total':len(c.config.subtasks),
+                             'name':c.config.subtasks[c._subtask_index]}
+                            if self.config.workflow == 'collect' and getattr(c.config, 'subtasks', ()) else None),
                 'rtc': c.policy_client.contract.get('rtc_enabled',False) if c.policy_client else False}
 
     def close(self):
@@ -344,7 +350,7 @@ class FrankyBackend(BaseBackend):
                       'episode': s.worker.index if s.worker else s.store.writer.episode_count,
                       'frames': s.worker.frames if s.worker else 0,
                       'elapsed_s': time.monotonic()-s.started_at if s.worker else 0.,
-                      'critical': s.phase.active, 'error': c.reason if c.mode == 'fault' else None,
+                      'critical': s.phase.active, 'critical_state':s.phase.state, 'error': c.reason if c.mode == 'fault' else None,
                       'arms': {'left': {'source':'gamepad','speed':'fast' if c.high_speed else 'normal',
                                         'speed_scale':c.speed_scale,
                                         'transition':abs(c.speed_scale-(c.config.speed_modes.high_multiplier if c.high_speed else 1.))>1e-6}},

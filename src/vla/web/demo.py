@@ -134,14 +134,15 @@ class DemoBackend:
         source = ('human' if self.human else self.actual) if self.config.workflow == 'deploy' else self.config.source
         status = {'state': 'fault' if self.fault else 'recording' if self.recording else 'active' if self.enabled else 'standby',
                 'enabled': self.enabled, 'recording': self.recording, 'episode': self.episode,
-                'frames': self.frames, 'elapsed_s': self._recorded, 'saving': False, 'critical': self.critical,
+                'frames': self.frames, 'elapsed_s': self._recorded, 'saving': False, 'critical': self.critical if self.config.source=='gamepad' else None,
                 'requested_mode': self.mode, 'actual_source': source, 'switch_pending': False,
                 'probability': self.probability, 'inference_ms': 35. if self.config.workflow == 'deploy' else None,
                 'arms': {a: {'source': self.config.source if source == 'human' else source,
                             'speed': 'normal' if self.config.source == 'gamepad' else 'fixed',
                             'speed_scale': 1. if self.config.source == 'gamepad' else None} for a in self.arms},
                 'signals': self.signals, 'values': values, 'sample_time': now,
-                'available_commands': ['enable','pause','record','save','discard','recover','stop','critical'] +
+                'available_commands': ['enable','pause','record','save','discard','recover','stop'] +
+                    (['critical'] if self.config.workflow=='collect' and self.config.source=='gamepad' else []) +
                     (['mode','intervention'] if self.config.workflow == 'deploy' else []),
                 'modes': self.config.modes(True), 'outcomes':['success','failure'] if self.config.workflow == 'deploy' or (self.config.arms == 'single_left' and self.config.source == 'gamepad') else ['success'], 'demo': True}
         return self.poses.decorate(status)

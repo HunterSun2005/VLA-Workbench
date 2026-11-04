@@ -106,7 +106,7 @@ cp src/vla/datacollection/start_teleop/configs/single_left_gamepad_record.yaml r
 
 这里的地址和编号仅为示例。单左臂可省略右臂项；gamepad 可省略 GELLO_CONFIG。还支持 `LEFT_GELLO_SERIAL_ID`、`RIGHT_GELLO_SERIAL_ID`、`ROBOT_CONFIG`、`GRIPPER_CONFIG`。只允许明确列出的字段及不含 shell 语法的路径／标识符。GELLO YAML 从 `ros_ws/src/franka_gello_state_publisher/config/` 的对应配置复制，保留所选臂的 `namespace: left/right` 并修改串口、校准；未提供所选臂时预检拒绝。运行时生成新的配置，不改写 ROS install。
 
-GELLO 录制使用原 recorder 的数据 schema；面板中的“采集／部署 YAML”不用于这条路线。ROS gamepad 使用 `datacollection/franka_robotiq_rollout/configs/dual.yaml`，可复制后修改控制与阶段配置；JSON 中的相机序列号覆盖 YAML 中对应的序列号。更换输入后端或单双臂必须先停止会话。
+GELLO 录制使用原 recorder 的数据 schema；面板中的 YAML 不改变 GELLO 录制配置，只用于采集前姿态恢复的工作空间与运动参数。ROS gamepad 使用 `datacollection/franka_robotiq_rollout/configs/dual.yaml`，可复制后修改控制与阶段配置；JSON 中的相机序列号覆盖 YAML 中对应的序列号。更换输入后端或单双臂必须先停止会话。
 
 **部署**：模型、tokenizer、分类头必须是已经准备好的本地目录。本轮不迁移权重或数据。预检检查 `config.json` 的模型类型、10D/20D 状态动作维度、相机字段，runner 在启动硬件前加载模型，缺失或不兼容资源导致启动失败。默认相机契约为 base、left_wrist，双臂增加 right_wrist。
 
@@ -177,3 +177,13 @@ Web 显式使用 `VLA_RUN_MODE=managed`，由 runner 管理停止，不读取终
 程序只发布机械臂恢复目标，夹爪不恢复任何历史状态；暂停等已有流程仍可对夹爪执行当前位置保持。保存／恢复必须在无故障、无未完成保存的待命状态执行。实时状态独立展示恢复中、已完成、已取消、失败，命令已接受不代表机械臂已到位。
 
 本次包含 runner 与 API 改动：正常结束已有采集会话并重启 Web 服务后使用。旧 runner 会禁用姿态操作，不热更正在运行的硬件进程。真实机械臂的到位精度、工具配置、路径畅通和受载恢复仍需现场验收。
+
+## 页面状态与多标签页
+
+其他标签页启动新会话后，本页自动同步单双臂、输入源、任务、路径及相机／工作空间设置。runner 存活但连接暂时中断时仍锁定启动配置；只有会话确认结束才解锁。ROS 设备区在运行中显示该会话启动快照中的实际配置，其他标签页后来保存的预设不会替换这一显示。
+
+同一浏览器、同一服务地址只让一个页面持有相机预览，避免双臂／Side 多路 MJPEG 占满 HTTP 连接而拖延操作请求。其他页面继续接收状态与曲线，提示预览暂停，可点击「在此页显示相机」切换；后台标签页释放预览。此机制只控制浏览器预览订阅，不暂停机器人、不改变录制帧率或服务端 30 FPS 采集预览目标。浏览器缺少 Web Locks 支持时会明确提示仅保留一个监控页。
+
+Critical 按钮和遥测区显示实际标注状态；单臂的 Critical 区间结束后不再允许本回合重复开启。配置了子阶段的 ROS gamepad 会话显示阶段名称与进度，未配置时不启用「下一阶段」。保存、回合启动等按钮按当前状态启用，禁用原因可在鼠标悬停时查看。软件暂停立即提交，无二次确认；录制中暂停仍可能按原采集端语义丢弃当前回合，需保留时请先保存。
+
+数据处理的帧错误在成功加载后清除，后台任务连接错误独立维护。切换数据集会重置帧号及播放控件，丢弃迟到的旧数据集响应。部署页明确显示 gamepad 人工接管输入源；GELLO 采集页的 YAML 字段只用于姿态恢复的工作空间与运动参数，不改动 GELLO 标定与录制配置。

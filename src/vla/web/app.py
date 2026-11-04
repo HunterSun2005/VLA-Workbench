@@ -165,6 +165,12 @@ def create_app(root=None, *, demo=False):
             note = None
         return await processing_call(poses.edit, record_id, note)
 
+    @app.get('/api/hardware/session')
+    async def session_hardware():
+        from .hardware import session_profile
+        record = await asyncio.to_thread(manager.active)
+        return await processing_call(session_profile, manager.root, record)
+
     @app.get('/api/hardware')
     async def hardware_profiles():
         from .hardware import profiles, inventory

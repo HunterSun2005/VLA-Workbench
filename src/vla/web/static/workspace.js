@@ -3,7 +3,7 @@
  const panel=$('workspaceSetup'),custom=$('workspaceCustom'),container=$('workspaceFields'),status=$('workspaceStatus');
  let defaults={},values={},shown='',sequence=0,restored=null;
  const applicable=c=>c.workflow==='collect'&&c.source==='gamepad';
- const running=()=>current?.status?['starting','standby','active','recording','saving','fault'].includes(current.status.state)&&!current.status.final:Boolean(active?.alive);
+ const running=configLocked;
  window.readWorkspaceBounds=c=>{
   if(!applicable(c)||!custom.checked)return null;
   const result={};
@@ -48,7 +48,7 @@
   if(key===shown){lock();return;}shown=key;
   const seq=++sequence;draw(c);status.textContent='正在读取配置范围…';
   try{
-   const result=await api('/api/workspace',{...c,task:c.task||'workspace',workspace_bounds:null});
+   const result=await api('/api/workspace',{task:'workspace',workflow:c.workflow,arms:c.arms,source:c.source,config_path:c.config_path});
    if(seq!==sequence)return;defaults=result.bounds;if(!custom.checked)values={};draw(c);
    status.textContent='范围来自当前采集配置；勾选后可修改。超出范围仍会拒绝启用，不会自动拉回。';
   }catch(e){if(seq===sequence){status.textContent='读取范围失败：'+e.message;shown='';}}

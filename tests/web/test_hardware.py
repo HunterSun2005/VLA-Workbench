@@ -111,3 +111,27 @@ def test_relative_custom_config_preflight_and_session_snapshot(tmp_path, monkeyp
     assert json.loads(frozen.read_text()) == values
     assert record['config']['ros_config'] == 'hardware.json'
     assert len(calls) == 1
+
+
+def test_session_profile_uses_frozen_values_not_latest_editor_save(tmp_path):
+    from vla.web.hardware import session_profile, save, snapshot
+    from dataclasses import asdict, replace
+    values = preset('dual')
+    original = save(tmp_path, {'arms':'dual','values':values})
+    directory = tmp_path/'runtime/web/session'
+    directory.mkdir()
+    config = SessionConfig(task='test',arms='dual',source='gello',ros_config=snapshot(tmp_path,original['path'],directory))
+    (directory/'config.json').write_text(json.dumps(asdict(config)))
+    updated = {**values,'BASE_CAMERA_SERIAL':'OTHER_CAMERA'}
+    save(tmp_path,{'arms':'dual','values':updated})
+    record={'directory':str(directory),'session_id':'session'}
+    assert session_profile(tmp_path,record)['values'] == values
+    app=create_app(tmp_path)
+    app.state.manager.active=lambda: record
+    with TestClient(app,base_url='http://127.0.0.1') as client:
+        result=client.get('/api/hardware/session')
+        assert result.status_code == 200
+        assert result.json()['session_id']=='session'
+        assert result.json()['values']['BASE_CAMERA_SERIAL']==values['BASE_CAMERA_SERIAL']
+    (directory/'config.json').write_text(json.dumps(asdict(replace(config,arms='single_left',source='gamepad'))))
+    assert session_profile(tmp_path,record) is None

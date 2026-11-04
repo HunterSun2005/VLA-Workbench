@@ -133,3 +133,15 @@ def snapshot(root, value, directory):
     path = Path(directory) / 'hardware.json'
     path.write_text(json.dumps(values, indent=2) + '\n')
     return str(path)
+
+
+def session_profile(root, record):
+    """Read the running session's frozen profile, not the last editor save."""
+    if not record:
+        return None
+    from .config import SessionConfig
+    config = SessionConfig.parse(json.loads((Path(record['directory'])/'config.json').read_text()))
+    if not config.ros or not config.ros_config:
+        return None
+    values = validate(json.loads(config_path(root, config.ros_config).read_text()), config.arms)
+    return {'session_id':record['session_id'], 'arms':config.arms, 'values':values}

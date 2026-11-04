@@ -5,7 +5,7 @@
  const roles={base:'Base · 全局相机',left_wrist:'Left wrist · 左腕相机'};
  let inventory=[],defaults={},values={},key=null,sequence=0,restored=null;
  const applicable=c=>c.workflow==='collect'&&c.arms==='single_left'&&c.source==='gamepad';
- const running=()=>current?.status?['starting','standby','active','recording','saving','fault'].includes(current.status.state)&&!current.status.final:Boolean(active?.alive);
+ const running=configLocked;
  window.readCameraSerials=c=>applicable(c)&&Object.keys(values).length?{...values}:null;
  function lock(){panel.querySelectorAll('input,select,button').forEach(el=>el.disabled=running());}
  function draw(){
@@ -30,7 +30,7 @@
   if(!force&&key===c.config_path){lock();return;}key=c.config_path;
   const seq=++sequence;draw();status.textContent='正在读取相机配置…';
   try{
-   const [hardware,result]=await Promise.all([api('/api/hardware'),api('/api/camera-defaults',{...c,task:c.task||'camera defaults',camera_serials:null,side_camera_serial:''})]);
+   const [hardware,result]=await Promise.all([api('/api/hardware'),api('/api/camera-defaults',{task:'camera defaults',workflow:c.workflow,arms:c.arms,source:c.source,config_path:c.config_path})]);
    if(seq!==sequence)return;inventory=hardware.inventory.cameras;defaults=result.serials;draw();
    status.textContent=`检测到 ${inventory.length} 台 RealSense。序列号与角色的对应关系将用于预览和数据写入；不得重复分配同一设备。`;
   }catch(e){if(seq===sequence){status.textContent='读取相机配置失败：'+e.message;key=null;}}
