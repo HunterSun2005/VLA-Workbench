@@ -118,11 +118,16 @@ CAMERA_SERIALS = {
     "left_wrist": os.environ.get("LEFT_WRIST_CAMERA_SERIAL", "346222073620"),
     "right_wrist": os.environ.get("RIGHT_WRIST_CAMERA_SERIAL", "346122070471"),
 }
+if os.environ.get("SIDE_CAMERA_SERIAL"):
+    CAMERA_SERIALS["side"] = os.environ["SIDE_CAMERA_SERIAL"]
 CAMERA_FEATURES = {
     "observation.images.base": "base",
     "observation.images.left_wrist": "left_wrist",
     "observation.images.right_wrist": "right_wrist",
 }
+
+if "side" in CAMERA_SERIALS:
+    CAMERA_FEATURES["observation.images.side"] = "side"
 
 
 def _prefixed_fields(fields: list[str]) -> tuple[str, ...]:

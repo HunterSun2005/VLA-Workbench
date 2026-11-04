@@ -70,8 +70,8 @@ def load_recording_config(path):
     if not all((control.robot.human_linear_velocity_control, control.robot.human_angular_velocity_control,
                 control.robot.human_gripper_immediate_hold)):
         raise ValueError("recording requires direct human velocity control and gripper hold")
-    if len(set(control.robot.camera_serials.values())) != 2:
-        raise ValueError("recording requires two distinct cameras")
+    if len(set(control.robot.camera_serials.values())) != len(control.robot.camera_serials):
+        raise ValueError("recording requires distinct cameras")
     return control, recording
 
 
@@ -121,7 +121,7 @@ class CriticalPhase:
         return f"Critical {'ON' if self.active else 'OFF'} from the next recording interval"
 
 
-def validate_snapshot(snapshot):
+def validate_snapshot(snapshot, camera_roles=None):
     pose = np.asarray(snapshot.pose)
     if pose.shape != (4, 4) or not np.isfinite(pose).all():
         raise ValueError("invalid measured pose")
@@ -130,8 +130,11 @@ def validate_snapshot(snapshot):
         raise ValueError("invalid measured rotation")
     if snapshot.observed_at_ns <= 0 or not 0 <= snapshot.gripper_open_fraction <= 1:
         raise ValueError("invalid observation time/gripper")
-    if set(snapshot.images) != {"base", "left_wrist"} or set(snapshot.image_timestamps) != {"base", "left_wrist"}:
-        raise ValueError("both camera images/timestamps are required")
+    roles = set(snapshot.images)
+    if roles not in ({"base", "left_wrist"}, {"base", "left_wrist", "side"}) or set(snapshot.image_timestamps) != roles:
+        raise ValueError("both standard camera images/timestamps and optional side are required")
+    if camera_roles is not None and roles != set(camera_roles):
+        raise ValueError("snapshot camera roles differ from recording configuration")
     for image in snapshot.images.values():
         if image.shape != (224, 224, 3) or image.dtype != np.uint8:
             raise ValueError("images must be 224x224 RGB uint8")
@@ -198,7 +201,7 @@ class IntervalAssembler:
         self.command = command
 
     def observe(self, snapshot, phase):
-        validate_snapshot(snapshot)
+        validate_snapshot(snapshot, self.pending.images)
         dt = (snapshot.observed_at_ns - self.pending.observed_at_ns) / 1e9
         if not .5 / self.fps <= dt <= 1.5 / self.fps:
             raise ValueError("recording interval discontinuity")
@@ -233,6 +236,11 @@ class RecordingStore:
     def __init__(self, root, control, recording, task, *, resume=False):
         self.root = Path(root).expanduser().resolve()
         self.contract = dataset_contract(control, recording, task)
+        self.camera_roles = tuple(control.robot.camera_serials)
+        self.camera_keys = tuple(f"observation.images.{role}" for role in self.camera_roles)
+        self.features = dict(FEATURES)
+        if 'side' in self.camera_roles:
+            self.features['complementary_info.side_image_at_ns'] = {'dtype':'int64', 'shape':[1], 'names':['side_image_at_ns']}
         self.lease = WriterLease(self.root)
         self.worker = None
         try:
@@ -247,7 +255,7 @@ class RecordingStore:
                 if info.get("recording_contract") != self.contract:
                     raise ValueError("recording dataset contract mismatch")
             self.writer = RecordingDatasetWriter(
-                self.root, recording.fps, task, CAMERAS, 224, 224, extra_features=FEATURES,
+                self.root, recording.fps, task, self.camera_keys, 224, 224, extra_features=self.features,
                 info_metadata={"collection_kind": "human_demonstration", "gamepad_recording_version": VERSION,
                                "recording_contract": self.contract}, strict_metadata=True,
             )
@@ -260,7 +268,7 @@ class RecordingStore:
     def _quarantine_uncommitted(self):
         # Only paths reserved by THIS format for the next, uncommitted episode.
         index = self.writer.next_episode_index()
-        paths = [self.writer.data_path(index), *(self.writer.video_path(index, key) for key in CAMERAS),
+        paths = [self.writer.data_path(index), *(self.writer.video_path(index, key) for key in self.camera_keys),
                  self.root / "commands" / f"episode-{index:08d}.jsonl"]
         present = [path for path in paths if path.exists()]
         if present:
@@ -295,6 +303,8 @@ class RecordingStore:
 class EpisodeWorker:
     def __init__(self, store, first, seed):
         self.store, self.config = store, store.recording
+        self.camera_roles, self.camera_keys, self.features = store.camera_roles, store.camera_keys, store.features
+        validate_snapshot(first, self.camera_roles)
         self.index = store.writer.next_episode_index()
         self.attempt = store.root / ".recording_attempts" / str(uuid.uuid4())
         self.events = queue.Queue(maxsize=self.config.queue_size)
@@ -334,12 +344,12 @@ class EpisodeWorker:
 
     def _run(self):
         states, actions = [], []
-        extras = {key: [] for key in FEATURES}
-        stats = {key: ImageRunningStats() for key in CAMERAS}
+        extras = {key: [] for key in self.features}
+        stats = {key: ImageRunningStats() for key in self.camera_keys}
         try:
             self.attempt.mkdir(parents=True)
             atomic_json(self.attempt / "attempt.json", {"episode_index": self.index, "status": "recording"})
-            for key in CAMERAS:
+            for key in self.camera_keys:
                 self.videos[key] = FfmpegVideoWriter(self.attempt / f"{key}.mp4", width=224, height=224, fps=self.config.fps)
             with (self.attempt / "commands.jsonl").open("w") as trace:
                 trace.write(json.dumps({"kind": "seed", **self.assembler.command}) + "\n")
@@ -358,15 +368,15 @@ class EpisodeWorker:
                         continue
                     snapshot, phase = value
                     pending, state, action, label, end_ns = self.assembler.observe(snapshot, phase)
-                    for key in CAMERAS:
+                    for key in self.camera_keys:
                         image = pending.images[key.removeprefix("observation.images.")]
                         self.videos[key].write(image)
                         stats[key].update(image)
                     states.append(state)
                     actions.append(action)
                     values = [label, pending.observed_at_ns, end_ns,
-                              int(pending.image_timestamps["base"] * 1e9), int(pending.image_timestamps["left_wrist"] * 1e9)]
-                    for key, number in zip(FEATURES, values, strict=True):
+                              *(int(pending.image_timestamps[role] * 1e9) for role in ("base", "left_wrist", "side") if role in self.camera_roles)]
+                    for key, number in zip(self.features, values, strict=True):
                         extras[key].append(number)
                     trace.write(json.dumps({"kind": "interval", "frame_index": len(states) - 1,
                                             "observed_at_ns": pending.observed_at_ns, "end_ns": end_ns,
@@ -386,7 +396,7 @@ class EpisodeWorker:
                 return
             for video in self.videos.values():
                 video.close()
-            for key in CAMERAS:
+            for key in self.camera_keys:
                 output = subprocess.run(
                     ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries",
                      "stream=nb_read_frames", "-of", "default=nokey=1:noprint_wrappers=1",
@@ -427,7 +437,7 @@ class EpisodeWorker:
         if active and len(active) != active[-1] - active[0] + 1:
             raise ValueError("multiple critical intervals are not supported")
         # Refuse overwrite even after a partially published previous attempt.
-        files = [(self.attempt / f"{key}.mp4", writer.video_path(self.index, key)) for key in CAMERAS]
+        files = [(self.attempt / f"{key}.mp4", writer.video_path(self.index, key)) for key in self.camera_keys]
         trace_path = self.store.root / "commands" / f"episode-{self.index:08d}.jsonl"
         files.append((self.attempt / "commands.jsonl", trace_path))
         if writer.data_path(self.index).exists() or any(dst.exists() for _, dst in files):

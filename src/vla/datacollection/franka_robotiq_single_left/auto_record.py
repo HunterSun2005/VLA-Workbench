@@ -61,10 +61,14 @@ CAMERA_SERIALS = {
     "base": os.environ.get("BASE_CAMERA_SERIAL", "260722303785"),
     "left_wrist": os.environ.get("LEFT_WRIST_CAMERA_SERIAL", "346222073620"),
 }
+if os.environ.get("SIDE_CAMERA_SERIAL"):
+    CAMERA_SERIALS["side"] = os.environ["SIDE_CAMERA_SERIAL"]
 CAMERA_FEATURES = {
     "observation.images.base": "base",
     "observation.images.left_wrist": "left wrist",
 }
+if "side" in CAMERA_SERIALS:
+    CAMERA_FEATURES["observation.images.side"] = "side"
 TOPIC_TYPES = {
     schema.TOPIC_ARM_COMMAND: JointState,
     schema.TOPIC_GRIPPER: JointState,
@@ -77,7 +81,7 @@ LATEST_KEYS = {
     schema.TOPIC_GRIPPER_COMMAND: "teleop_gripper_command",
     schema.TOPIC_ROBOT_STATE: "robot_state",
 }
-REQUIRED_LATEST_KEYS = ("left_wrist", *LATEST_KEYS.values())
+REQUIRED_LATEST_KEYS = (*(role for role in CAMERA_SERIALS if role != "base"), *LATEST_KEYS.values())
 
 def report_exception(context: str) -> None:
     details = traceback.format_exc()
@@ -420,7 +424,7 @@ class DirectRealSenseCapture:
     def start(self) -> None:
         started = []
         try:
-            for role in ("left_wrist", "base"):
+            for role in [*(r for r in self._cameras if r != "base"), "base"]:
                 self._cameras[role].start()
                 started.append(self._cameras[role])
             for camera in started:
@@ -621,7 +625,7 @@ class DirectLeRobotRecorder(Node):
                 )
                 images = {
                     "observation.images.base": base_rgb,
-                    "observation.images.left_wrist": messages["left_wrist"],
+                    **{f"observation.images.{role}": messages[role] for role in CAMERA_SERIALS if role != "base"},
                 }
                 for key, writer in self._writers.items():
                     writer.write(images[key])

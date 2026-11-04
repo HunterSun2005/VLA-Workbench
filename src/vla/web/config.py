@@ -28,6 +28,7 @@ class SessionConfig:
     model_python: str = sys.executable
     ros_workspace: str = ''
     ros_config: str = ''
+    side_camera_serial: str = ''
 
     @classmethod
     def parse(cls, data):
@@ -36,10 +37,15 @@ class SessionConfig:
         result = cls(**data)
         for name in ('workflow','arms','source','schema','config_path','dataset_root','task',
                      'policy_kind','policy_path','tokenizer_path','handover_path','mode','device',
-                     'model_python','ros_workspace','ros_config'):
+                     'model_python','ros_workspace','ros_config','side_camera_serial'):
             value = getattr(result, name)
             if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
                 raise ValueError(f'invalid {name}')
+        import re
+        if result.side_camera_serial and not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', result.side_camera_serial):
+            raise ValueError('invalid side camera serial')
+        if result.side_camera_serial and result.workflow != 'collect':
+            raise ValueError('side camera is only supported for collection')
         if type(result.resume) is not bool:
             raise ValueError('resume must be boolean')
         for name, choices in {'workflow': ('collect','deploy'), 'arms': ('single_left','dual'),
@@ -57,7 +63,7 @@ class SessionConfig:
 
     def default_dataset_root(self):
         if self.workflow == 'collect':
-            return f'datasets/raw/franka_{self.arms}_{self.source}_{self.schema}'
+            return f'datasets/raw/franka_{self.arms}_{self.source}_{self.schema}' + ('_side' if self.side_camera_serial else '')
         return f'datasets/rollouts/franka_{self.arms}_{self.policy_kind}'
 
     def dataset_path(self, root):
@@ -71,7 +77,7 @@ class SessionConfig:
 
     @property
     def cameras(self):
-        return ['base','left_wrist'] + (['right_wrist'] if self.arms == 'dual' else [])
+        return ['base','left_wrist'] + (['right_wrist'] if self.arms == 'dual' else []) + (['side'] if self.workflow == 'collect' and self.side_camera_serial else [])
 
     def default_config(self):
         if self.config_path:
@@ -87,6 +93,25 @@ class SessionConfig:
         if self.policy_kind == 'sft':
             return ['vla']
         return ['vla','rlt'] + (['auto'] if demo or self.handover_path else [])
+
+
+def collection_camera_serials(config, hardware=None):
+    """Resolve the selected collection cameras without opening any device."""
+    if config.ros:
+        from .hardware import preset
+        values = {**preset(config.arms), **(hardware or {})}
+        keys = {'base':'BASE_CAMERA_SERIAL', 'left_wrist':'LEFT_WRIST_CAMERA_SERIAL',
+                'right_wrist':'RIGHT_WRIST_CAMERA_SERIAL'}
+        serials = {role:values[keys[role]] for role in config.cameras if role != 'side'}
+    else:
+        import yaml
+        raw = yaml.safe_load(config.default_config().read_text())
+        serials = {role:str(raw['robot']['cameras'][role]['serial']) for role in ('base','left_wrist')}
+    if config.side_camera_serial:
+        serials['side'] = config.side_camera_serial
+    if len(set(serials.values())) != len(serials):
+        raise ValueError('Side 相机与 base / wrist 相机不能使用同一设备；相机序列号必须互不相同')
+    return serials
 
 
 def preflight(config, *, demo=False, root=None):
@@ -109,6 +134,9 @@ def preflight(config, *, demo=False, root=None):
             names = (STATE_FIELDS if config.arms == 'single_left' else
                      [f'{arm}_{field}' for arm in ('left', 'right') for field in STATE_FIELDS])
             info = json.loads((target / 'meta/info.json').read_text())
+            recorded_cameras = {k for k in info['features'] if k.startswith('observation.images.')}
+            if recorded_cameras != {f'observation.images.{r}' for r in config.cameras}:
+                errors.append('续采相机视角必须与原数据集一致；新增或移除 side 相机请使用新目录')
             state = info['features']['observation.state']
             if state.get('shape') != [len(names)] or state.get('names') != names:
                 errors.append(f'续采需要相同的完整 {len(names)}D 状态字段；旧 29D/31D/58D 数据请使用新目录')
@@ -149,6 +177,15 @@ def preflight(config, *, demo=False, root=None):
                             errors.append('GELLO 配置缺少所选机械臂 namespace')
             except (ValueError, OSError, TypeError) as error:
                 errors.append(str(error))
+    if config.workflow == 'collect':
+        try:
+            hardware = None
+            if config.ros and config.ros_config:
+                from .hardware import config_path
+                hardware = json.loads(config_path(root, config.ros_config).read_text())
+            collection_camera_serials(config, hardware)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            errors.append(f'无法配置采集相机: {error}')
     if config.workflow == 'deploy':
         for label, value in [('模型', config.policy_path), ('tokenizer', config.tokenizer_path)]:
             if not value or not Path(value).expanduser().is_dir():

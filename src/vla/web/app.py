@@ -67,7 +67,7 @@ def create_app(root=None, *, demo=False):
     async def bootstrap():
         return {'token':token,'demo':demo,'active':await asyncio.to_thread(manager.active),
                 'defaults':{'model_python':os.environ.get('VLA_PYTHON',__import__('sys').executable)},
-                'camera_roles':['base','left_wrist','right_wrist'],
+                'camera_roles':['base','left_wrist','right_wrist','side'],
                 'workspace_root':str(manager.root),'dataset_defaults':dataset_defaults()}
 
     async def processing_call(fn, *args):
@@ -203,7 +203,7 @@ def create_app(root=None, *, demo=False):
 
     @app.get('/api/cameras/{role}')
     async def camera(role:str):
-        if role not in ('base','left_wrist','right_wrist'):
+        if role not in ('base','left_wrist','right_wrist','side'):
             raise HTTPException(404,'unknown camera')
         if app.state.streams>=12:
             raise HTTPException(429,'too many camera viewers')

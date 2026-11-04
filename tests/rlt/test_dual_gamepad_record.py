@@ -146,8 +146,8 @@ def ros_module(monkeypatch):
     return module
 
 
-@pytest.fixture
-def collector(ros_module, monkeypatch, tmp_path):
+@pytest.fixture(params=[False, True], ids=["standard", "side"])
+def collector(ros_module, monkeypatch, tmp_path, request):
     module = ros_module
     cls = module.RolloutCollector
     for name in ("_setup_ros_io", "_start_cameras", "_stop_grippers_at_measured_position"):
@@ -181,6 +181,9 @@ def collector(ros_module, monkeypatch, tmp_path):
 
     monkeypatch.setattr(module, "AsyncVideoWriter", Video)
     config = replace(load_rollout_config(DEFAULT_CONFIG), dataset_root=tmp_path / "demo", subtasks=("pick", "insert"))
+    if request.param:
+        from vla.datacollection.franka_robotiq_rollout.config import CameraConfig
+        config = replace(config, cameras=(*config.cameras, CameraConfig("side", "TEST_SIDE")))
     c = cls(config, demonstration=True)
     pose = SimpleNamespace(pose=SimpleNamespace(
         position=SimpleNamespace(x=0., y=0., z=0.),
@@ -304,6 +307,21 @@ def test_demo_success_requires_last_subtask(collector):
     assert c._recording
     c.finish_episode("failure")
     assert not c._recording and c.writer.episode_count == 0
+
+
+def test_all_configured_views_participate_in_snapshot(collector, ros_module):
+    c = collector
+    now = time.monotonic_ns()
+    for key, (_, value) in list(c._latest.items()):
+        c._latest[key] = (now, value)
+    for camera in c.config.cameras:
+        c._latest[f"camera.{camera.name}"] = (now, np.zeros((224, 224, 3), dtype=np.uint8))
+    _, images = ros_module.RolloutCollector._snapshot(c, raise_on_invalid=True)
+    assert set(images) == {cam.feature_key for cam in c.config.cameras}
+    role = c.config.cameras[-1].name
+    del c._latest[f"camera.{role}"]
+    with pytest.raises(RuntimeError, match=f"missing: camera.{role}"):
+        ros_module.RolloutCollector._snapshot(c, raise_on_invalid=True)
 
 
 def test_demo_camera_poll_does_not_duplicate_images_and_faults_on_gap(collector, ros_module, monkeypatch):

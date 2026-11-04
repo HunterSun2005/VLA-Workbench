@@ -91,8 +91,11 @@ class FrankaRobotiqConfig(RobotConfig):
             or not math.isfinite(self.human_max_vertical_velocity) or self.human_max_vertical_velocity <= 0
         ):
             raise ValueError("human_max_vertical_velocity must be finite and positive")
-        if self.cameras_enabled and set(self.camera_serials) != {"base", "left_wrist"}:
-            raise ValueError("camera_serials must contain exactly 'base' and 'left_wrist'")
+        if self.cameras_enabled:
+            if set(self.camera_serials) not in ({"base", "left_wrist"}, {"base", "left_wrist", "side"}):
+                raise ValueError("camera_serials require base and left_wrist, with optional side")
+            if any(not isinstance(v, str) or not v for v in self.camera_serials.values()) or len(set(self.camera_serials.values())) != len(self.camera_serials):
+                raise ValueError("camera serials must be nonempty and distinct")
         if self.control_frequency <= 0 or self.camera_fps <= 0:
             raise ValueError("control and camera frequencies must be positive")
         if self.image_size <= 0:

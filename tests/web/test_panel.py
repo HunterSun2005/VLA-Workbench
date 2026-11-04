@@ -271,7 +271,8 @@ def test_dataset_path_preflight_and_resume_use_workspace(tmp_path, monkeypatch, 
     (expected/'meta').mkdir()
     from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
     (expected/'meta/info.json').write_text(json.dumps({'features': {
-        'observation.state': {'shape': [50], 'names': STATE_FIELDS}}}))
+        'observation.state': {'shape': [50], 'names': STATE_FIELDS},
+        **{f'observation.images.{r}': {'dtype':'video'} for r in cfg.cameras}}}))
     result=preflight(cfg,root=workspace)
     assert not result['ok'] and any('非空' in error for error in result['errors'])
     assert preflight(replace(cfg,resume=True),root=workspace)['ok']

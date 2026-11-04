@@ -20,10 +20,10 @@ ACTION_ENCODING = "controller_joint_command_fk_absolute_tcp_rot6d_v1"
 def validate_dual_config(config):
     if config.backend != "ros2" or tuple(arm.name for arm in config.arms) != ("left", "right"):
         raise ValueError("dual gamepad recording requires ROS2 arms ordered left, right")
-    if tuple(camera.name for camera in config.cameras) != ("base", "left_wrist", "right_wrist"):
-        raise ValueError("dual cameras must be ordered base, left_wrist, right_wrist")
-    if len({camera.serial for camera in config.cameras}) != 3:
-        raise ValueError("dual recording requires three distinct camera serials")
+    if tuple(camera.name for camera in config.cameras) not in (("base", "left_wrist", "right_wrist"), ("base", "left_wrist", "right_wrist", "side")):
+        raise ValueError("dual cameras must be ordered base, left_wrist, right_wrist, with optional side last")
+    if len({camera.serial for camera in config.cameras}) != len(config.cameras):
+        raise ValueError("dual recording requires distinct camera serials")
     for field in ("robot_state_topic", "measured_joint_topic", "gripper_state_topic",
                   "command_joint_topic", "command_gripper_topic", "gripper_action_topic",
                   "gripper_speed_topic"):
@@ -102,7 +102,7 @@ def main():
         if args.resume:
             validate_resume_contract(config)
     if not args.execute:
-        print("Dual configuration passed: left/right, 100D raw state, 20D action, 3 RGB cameras; "
+        print(f"Dual configuration passed: left/right, 100D raw state, 20D action, {len(config.cameras)} RGB cameras; "
               "no hardware connection, policy server or dataset initialization")
         return
     if not sys.stdin.isatty():

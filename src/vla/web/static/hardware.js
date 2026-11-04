@@ -2,6 +2,7 @@
 'use strict';
 (()=>{
  const panel=$('hardwareSetup'),mode=$('hardwareMode'),fields=$('hardwareFields');
+ const side=$('sideCamera');
  let profiles=null,inventory={serials:[],cameras:[],warnings:[]},drafts={},shown=null,saving=false;
  const labels={LEFT_ROBOT_IP:'左臂 IP',RIGHT_ROBOT_IP:'右臂 IP',LEFT_ROBOTIQ_PORT:'左夹爪串口',RIGHT_ROBOTIQ_PORT:'右夹爪串口',LEFT_GELLO_SERIAL_ID:'左 GELLO 串口',RIGHT_GELLO_SERIAL_ID:'右 GELLO 串口',BASE_CAMERA_SERIAL:'Base 全局相机',LEFT_WRIST_CAMERA_SERIAL:'左腕相机',RIGHT_WRIST_CAMERA_SERIAL:'右腕相机',GELLO_CONFIG:'GELLO 校准 YAML',ROBOT_CONFIG:'机械臂 YAML',GRIPPER_CONFIG:'夹爪 YAML'};
  const usesROS=()=>config().arms==='dual'||config().source==='gello';
@@ -16,8 +17,18 @@
   }
   $('hardwareNotice').textContent=[missing.length?'未检测到所填设备：'+missing.join('、')+'。保留原值，请从列表选择或检查接线。':'',...(inventory.warnings||[]),inventory.note||'',profiles?.[shown]?.warning||''].filter(Boolean).join('\n');
  }
+ function renderSide(){
+  const selected=side.value;
+  side.replaceChildren(new Option('不添加 · 标准 base + wrist',''));
+  for(const camera of inventory.cameras)side.add(new Option(camera.label,camera.value));
+  if(selected&&!inventory.cameras.some(c=>c.value===selected))side.add(new Option(selected+' · 当前未检测到',selected));
+  side.value=selected;
+ }
+ side.onchange=()=>{updateDatasetPath();clearPreflight();};
+ $('sideCameraRefresh').onclick=async()=>{try{const result=await api('/api/hardware');inventory=result.inventory;renderSide();renderFields();$('sideCameraNotice').textContent=inventory.cameras.length?'选中后额外预览并保存 side 视角；不得与 base / wrist 使用同一设备。':'当前未检测到 RealSense 摄像头，请检查连接后刷新。';}catch(e){error(e.message);}};
  function lock(){
   const disabled=running()||saving;
+  side.disabled=disabled;$('sideCameraRefresh').disabled=disabled;
   panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=disabled);
   // The named path is locked independently of the helper controls.
   if(usesROS())form.elements.ros_config.readOnly=mode.value==='preset';else form.elements.ros_config.readOnly=false;
@@ -57,7 +68,7 @@
   lock();
  }
  const ready=api('/api/hardware').then(result=>{
-  profiles=result.profiles;inventory=result.inventory;
+  profiles=result.profiles;inventory=result.inventory;renderSide();
   for(const arms of Object.keys(profiles))drafts[arms]={...profiles[arms].values};
   view();
  }).catch(e=>{$('hardwareStatus').textContent='配置加载失败：'+e.message;});
@@ -76,7 +87,7 @@
  }
  window.prepareHardware=async()=>{if(usesROS()&&mode.value==='preset'&&!running())await save();};
  $('hardwareSave').onclick=()=>{error('');save().catch(e=>error(e.message));};
- $('hardwareRefresh').onclick=async()=>{try{const result=await api('/api/hardware');inventory=result.inventory;renderFields();}catch(e){error(e.message);}};
+ $('hardwareRefresh').onclick=async()=>{try{const result=await api('/api/hardware');inventory=result.inventory;renderSide();renderFields();}catch(e){error(e.message);}};
  $('hardwareReset').onclick=()=>{if(!profiles||!confirm('恢复当前单双臂的仓库预设？未保存的设备选择将被替换。'))return;drafts[shown]={...profiles[shown].defaults};renderFields();$('hardwareStatus').textContent='已恢复预设，待保存。';};
  mode.onchange=()=>{if(mode.value==='preset'){form.elements.ros_config.value='';$('hardwareStatus').textContent='检查或启动时自动保存预设。';}view();};
  form.elements.ros_config.addEventListener('input',()=>{mode.value='custom';view();});

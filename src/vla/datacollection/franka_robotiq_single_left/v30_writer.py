@@ -374,6 +374,9 @@ class V30DatasetWriter:
             raise RuntimeError(f"expected LeRobot {CODEBASE_VERSION}, got {self.info.get('codebase_version')!r}")
         if int(self.info.get("fps", -1)) != self.fps:
             raise RuntimeError(f"existing dataset uses {self.info.get('fps')} fps, requested {self.fps}")
+        actual_cameras = {key for key in self.info.get("features", {}) if key.startswith("observation.images.")}
+        if actual_cameras != set(self.camera_keys):
+            raise RuntimeError("existing dataset camera features do not match the requested camera schema")
         expected = make_info(
             self.fps,
             self.camera_keys,

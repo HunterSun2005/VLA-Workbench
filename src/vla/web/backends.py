@@ -200,6 +200,8 @@ class FrankyBackend(BaseBackend):
         if config.workflow == 'collect':
             module = importlib.import_module('vla.datacollection.start_teleop.gamepad_record')
             control, recording = module.load_recording_config(config.default_config())
+            from .config import collection_camera_serials
+            control = replace(control, robot=replace(control.robot, camera_serials=collection_camera_serials(config)))
             module.recording_preflight(control,recording)
             # Preserve configured realtime core for Franky's control thread.
             if control.robot.realtime_cpu is not None:
@@ -381,6 +383,9 @@ class ROSBackend(BaseBackend):
         self.health = FrankaHealthMonitor(.90, 3)
         self._health_stamps = {}
         self.hardware = hardware_environment(json.loads(Path(config.ros_config).expanduser().read_text()))
+        if config.workflow == 'collect':
+            from .config import collection_camera_serials
+            self.camera_serials = collection_camera_serials(config, self.hardware)
         from vla.core.hardware_lease import HardwareLease
         for arm in self.arms:
             lease = HardwareLease(self.hardware[f'{arm.upper()}_ROBOT_IP'],
@@ -396,10 +401,13 @@ class ROSBackend(BaseBackend):
         rollout = self.rollout_config() if config.source == 'gamepad' else None
         if rollout is not None:
             keys = {'base':'BASE_CAMERA_SERIAL','left_wrist':'LEFT_WRIST_CAMERA_SERIAL','right_wrist':'RIGHT_WRIST_CAMERA_SERIAL'}
-            rollout = replace(rollout,cameras=tuple(replace(cam,serial=self.hardware.get(keys[cam.name],cam.serial))
+            rollout = replace(rollout,cameras=tuple(replace(cam,serial=self.hardware.get(keys.get(cam.name, ''),cam.serial))
                                                     for cam in rollout.cameras))
             if len({cam.serial for cam in rollout.cameras}) != len(rollout.cameras):
                 raise ValueError('camera serials must be distinct')
+        if rollout is not None and config.workflow == 'collect':
+            from vla.datacollection.franka_robotiq_rollout.config import CameraConfig
+            rollout = replace(rollout, cameras=tuple(CameraConfig(role, serial) for role, serial in self.camera_serials.items()))
         if config.workflow == 'deploy':
             rollout = self.start_policy(rollout)
         # Both arm/gripper command routes go through managed coordinators, including GELLO.
@@ -473,7 +481,10 @@ class ROSBackend(BaseBackend):
         prefix = 'DUAL' if self.config.arms == 'dual' else 'LEFT'
         os.environ[f'{prefix}_FRANKA_DATASET_ROOT'] = self.config.dataset_root
         os.environ[f'{prefix}_FRANKA_TASK'] = self.config.task
-        os.environ.update({k:v for k,v in self.hardware.items() if 'CAMERA_SERIAL' in k})
+        camera_keys = {'base':'BASE_CAMERA_SERIAL', 'left_wrist':'LEFT_WRIST_CAMERA_SERIAL',
+                       'right_wrist':'RIGHT_WRIST_CAMERA_SERIAL', 'side':'SIDE_CAMERA_SERIAL'}
+        os.environ.update({camera_keys[role]:serial for role,serial in self.camera_serials.items()})
+        os.environ['SIDE_CAMERA_SERIAL'] = self.config.side_camera_serial
         module = importlib.import_module('vla.datacollection.franka_robotiq_' +
                                         ('dual' if self.config.arms == 'dual' else 'single_left') + '.auto_record')
         cls = module.DualLeRobotRecorder if self.config.arms == 'dual' else module.DirectLeRobotRecorder

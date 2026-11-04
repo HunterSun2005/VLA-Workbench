@@ -80,7 +80,7 @@ class DirectRealSenseCapture:
         started = []
         try:
             # Base frames drive recording, so start wrist cameras first.
-            for role in ("left_wrist", "right_wrist", "base"):
+            for role in [*(r for r in self._cameras if r != "base"), "base"]:
                 camera = self._cameras[role]
                 camera.start()
                 started.append(camera)
@@ -216,7 +216,7 @@ class DualLeRobotRecorder(Node):
                 arm.gripper_command_key,
             )
         )
-        return ("left_wrist", "right_wrist", *arm_keys)
+        return (*(role for role in schema.CAMERA_SERIALS if role != "base"), *arm_keys)
 
     def _store_latest(self, key: str, message: object, timestamp_ns: int | None = None) -> None:
         with self._lock:
@@ -298,8 +298,7 @@ class DualLeRobotRecorder(Node):
                 action = schema.dual_action_vector(action_parts)
                 images = {
                     "observation.images.base": base_rgb,
-                    "observation.images.left_wrist": messages["left_wrist"],
-                    "observation.images.right_wrist": messages["right_wrist"],
+                    **{f"observation.images.{role}": messages[role] for role in schema.CAMERA_SERIALS if role != "base"},
                 }
                 for key, writer in self._writers.items():
                     writer.write(images[key])
