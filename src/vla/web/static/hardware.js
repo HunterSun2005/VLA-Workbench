@@ -14,7 +14,8 @@
  function notice(){
   const missing=[];
   for(const [key,value] of Object.entries(displayedValues()||{})){
-   const items=choices(key);if(items&&!items.some(x=>normalize(x.value)===normalize(value)))missing.push(labels[key]);
+   if(key.endsWith('_CAMERA_SERIAL')){const info=$('hardware-camera-status-'+key),found=inventory.cameras.some(item=>item.value===value);if(info){info.textContent=`配置值：${value||'未填写'} · ${found?'已检测到设备':'未检测到，请按实际安装位置选择设备'}`;info.dataset.missing=String(!found);}}
+   const items=choices(key);if(items&&!items.some(x=>normalize(x.value)===normalize(value)))missing.push(labels[key]+(key.endsWith('_CAMERA_SERIAL')?'（'+value+'）':''));
   }
   $('hardwareNotice').textContent=[missing.length?'未检测到所填设备：'+missing.join('、')+'。保留原值，请从列表选择或检查接线。':'',...(inventory.warnings||[]),inventory.note||'',profiles?.[shown]?.warning||''].filter(Boolean).join('\n');
  }
@@ -53,6 +54,7 @@
      input.addEventListener('input',()=>{select.value=items.find(x=>normalize(x.value)===normalize(input.value.trim()))?.value||'';});
     }
     input.addEventListener('input',()=>{values[key]=input.value.trim();$('hardwareStatus').textContent='修改待保存；检查或启动时自动保存。';notice();});
+    if(key.endsWith('_CAMERA_SERIAL')){const info=document.createElement('small');info.id='hardware-camera-status-'+key;info.className='camera-binding-status';info.setAttribute('role','status');label.append(info);}
     detail.append(label);
    }
    fields.append(detail);

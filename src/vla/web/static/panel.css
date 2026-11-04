@@ -104,3 +104,6 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outli
 .column-resizer:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 body.resizing-columns,body.resizing-columns *{cursor:col-resize!important;user-select:none!important}
 @media(max-width:720px){main.resizable-layout{display:flex}.column-resizer{display:none}}
+
+.camera-binding-status{display:block;margin-top:6px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
+.camera-binding-status[data-missing="true"]{color:var(--warn)}

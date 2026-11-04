@@ -9,7 +9,7 @@
 <label><span id="sourceLabel">遥操作输入源</span><select name="source"><option value="gamepad">Gamepad</option><option value="gello">GELLO</option></select></label>
 <label id="schemaField">采集格式<select name="schema" aria-label="完整采集格式"><option value="full">完整状态 · 50D</option></select></label>
 <details id="cameraSetup" open><summary>采集相机 · 角色与设备</summary>
-<p class="hint">摄像头统一显示 USB 序列号，例如 254343061352。留空使用 YAML 默认设备；也可手动填写 USB 序列号。</p>
+<p class="hint">摄像头统一显示 USB 序列号。配置默认值不代表自动检测结果；若提示未检测到，请按实际安装位置从列表选择 Base／左腕。</p>
 <div id="cameraFields"></div><div class="row"><button id="cameraRefresh" type="button">刷新设备列表</button><button id="cameraReset" type="button">使用 YAML 默认</button></div><p id="cameraStatus" class="hint" role="status"></p></details>
 <div id="sideCameraField"><label>Side 相机（可选）<select id="sideCamera" name="side_camera_serial"><option value="">不添加 · 标准 base + wrist</option></select></label><button id="sideCameraRefresh" type="button">刷新摄像头列表</button><p id="sideCameraNotice" class="hint">选中后额外预览并保存 side 视角；留空使用标准相机组合。</p></div>
 <details id="workspaceSetup"><summary>TCP 工作空间（米）</summary><p class="hint">各机械臂自身基座坐标系下的 XYZ 范围，仅在启动新 gamepad 采集会话时生效。</p><label class="check"><input id="workspaceCustom" type="checkbox">手动设置范围</label><div id="workspaceFields"></div><button id="workspaceReset" type="button">恢复配置文件范围</button><p id="workspaceStatus" class="hint" role="status"></p></details>
