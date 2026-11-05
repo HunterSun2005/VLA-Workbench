@@ -1,95 +1,47 @@
+"""Small behavioral checks for actor and twin critic; training integration lives separately."""
 from __future__ import annotations
 
 import torch
-import pytest
 
 from vla.core.actor import ChunkActor
-from vla.core.critic import ChunkCritic, TwinCritic
+from vla.core.critic import TwinCritic
 
 
-@pytest.fixture
-def actor():
-    return ChunkActor(state_dim=78, chunk_dim=140, hidden_dim=64, num_layers=2)
+def test_actor_forward_sampling_and_gradients():
+    actor = ChunkActor(state_dim=8, chunk_dim=12, hidden_dim=16, num_layers=2)
+    state, ref = torch.randn(4, 8), torch.randn(4, 12)
+    mu, std = actor(state, ref)
+    assert mu.shape == std.shape == (4, 12)
+    torch.testing.assert_close(std, torch.full_like(std, 0.05))
+    action, sampled_mu = actor.sample(state, ref)
+    assert action.shape == sampled_mu.shape == (4, 12)
+    torch.testing.assert_close(sampled_mu, mu)
+    action.sum().backward()
+    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in actor.parameters())
 
 
-@pytest.fixture
-def twin_critic():
-    return TwinCritic(state_dim=78, chunk_dim=140, hidden_dim=64, num_layers=2)
+def test_reference_dropout_changes_actor_input_only_during_training():
+    # Compare the real forward path to zero-reference inference, rather than
+    # testing a separately generated random mask that never reaches the actor.
+    torch.manual_seed(0)
+    actor = ChunkActor(state_dim=8, chunk_dim=12, hidden_dim=16, ref_dropout_p=1.0)
+    state, ref = torch.randn(4, 8), torch.ones(4, 12)
+    dropped, _ = actor(state, ref, training=True)
+    zero_ref, _ = actor(state, torch.zeros_like(ref), training=False)
+    torch.testing.assert_close(dropped, zero_ref)
+    actor.ref_dropout_p = 0.0
+    kept, _ = actor(state, ref, training=True)
+    inference, _ = actor(state, ref, training=False)
+    torch.testing.assert_close(kept, inference)
+    assert not torch.allclose(inference, zero_ref)
 
 
-class TestActor:
-    def test_forward_shapes(self, actor):
-        state = torch.randn(8, 78)
-        ref = torch.randn(8, 140)
-        mu, std = actor(state, ref)
-        assert mu.shape == (8, 140)
-        assert std.shape == (8, 140)
-
-    def test_sample_shapes(self, actor):
-        state = torch.randn(8, 78)
-        ref = torch.randn(8, 140)
-        action, mu = actor.sample(state, ref)
-        assert action.shape == (8, 140)
-        assert mu.shape == (8, 140)
-
-    def test_fixed_std(self, actor):
-        state = torch.randn(4, 78)
-        ref = torch.randn(4, 140)
-        _, std = actor(state, ref)
-        assert torch.allclose(std, torch.full_like(std, 0.05))
-
-    def test_ref_dropout_statistics(self):
-        """With large batch and training=True, ~50% should be zeroed."""
-        actor = ChunkActor(state_dim=78, chunk_dim=140, hidden_dim=64, ref_dropout_p=0.5)
-        state = torch.randn(1000, 78)
-        ref = torch.ones(1000, 140)  # all ones so we can detect zeroing
-
-        torch.manual_seed(42)
-        mu, _ = actor(state, ref, training=True)
-
-        # The ref was multiplied by a mask. We can check by looking at the input
-        # indirectly: the ratio of zero-ref samples should be ~50%
-        # We verify by calling forward manually and checking the mask effect
-        torch.manual_seed(42)
-        mask = (torch.rand(1000, 1) > 0.5).float()
-        frac_kept = mask.mean().item()
-        assert 0.4 < frac_kept < 0.6
-
-    def test_gradient_flow(self, actor):
-        state = torch.randn(4, 78)
-        ref = torch.randn(4, 140)
-        action, _ = actor.sample(state, ref, training=True)
-        loss = action.sum()
-        loss.backward()
-        for p in actor.parameters():
-            assert p.grad is not None
-
-
-class TestCritic:
-    def test_chunk_critic_shape(self):
-        critic = ChunkCritic(state_dim=78, chunk_dim=140, hidden_dim=64)
-        q = critic(torch.randn(8, 78), torch.randn(8, 140))
-        assert q.shape == (8, 1)
-
-    def test_twin_critic_shapes(self, twin_critic):
-        state = torch.randn(8, 78)
-        action = torch.randn(8, 140)
-        q1, q2 = twin_critic(state, action)
-        assert q1.shape == (8, 1)
-        assert q2.shape == (8, 1)
-
-    def test_min_q(self, twin_critic):
-        state = torch.randn(8, 78)
-        action = torch.randn(8, 140)
-        q1, q2 = twin_critic(state, action)
-        min_q = twin_critic.min_q(state, action)
-        expected = torch.minimum(q1, q2)
-        assert torch.allclose(min_q, expected)
-
-    def test_gradient_flow(self, twin_critic):
-        state = torch.randn(4, 78)
-        action = torch.randn(4, 140)
-        q = twin_critic.min_q(state, action)
-        q.sum().backward()
-        for p in twin_critic.parameters():
-            assert p.grad is not None
+def test_twin_critic_outputs_minimum_and_gradients():
+    critic = TwinCritic(state_dim=8, chunk_dim=12, hidden_dim=16, num_layers=2)
+    state, action = torch.randn(4, 8), torch.randn(4, 12)
+    q1, q2 = critic(state, action)
+    assert q1.shape == q2.shape == (4, 1)
+    minimum = critic.min_q(state, action)
+    torch.testing.assert_close(minimum, torch.minimum(q1, q2))
+    minimum.sum().backward()
+    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in critic.parameters())

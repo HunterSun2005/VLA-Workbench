@@ -41,15 +41,19 @@ def test_critic_update():
     algorithm, _ = make_test_algorithm()
     batch = make_batch()
     optimizer = torch.optim.Adam(algorithm.critic.parameters(), lr=1e-3)
+    before = [p.detach().clone() for p in algorithm.critic.parameters()]
     loss = algorithm.critic_update(batch, optimizer, gamma=0.99, C=4)
     assert isinstance(loss, float)
-    assert not torch.isnan(torch.tensor(loss))
+    assert torch.isfinite(torch.tensor(loss))
+    assert any(not torch.equal(old, new) for old, new in zip(before, algorithm.critic.parameters()))
 
 
 def test_actor_update():
     algorithm, _ = make_test_algorithm()
     batch = make_batch()
     optimizer = torch.optim.Adam(algorithm.policy.actor.parameters(), lr=1e-3)
+    before = [p.detach().clone() for p in algorithm.policy.actor.parameters()]
     loss = algorithm.actor_update(batch, optimizer, beta=1.0)
     assert isinstance(loss, float)
-    assert not torch.isnan(torch.tensor(loss))
+    assert torch.isfinite(torch.tensor(loss))
+    assert any(not torch.equal(old, new) for old, new in zip(before, algorithm.policy.actor.parameters()))

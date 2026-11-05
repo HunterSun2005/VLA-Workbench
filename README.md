@@ -123,6 +123,8 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 ## 开发与验证
 
+按改动范围选择测试与精简记录见 [测试指南](tests/README.md)。
+
 在要测试的工作副本中显式设置根目录，避免继承原采集目录的环境变量：
 
 ```bash

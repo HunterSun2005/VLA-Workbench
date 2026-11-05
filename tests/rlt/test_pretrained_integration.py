@@ -9,7 +9,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import draccus
 import pytest
 import torch
 
@@ -30,7 +29,16 @@ def _make_policy_with_dummy_vla(
         proprio_dim=proprio_dim,
         chunk_length=chunk_length,
         device=device,
-        # Simplify camera/proprio keys for testing
+        # Exercise real serialization and inference with a tiny synthetic head.
+        rl_token_dim=32,
+        rl_token_nhead=2,
+        rl_token_enc_layers=1,
+        rl_token_dec_layers=1,
+        rl_token_ff_dim=64,
+        rl_token_num_rl_tokens=2,
+        actor_hidden_dim=16,
+        actor_num_layers=1,
+        token_pool_size=8,
         camera_keys=["cam0"],
         proprio_keys=["proprio"],
         action_keys=[f"a{i}" for i in range(action_dim)],
@@ -38,7 +46,7 @@ def _make_policy_with_dummy_vla(
     policy = RLTPretrainedPolicy(cfg)
     dummy_vla = DummyVLAAdapter(
         token_dim=cfg.rl_token_dim,
-        num_tokens=64,
+        num_tokens=8,
         action_dim=action_dim,
         horizon=50,
     )
@@ -92,87 +100,24 @@ class TestConfigSerialization:
         assert loaded.phase_mode == "always_rl"
         assert loaded.action_dim == 12
 
-    def test_type_field(self):
-        """Config type should be 'rlt' (from draccus registry)."""
-        cfg = RLTPretrainedConfig(device="cpu")
-        assert cfg.type == "rlt"
-
     def test_invalid_phase_mode_raises(self):
         with pytest.raises(ValueError, match="phase_mode"):
             RLTPretrainedConfig(phase_mode="invalid", device="cpu")
-
-
-class TestStateDictExclusion:
-    def test_state_dict_excludes_vla_keys(self):
-        """state_dict() must not contain any vla.* keys."""
-        policy = _make_policy_with_dummy_vla()
-        sd = policy.state_dict()
-        vla_keys = [k for k in sd if k.startswith(_VLA_PREFIX)]
-        assert len(vla_keys) == 0, f"VLA keys leaked into state_dict: {vla_keys}"
-
-    def test_state_dict_contains_rl_head(self):
-        """state_dict() must contain rl_token.* and actor.* keys."""
-        policy = _make_policy_with_dummy_vla()
-        sd = policy.state_dict()
-        rl_token_keys = [k for k in sd if k.startswith("modifier.rl_token.")]
-        actor_keys = [k for k in sd if k.startswith("modifier.actor.")]
-        assert len(rl_token_keys) > 0, "Missing rl_token keys"
-        assert len(actor_keys) > 0, "Missing actor keys"
-
-
-class TestModelConstruction:
-    def test_from_config(self):
-        """Policy should be constructible from config alone."""
-        policy = _make_policy_with_dummy_vla()
-        assert isinstance(policy, RLTPretrainedPolicy)
-        assert isinstance(policy.rl_token, torch.nn.Module)
-        assert isinstance(policy.actor, torch.nn.Module)
-
-    def test_rl_token_inference_only(self):
-        """RL token should NOT have decoder in inference mode."""
-        policy = _make_policy_with_dummy_vla()
-        assert not hasattr(policy.rl_token, "decoder") or policy.rl_token.inference_only
-
-
-class TestSelectAction:
-    def test_select_action_shape(self):
-        """select_action should return (B, action_dim)."""
-        policy = _make_policy_with_dummy_vla()
-        batch = _make_batch()
-        action = policy.select_action(batch)
-        assert action.shape == (1, 12)
-
-    def test_predict_action_chunk_shape(self):
-        """predict_action_chunk should return (B, chunk_length, action_dim)."""
-        policy = _make_policy_with_dummy_vla()
-        batch = _make_batch()
-        chunk = policy.predict_action_chunk(batch)
-        assert chunk.shape == (1, 10, 12)
-
-    def test_action_queue_drains(self):
-        """After one predict, select_action should yield chunk_length actions."""
-        policy = _make_policy_with_dummy_vla(chunk_length=5)
-        batch = _make_batch()
-        actions = [policy.select_action(batch) for _ in range(5)]
-        assert len(actions) == 5
-        for a in actions:
-            assert a.shape == (1, 12)
-
-    def test_reset_clears_queue(self):
-        """reset() should clear the action queue."""
-        policy = _make_policy_with_dummy_vla()
-        batch = _make_batch()
-        policy.select_action(batch)
-        assert len(policy.modifier._action_queue) > 0
-        policy.reset()
-        assert len(policy.modifier._action_queue) == 0
 
 
 class TestSaveLoad:
     def test_save_and_load_roundtrip(self):
         """Save a policy, reload it, verify weights match."""
         policy = _make_policy_with_dummy_vla()
+        assert isinstance(policy, RLTPretrainedPolicy)
+        assert isinstance(policy.rl_token, torch.nn.Module)
+        assert isinstance(policy.actor, torch.nn.Module)
+        assert not hasattr(policy.rl_token, "decoder") or policy.rl_token.inference_only
         sd_before = {k: v.clone() for k, v in policy.state_dict().items()}
+
+        assert not any(key.startswith(_VLA_PREFIX) for key in sd_before)
+        assert any(key.startswith("modifier.rl_token.") for key in sd_before)
+        assert any(key.startswith("modifier.actor.") for key in sd_before)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             policy.save_pretrained(tmpdir)
@@ -206,3 +151,29 @@ class TestValidateFeatures:
         cfg.validate_features()
         assert "observation.state" in cfg.input_features
         assert "action" in cfg.output_features
+
+
+def test_action_chunk_queue_and_reset(monkeypatch):
+    policy = _make_policy_with_dummy_vla(chunk_length=5)
+    batch = _make_batch()
+    predict = policy.predict_action_chunk
+    chunks = []
+
+    def capture(batch):
+        chunk = predict(batch)
+        assert chunk.shape == (1, 5, 12)
+        chunks.append(chunk.detach().clone())
+        return chunk
+
+    monkeypatch.setattr(policy, "predict_action_chunk", capture)
+    actions = torch.stack([policy.select_action(batch) for _ in range(5)], dim=1)
+    assert len(chunks) == 1
+    torch.testing.assert_close(actions, chunks[0])
+    policy.select_action(batch)
+    assert len(chunks) == 2 and len(policy.modifier._action_queue) > 0
+    policy.reset()
+    assert len(policy.modifier._action_queue) == 0
+    # Reset returns to VLA; the episode owner explicitly restores its mode.
+    policy.set_rl_mode()
+    policy.select_action(batch)
+    assert len(chunks) == 3

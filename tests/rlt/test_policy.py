@@ -45,21 +45,11 @@ def obs():
     )
 
 
-def test_get_rl_state_shape(policy, obs):
-    state = policy.get_rl_state(obs)
-    assert state.shape == (2, TOKEN_DIM + PROPRIO_DIM)
-
-
-def test_get_reference_chunk_shape(policy, obs):
-    ref = policy.get_reference_chunk(obs)
-    assert ref.shape == (2, C, ACTION_DIM)
-
-
 def test_select_action_shape(policy, obs):
     action, mu, state_vec, ref_chunk = policy.select_action(obs)
     assert action.shape == (2, C, ACTION_DIM)
     assert mu.shape == (2, C, ACTION_DIM)
-    assert state_vec.shape[0] == 2
+    assert state_vec.shape == (2, TOKEN_DIM + PROPRIO_DIM)
     assert ref_chunk.shape == (2, C, ACTION_DIM)
 
 
@@ -96,33 +86,16 @@ def test_soft_update_correctness():
 
 
 class TestPhaseController:
-    def test_initial_phase(self):
-        pc = PhaseController(mode="manual")
-        assert pc.phase == Phase.VLA_PHASE
-        assert not pc.is_critical
-
     def test_manual_trigger(self):
         pc = PhaseController(mode="manual")
+        assert pc.phase == Phase.VLA_PHASE and not pc.is_critical
         pc.trigger_critical()
         assert pc.is_critical
         pc.trigger_vla()
         assert not pc.is_critical
-
-    def test_reset(self):
-        pc = PhaseController(mode="manual")
         pc.trigger_critical()
         pc.reset()
         assert pc.phase == Phase.VLA_PHASE
-
-    def test_learned_mode(self):
-        classifier = HandoverClassifier(input_dim=64, hidden_dim=32)
-        pc = PhaseController(mode="learned", classifier=classifier)
-
-        # Force classifier to predict critical
-        z_rl = torch.randn(1, 64)
-        # Just test that update runs without error
-        phase = pc.update(z_rl)
-        assert isinstance(phase, Phase)
 
     def test_classifier_training(self):
         classifier = HandoverClassifier(input_dim=64, hidden_dim=32)

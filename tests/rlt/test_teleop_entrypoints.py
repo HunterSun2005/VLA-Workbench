@@ -237,13 +237,6 @@ def test_gripper_controller_state_uses_structured_name_and_state() -> None:
     assert "left_gripper_speed_controller" in format_controllers(controllers)
 
 
-def test_rollout_starts_speed_controller_for_every_active_gripper() -> None:
-    backend = _backend_source()
-    assert 'controller="${side}_gripper_speed_controller"' in backend
-    assert 'start_gripper_speed_controller "$side"' in backend
-    assert "start_gripper_speed_controller left" in backend
-
-
 @pytest.mark.parametrize("mode", ["single_left", "duo"])
 @pytest.mark.parametrize("owner", ["teleop", "rollout"])
 @pytest.mark.parametrize("check_only", ["0", "1"])

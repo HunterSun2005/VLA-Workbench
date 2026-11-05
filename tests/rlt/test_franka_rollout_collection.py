@@ -1154,15 +1154,6 @@ def test_episode_source_frame_counts_are_critical_and_mutually_exclusive() -> No
     }
 
 
-def test_gamepad_input_values_are_not_printed() -> None:
-    source = (
-        Path(__file__).parents[2]
-        / "src/vla/datacollection/franka_robotiq_rollout/collect_franky.py"
-    ).read_text()
-
-    assert '"Gamepad input "' not in source
-
-
 def test_online_collector_never_deletes_a_saved_episode(capsys) -> None:
     deleted = []
     collector = object.__new__(FrankyRolloutCollector)

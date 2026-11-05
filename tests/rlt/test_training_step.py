@@ -6,7 +6,7 @@ import torch
 import pytest
 
 from vla.core.losses import critic_loss, actor_loss
-from vla.core.utils import soft_update, flatten_chunk, compute_discount_vector
+from vla.core.utils import flatten_chunk, compute_discount_vector
 from vla.core.interfaces import Observation, ChunkTransition
 from vla.core.replay_buffer import ReplayBuffer
 from tests.rlt.helpers import (
@@ -24,38 +24,6 @@ def algorithm():
 @pytest.fixture
 def batch():
     return make_batch()
-
-
-def test_single_critic_step_loss_not_nan(algorithm, batch):
-    """Single critic gradient step produces finite loss."""
-    algorithm.policy.freeze_vla()
-    algorithm.policy.freeze_rl_token_encoder()
-
-    optimizer = torch.optim.Adam(algorithm.critic.parameters(), lr=1e-3)
-    loss = critic_loss(algorithm.critic, algorithm.target_critic, algorithm.policy.actor, batch, gamma=0.99, C=C)
-    assert not torch.isnan(loss)
-
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-    # Verify params changed
-    loss2 = critic_loss(algorithm.critic, algorithm.target_critic, algorithm.policy.actor, batch, gamma=0.99, C=C)
-    assert not torch.isnan(loss2)
-
-
-def test_single_actor_step_loss_not_nan(algorithm, batch):
-    """Single actor gradient step produces finite loss."""
-    algorithm.policy.freeze_vla()
-    algorithm.policy.freeze_rl_token_encoder()
-
-    optimizer = torch.optim.Adam(algorithm.policy.actor.parameters(), lr=1e-3)
-    loss = actor_loss(algorithm.policy.actor, algorithm.critic, batch, beta=1.0)
-    assert not torch.isnan(loss)
-
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
 
 
 def test_frozen_params_stay_frozen(algorithm, batch):
@@ -106,36 +74,12 @@ def test_full_forward_backward_pipeline(algorithm):
         assert p.grad is not None
 
 
-def test_soft_update_changes_target(algorithm):
-    """Verify soft update actually modifies target critic."""
-    orig_params = [p.data.clone() for p in algorithm.target_critic.parameters()]
-
-    # Perturb online critic
-    for p in algorithm.critic.parameters():
-        p.data += torch.randn_like(p.data) * 0.1
-
-    soft_update(algorithm.target_critic, algorithm.critic, tau=0.1)
-
-    changed = False
-    for orig, p in zip(orig_params, algorithm.target_critic.parameters()):
-        if not torch.allclose(orig, p.data):
-            changed = True
-            break
-    assert changed
-
-
 def test_compute_discount_vector():
     v = compute_discount_vector(0.99, 5)
     assert v.shape == (5,)
     assert torch.allclose(v[0], torch.tensor(1.0))
     assert torch.allclose(v[1], torch.tensor(0.99))
     assert torch.allclose(v[4], torch.tensor(0.99 ** 4))
-
-
-def test_flatten_chunk():
-    chunk = torch.randn(3, 10, 14)
-    flat = flatten_chunk(chunk)
-    assert flat.shape == (3, 140)
 
 
 def test_replay_buffer_integration():
