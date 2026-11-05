@@ -15,6 +15,9 @@ import threading
 import time
 import traceback
 from collections import Counter
+from dataclasses import replace
+
+from vla.datacollection.gripper_contract import gello_recording_metadata, gripper_consumer_requirement
 
 import numpy as np
 import rclpy
@@ -104,8 +107,13 @@ class DirectRealSenseCapture:
 
 
 class DualLeRobotRecorder(Node):
-    def __init__(self) -> None:
+    def __init__(self, *, gripper_command_topics: dict[str, str] | None = None) -> None:
         super().__init__("franka_dual_lerobot_v30_recorder")
+        topics = gripper_command_topics or {}
+        if set(topics) - {arm.name for arm in schema.ARMS}:
+            raise ValueError("unknown arm in gripper command topics")
+        self.arms = tuple(replace(arm, gripper_command_topic=topics.get(arm.name, arm.gripper_command_topic))
+                          for arm in schema.ARMS)
         self.dataset = V30DatasetWriter(
             OUTPUT_ROOT,
             FPS,
@@ -118,8 +126,10 @@ class DualLeRobotRecorder(Node):
             robot_type="franka_robotiq_dual",
             info_metadata={
                 "recording_schema_version": 3,
-                "arm_order": [arm.name for arm in schema.ARMS],
+                "arm_order": [arm.name for arm in self.arms],
+                **gello_recording_metadata({arm.name: arm.gripper_command_topic for arm in self.arms}),
             },
+            strict_metadata=True,
         )
         self._validate_existing_dataset()
         self.is_recording = False
@@ -140,7 +150,7 @@ class DualLeRobotRecorder(Node):
                 arm.base_link,
                 arm.tip_link,
             )
-            for arm in schema.ARMS
+            for arm in self.arms
         }
 
         qos = QoSProfile(
@@ -149,7 +159,7 @@ class DualLeRobotRecorder(Node):
             reliability=ReliabilityPolicy.BEST_EFFORT,
         )
         self._subscription_handles = []
-        for arm in schema.ARMS:
+        for arm in self.arms:
             for message_type, topic, key in (
                 (FrankaRobotState, arm.robot_state_topic, arm.robot_state_key),
                 (JointState, arm.command_joint_topic, arm.command_joint_key),
@@ -164,7 +174,7 @@ class DualLeRobotRecorder(Node):
         self._camera_capture.start()
         print("Streaming dual-arm LeRobot v3.0 absolute rot6d recorder started.")
         print(f"Dataset: {OUTPUT_ROOT}; existing episodes: {self.dataset.episode_count}")
-        for arm in schema.ARMS:
+        for arm in self.arms:
             print(
                 f"{arm.name}: robot_state={arm.robot_state_topic}, "
                 f"final_arm_command={arm.command_joint_topic}, "
@@ -208,7 +218,7 @@ class DualLeRobotRecorder(Node):
     def required_latest_keys(self) -> tuple[str, ...]:
         arm_keys = tuple(
             key
-            for arm in schema.ARMS
+            for arm in self.arms
             for key in (
                 arm.robot_state_key,
                 arm.command_joint_key,
@@ -259,7 +269,7 @@ class DualLeRobotRecorder(Node):
                 state_parts = {}
                 action_parts = {}
                 current_poses = {}
-                for arm in schema.ARMS:
+                for arm in self.arms:
                     robot_state = messages[arm.robot_state_key]
                     position, rotation = single_schema.measured_pose_from_robot_state(robot_state)
                     previous = self._previous_pose.get(arm.name)
@@ -328,7 +338,7 @@ class DualLeRobotRecorder(Node):
     def missing_publishers(self) -> list[str]:
         topics = [
             topic
-            for arm in schema.ARMS
+            for arm in self.arms
             for topic in (
                 arm.robot_state_topic,
                 arm.command_joint_topic,
@@ -339,14 +349,13 @@ class DualLeRobotRecorder(Node):
         return [topic for topic in topics if self.count_publishers(topic) == 0]
 
     def unconsumed_command_topics(self) -> list[str]:
-        # The recorder itself is one subscriber. A second subscriber proves the
-        # final command is also consumed by the live controller/driver.
-        return [
-            topic
-            for arm in schema.ARMS
-            for topic in (arm.command_joint_topic, arm.gripper_command_topic)
-            if self.count_subscribers(topic) < 2
+        requirements = [
+            requirement for arm in self.arms
+            for requirement in ((arm.command_joint_topic, 2),
+                                gripper_consumer_requirement(arm.gripper_command_topic))
         ]
+        return [topic for topic, minimum in requirements
+                if self.count_subscribers(topic) < minimum]
 
     def start_recording(self) -> None:
         with self._lock:
@@ -405,7 +414,7 @@ class DualLeRobotRecorder(Node):
         fps = 0.0
         if len(times) > 1 and times[-1] > times[0]:
             fps = (len(times) - 1) / ((times[-1] - times[0]) / 1e9)
-        actions = np.asarray(self._actions).reshape(len(self._actions), len(schema.ARMS), 10)
+        actions = np.asarray(self._actions).reshape(len(self._actions), len(self.arms), 10)
         reports = schema.validate_episode_features(
             np.asarray(self._states),
             np.asarray(self._actions),
@@ -422,7 +431,7 @@ class DualLeRobotRecorder(Node):
                 float(actions[:, index, 9].min()),
                 float(actions[:, index, 9].max()),
             )
-            for index, arm in enumerate(schema.ARMS)
+            for index, arm in enumerate(self.arms)
         }
         print(
             f"Episode {episode_index}: frames={len(actions)}, avg_fps={fps:.2f}, "

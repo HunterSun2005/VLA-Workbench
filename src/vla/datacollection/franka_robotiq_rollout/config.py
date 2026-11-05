@@ -56,6 +56,11 @@ class ArmConfig:
     workspace_min: tuple[float, float, float]
     workspace_max: tuple[float, float, float]
 
+    @property
+    def gripper_drive_topic(self) -> str:
+        from vla.datacollection.gripper_contract import gripper_drive_topic
+        return gripper_drive_topic(self.command_gripper_topic)
+
 
 @dataclass(frozen=True)
 class CameraConfig:

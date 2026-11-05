@@ -209,6 +209,11 @@ def preflight(config, *, demo=False, root=None):
             names = (STATE_FIELDS if config.arms == 'single_left' else
                      [f'{arm}_{field}' for arm in ('left', 'right') for field in STATE_FIELDS])
             info = json.loads((target / 'meta/info.json').read_text())
+            if config.ros:
+                from vla.datacollection.gripper_contract import ROS_GRIPPER_RECORDING_VERSION
+                from vla.dataset_metadata import load_info
+                if load_info(target).get('gripper_recording_version') != ROS_GRIPPER_RECORDING_VERSION:
+                    errors.append('ROS 夹爪动作记录契约已更新；旧夹爪标签数据请使用新目录，不能续采')
             recorded_cameras = {k for k in info['features'] if k.startswith('observation.images.')}
             if recorded_cameras != {f'observation.images.{r}' for r in config.cameras}:
                 errors.append('续采相机视角必须与原数据集一致；新增或移除 side 相机请使用新目录')

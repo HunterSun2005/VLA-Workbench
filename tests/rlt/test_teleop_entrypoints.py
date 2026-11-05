@@ -153,7 +153,7 @@ def test_rollout_hardware_has_one_command_owner_and_per_arm_gamepads() -> None:
     assert "requires different LEFT_JOY_DEVICE_ID" in backend
     assert "control_owner:=$CONTROL_OWNER" in backend
     assert 'dst="/right/teleop/joint_states"' in arm_launch
-    assert 'dst="/right/teleop/gripper_action_width_percent"' in gripper_launch
+    assert 'dst="/right/teleop/gripper_drive_width_percent"' in gripper_launch
 
 
 def test_single_franky_rollout_entrypoint_only_starts_joy_bridge() -> None:

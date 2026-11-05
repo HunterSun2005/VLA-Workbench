@@ -172,6 +172,9 @@ class FineTeleopNode(Node):
         action_gripper_command_topic = str(
             self.get_parameter("action_gripper_command_topic").value
         )
+        drive_gripper_command_topic = str(self.get_parameter("drive_gripper_command_topic").value)
+        if drive_gripper_command_topic in (action_gripper_command_topic, command_gripper_topic):
+            raise ValueError("gripper drive and recording topics must be distinct")
         gripper_speed_topic = str(self.get_parameter("gripper_speed_topic").value)
         gripper_action_topic = str(self.get_parameter("gripper_action_topic").value)
 
@@ -180,6 +183,7 @@ class FineTeleopNode(Node):
         self.gripper_action_command_publisher = self.create_publisher(
             Float32, action_gripper_command_topic, 10
         )
+        self.gripper_drive_publisher = self.create_publisher(Float32, drive_gripper_command_topic, 10)
         self.gripper_speed_publisher = self.create_publisher(
             Float64MultiArray, gripper_speed_topic, 10
         )
@@ -262,6 +266,7 @@ class FineTeleopNode(Node):
             "action_gripper_command_topic": (
                 "/left/teleop/gripper_action_width_percent"
             ),
+            "drive_gripper_command_topic": "/left/teleop/gripper_drive_width_percent",
             "gripper_speed_topic": (
                 "/left/gripper/left_gripper_speed_controller/commands"
             ),
@@ -369,8 +374,6 @@ class FineTeleopNode(Node):
             position, self.gripper_open_position, self.gripper_closed_position
         )
         self.measured_gripper_time = time.monotonic()
-        if self.mode != Mode.GELLO:
-            self.command_gripper = self.measured_gripper
 
     def _joy_callback(self, msg: Joy) -> None:
         self.joy = msg
@@ -411,8 +414,8 @@ class FineTeleopNode(Node):
         self.mode = Mode.RETURNING
         self.gripper_direction = 0
         self._publish_gripper_speed(self.gripper_return_speed)
+        self._send_gripper_goal(self.raw_gripper)
         self.return_gripper_goal = self.raw_gripper
-        self._send_gripper_goal(self.return_gripper_goal)
         message = "Returning arm and gripper to current GELLO targets"
         self.get_logger().info(message)
         return True, message
@@ -608,8 +611,8 @@ class FineTeleopNode(Node):
             or abs(self.raw_gripper - self.return_gripper_goal)
             >= self.return_gripper_tolerance
         ):
+            self._send_gripper_goal(self.raw_gripper)
             self.return_gripper_goal = self.raw_gripper
-            self._send_gripper_goal(self.return_gripper_goal)
 
         arm_error = float(np.max(np.abs(self.command_joints - self.raw_gello_joints)))
         gripper_is_fresh = (
@@ -637,17 +640,17 @@ class FineTeleopNode(Node):
         if direction == self.gripper_direction:
             return
 
-        self.gripper_direction = direction
         if direction == 0:
             self._send_gripper_goal(self._current_gripper_width())
         else:
             self._send_gripper_goal(1.0 if direction > 0 else 0.0)
+        self.gripper_direction = direction
 
     def _stop_fine_gripper(self) -> None:
         self._publish_gripper_speed(0.0)
         if self.gripper_direction != 0:
-            self.gripper_direction = 0
             self._send_gripper_goal(self._current_gripper_width())
+            self.gripper_direction = 0
 
     def _current_gripper_width(self) -> float:
         if self.measured_gripper is not None:
@@ -664,12 +667,16 @@ class FineTeleopNode(Node):
         self.gripper_speed_publisher.publish(msg)
 
     def _send_gripper_goal(self, width_percent: float) -> None:
+        if not np.isfinite(width_percent):
+            raise ValueError("gripper target must be finite")
+        width_percent = float(np.clip(width_percent, 0.0, 1.0))
         goal = GripperCommand.Goal()
         goal.command.position = width_percent_to_joint_position(
             width_percent, self.gripper_open_position, self.gripper_closed_position
         )
         goal.command.max_effort = self.gripper_max_effort
         future = self.gripper_action_client.send_goal_async(goal)
+        self.command_gripper = width_percent
         self._gripper_goal_futures.add(future)
         future.add_done_callback(self._gripper_goal_response)
 
@@ -758,6 +765,8 @@ class FineTeleopNode(Node):
         )
 
     def _publish_commands(self, now: float) -> None:
+        if getattr(self, "managed", False) and (not self.managed_enabled or self.managed_fault):
+            return
         if self.command_joints is not None:
             msg = JointState()
             msg.header.stamp = self.get_clock().now().to_msg()
@@ -765,12 +774,16 @@ class FineTeleopNode(Node):
             msg.name = self.raw_gello_names or [f"fr3_joint{index}" for index in range(1, 8)]
             msg.position = self.command_joints.tolist()
             self.joint_publisher.publish(msg)
-        if self.command_gripper is not None:
+        gripper_fresh = self.measured_gripper is not None and now - self.measured_gripper_time <= self.source_timeout
+        if self.mode != Mode.FINE:
+            gripper_fresh = gripper_fresh and now - self.raw_gripper_time <= self.source_timeout
+        if self.command_gripper is not None and gripper_fresh:
             msg = Float32()
             msg.data = float(self.command_gripper)
             self.gripper_publisher.publish(msg)
+            self.gripper_action_command_publisher.publish(msg)
             if self.mode == Mode.GELLO:
-                self.gripper_action_command_publisher.publish(msg)
+                self.gripper_drive_publisher.publish(msg)
 
 
 def _self_test() -> None:

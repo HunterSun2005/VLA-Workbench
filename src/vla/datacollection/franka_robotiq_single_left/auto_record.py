@@ -38,6 +38,7 @@ from vla.datacollection.start_teleop.franka_kinematics import build_kinematic_mo
 
 from . import schema
 from .v30_writer import V30DatasetWriter
+from vla.datacollection.gripper_contract import gello_recording_metadata, gripper_consumer_requirement
 
 
 OUTPUT_ROOT = schema.OUTPUT_ROOT
@@ -490,7 +491,11 @@ class CommandPoseKinematics:
 class DirectLeRobotRecorder(Node):
     def __init__(self) -> None:
         super().__init__("franka_single_left_lerobot_v30_recorder")
-        self.dataset = V30DatasetWriter(OUTPUT_ROOT, FPS, TASK, tuple(CAMERA_FEATURES), IMAGE_HEIGHT, IMAGE_WIDTH)
+        self.dataset = V30DatasetWriter(
+            OUTPUT_ROOT, FPS, TASK, tuple(CAMERA_FEATURES), IMAGE_HEIGHT, IMAGE_WIDTH,
+            info_metadata=gello_recording_metadata({"left": schema.TOPIC_GRIPPER_COMMAND}),
+            strict_metadata=True,
+        )
         self._validate_existing_dataset()
         self.is_recording = False
         self._closed = False
@@ -649,13 +654,9 @@ class DirectLeRobotRecorder(Node):
         return [topic for topic in TOPIC_TYPES if self.count_publishers(topic) == 0]
 
     def unconsumed_command_topics(self) -> list[str]:
-        # The recorder itself is one subscriber. A second subscriber proves the
-        # selected command is also consumed by the live controller/driver.
-        return [
-            topic
-            for topic in (schema.TOPIC_ARM_COMMAND, schema.TOPIC_GRIPPER_COMMAND)
-            if self.count_subscribers(topic) < 2
-        ]
+        requirements = [(schema.TOPIC_ARM_COMMAND, 2), gripper_consumer_requirement(schema.TOPIC_GRIPPER_COMMAND)]
+        return [topic for topic, minimum in requirements
+                if self.count_subscribers(topic) < minimum]
 
     def start_recording(self) -> None:
         with self._lock:

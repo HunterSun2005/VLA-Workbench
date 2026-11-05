@@ -380,9 +380,12 @@ class RolloutCollector(Node):
                 "human_intervention_intervals": "Human intervention frame intervals.",
             },
         }
+        from vla.datacollection.gripper_contract import ROS_GRIPPER_RECORDING_VERSION
+        metadata["gripper_recording_version"] = ROS_GRIPPER_RECORDING_VERSION
+        metadata["action_gripper_source"] = "command_goal_or_latched_hold"
         if demonstration:
             from vla.datacollection.franka_robotiq_dual.gamepad_record import recording_contract
-            metadata.update(collection_kind="human_demonstration", gamepad_recording_version=1,
+            metadata.update(collection_kind="human_demonstration", gamepad_recording_version=2,
                             recording_contract=recording_contract(config))
         else:
             metadata["policy_checkpoint_fingerprint"] = self.policy_client.contract["checkpoint_fingerprint"]
@@ -516,6 +519,7 @@ class RolloutCollector(Node):
         )
         self._joint_publishers = {}
         self._gripper_publishers = {}
+        self._gripper_drive_publishers = {}
         self._gripper_speed_publishers = {}
         self._gripper_action_clients = {}
         self._subscription_handles = []
@@ -536,6 +540,9 @@ class RolloutCollector(Node):
             )
             self._gripper_publishers[prefix] = self.create_publisher(
                 Float32, arm.command_gripper_topic, 10
+            )
+            self._gripper_drive_publishers[prefix] = self.create_publisher(
+                Float32, arm.gripper_drive_topic, 10
             )
             self._gripper_speed_publishers[prefix] = self.create_publisher(
                 Float64MultiArray, arm.gripper_speed_topic, 10
@@ -958,10 +965,12 @@ class RolloutCollector(Node):
             motion,
             measured_open_fraction,
         )
-        target.gripper_direction = direction
-        target.gripper = float(np.clip(measured_open_fraction, 0.0, 1.0))
         if goal is not None:
             self._send_gripper_goal(arm, goal)
+            # Commit only after submission succeeds. Measured state must not
+            # overwrite a moving goal or a previously latched release hold.
+            target.gripper = goal
+        target.gripper_direction = direction
 
     def _stop_grippers_at_measured_position(self) -> None:
         for arm in self.config.arms:
@@ -1180,10 +1189,13 @@ class RolloutCollector(Node):
         joint_message.name = list(self.servos[arm.name].model.joint_names)
         joint_message.position = joints.tolist()
         self._joint_publishers[arm.name].publish(joint_message)
+        gripper_message = Float32()
+        gripper_message.data = float(np.clip(gripper, 0.0, 1.0))
         if publish_gripper:
-            gripper_message = Float32()
-            gripper_message.data = float(np.clip(gripper, 0.0, 1.0))
-            self._gripper_publishers[arm.name].publish(gripper_message)
+            self._gripper_drive_publishers[arm.name].publish(gripper_message)
+        # Telemetry/recording is independent of driving: human commands already
+        # went through the direct ActionClient and must not be sent twice.
+        self._gripper_publishers[arm.name].publish(gripper_message)
 
     def _republish_arm_hold(self) -> None:
         snapshot = self._last_command_snapshot
@@ -1209,7 +1221,10 @@ class RolloutCollector(Node):
                 values[f"{arm.name}.gripper_state"],
                 arm.gripper_joint_name,
             )
-            self._publish_arm_command(arm, joints, gripper)
+            # A hold is an exact measured position, not an endpoint-snapped
+            # GELLO/policy request to the topic-based gripper client.
+            self._send_gripper_goal(arm, gripper)
+            self._publish_arm_command(arm, joints, gripper, publish_gripper=False)
             snapshots[arm.name] = ArmCommandSnapshot(
                 joints=joints.copy(),
                 gripper=gripper,
@@ -1276,7 +1291,7 @@ class RolloutCollector(Node):
                     problems.append(f"{arm.name} {label} has no publisher: {topic}")
             for label, topic in (
                 ("arm command", arm.command_joint_topic),
-                ("gripper command", arm.command_gripper_topic),
+                ("gripper command", arm.gripper_drive_topic),
                 ("gripper speed", arm.gripper_speed_topic),
             ):
                 if self.count_subscribers(topic) < 1:

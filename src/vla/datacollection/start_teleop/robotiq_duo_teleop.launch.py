@@ -37,7 +37,7 @@ def generate_launch_description():
                     "/left/gripper/gripper_client/"
                     "target_gripper_width_percent"
                 ),
-                dst="/left/teleop/gripper_action_width_percent",
+                dst="/left/teleop/gripper_drive_width_percent",
             ),
             SetRemap(
                 src=(
@@ -52,7 +52,7 @@ def generate_launch_description():
                     "/right/gripper/gripper_client/"
                     "target_gripper_width_percent"
                 ),
-                dst="/right/teleop/gripper_action_width_percent",
+                dst="/right/teleop/gripper_drive_width_percent",
                 condition=IfCondition(rollout_condition),
             ),
             IncludeLaunchDescription(

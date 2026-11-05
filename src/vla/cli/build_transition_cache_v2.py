@@ -346,14 +346,16 @@ def load_episode_frame_annotations(
     phase_only_demo = (
         available == {FRAME_PHASE_KEY}
         and info.get("collection_kind") == "human_demonstration"
-        and info.get("gamepad_recording_version") == 1
-        and contract.get("version") == 1
         and contract.get("source") == "demonstration"
         and contract.get("collection_kind") == "human_demonstration"
         and (
-            contract.get("action_encoding") == "interval_integrated_base_velocity_absolute_tcp_rot6d_v1"
-            or (info.get("robot_type") == "franka_robotiq_dual"
-                and contract.get("action_encoding") == "controller_joint_command_fk_absolute_tcp_rot6d_v1")
+            (info.get("gamepad_recording_version") == contract.get("version") == 1
+             and (contract.get("action_encoding") == "interval_integrated_base_velocity_absolute_tcp_rot6d_v1"
+                  or (info.get("robot_type") == "franka_robotiq_dual"
+                      and contract.get("action_encoding") == "controller_joint_command_fk_absolute_tcp_rot6d_v1")))
+            or (info.get("gamepad_recording_version") == contract.get("version") == 2
+                and info.get("robot_type") == "franka_robotiq_dual"
+                and contract.get("action_encoding") == "controller_joint_command_fk_absolute_tcp_rot6d_gripper_goal_v2")
         )
     )
     if FRAME_COLLECTOR_KEY not in available and not phase_only_demo:

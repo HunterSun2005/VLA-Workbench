@@ -155,6 +155,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
     monkeypatch.setattr(cls, "_load_kinematic_model", lambda self, arm: None)
     monkeypatch.setattr(cls, "_preflight_problems", lambda self: [])
     monkeypatch.setattr(cls, "_publish_arm_command", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cls, "_send_gripper_goal", lambda *args: None)
     monkeypatch.setattr(cls, "_restore_policy_gripper_speed", lambda self: pytest.fail("demo used policy gripper"))
     monkeypatch.setattr(module, "AsyncPolicyClient", lambda *args: pytest.fail("demo opened policy socket"))
     monkeypatch.setattr(module, "CartesianServo", lambda *args: SimpleNamespace(

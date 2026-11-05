@@ -14,7 +14,7 @@ from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
 
 
 DEFAULT_CONFIG = Path(__file__).parents[1] / "franka_robotiq_rollout/configs/dual.yaml"
-ACTION_ENCODING = "controller_joint_command_fk_absolute_tcp_rot6d_v1"
+ACTION_ENCODING = "controller_joint_command_fk_absolute_tcp_rot6d_gripper_goal_v2"
 
 
 def validate_dual_config(config):
@@ -45,7 +45,7 @@ def recording_contract(config):
     for key in ("dataset_root", "socket_path", "joy_socket_path", "policy_timeout_s"):
         settings.pop(key)
     return json.loads(json.dumps({
-        "version": 1, "raw_state_format": "full50_per_arm", "collection_kind": "human_demonstration", "source": "demonstration",
+        "version": 2, "raw_state_format": "full50_per_arm", "collection_kind": "human_demonstration", "source": "demonstration",
         "action_encoding": ACTION_ENCODING, "settings": settings,
         "state_gripper_unit": "metres", "action_gripper_unit": "open_fraction",
         "recording_clock": "base_camera_host_receive",

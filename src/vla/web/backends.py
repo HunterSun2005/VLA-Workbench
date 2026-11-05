@@ -487,6 +487,7 @@ class ROSBackend(BaseBackend):
                       'joy_topic':f'/{arm}/gamepad/joy','command_joint_topic':f'/{arm}/teleop/joint_states',
                       'command_gripper_topic':f'/{arm}/teleop/gripper_width_percent',
                       'action_gripper_command_topic':f'/{arm}/teleop/gripper_action_width_percent',
+                      'drive_gripper_command_topic':f'/{arm}/teleop/gripper_drive_width_percent',
                       'gripper_speed_topic':f'/{arm}/gripper/{arm}_gripper_speed_controller/commands',
                       'gripper_action_topic':f'/{arm}/gripper/robotiq_gripper_controller/gripper_cmd'}
             node = FineTeleopNode(managed=True,namespace=arm,parameter_overrides=[Parameter(k,value=v) for k,v in params.items()])
@@ -504,7 +505,11 @@ class ROSBackend(BaseBackend):
         module = importlib.import_module('vla.datacollection.franka_robotiq_' +
                                         ('dual' if self.config.arms == 'dual' else 'single_left') + '.auto_record')
         cls = module.DualLeRobotRecorder if self.config.arms == 'dual' else module.DirectLeRobotRecorder
-        self.recorder = cls()
+        # Pass per-instance topics: schema modules may already be imported, so
+        # changing environment variables here would leave the right arm stale.
+        self.recorder = (cls(gripper_command_topics={
+            arm: f'/{arm}/teleop/gripper_action_width_percent' for arm in self.arms
+        }) if self.config.arms == 'dual' else cls())
         self.executor.add_node(self.recorder)
         self.resources.callback(self.recorder.destroy_node)
         self.resources.callback(self.recorder.close,save_active=False)
