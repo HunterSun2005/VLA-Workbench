@@ -50,6 +50,12 @@ def test_http_preview_and_detached_job_reattach(tmp_path):
         assert client.get(url+'/episodes').json()['total']==2
         assert client.get(url+'/episodes/0/frames/3').json()['frame_index']==3
         assert client.get(url+'/episodes/0/frames/3/image/observation.images.base').headers['content-type']=='image/jpeg'
+        window=client.get(url+'/episodes/0/window?frame=3&seconds=10').json()
+        assert window['start']==0 and window['stop']==8
+        frame=client.get(url+'/episodes/0/frames/3').json()
+        assert window['rows'][3]=={k:frame[k] for k in window['rows'][3]}
+        assert client.get(url+'/episodes/0/window?frame=999').status_code==422
+        assert client.get(url+'/episodes/0/window?frame=3&seconds=600').status_code==422
         assert client.get(url+'/episodes/0/frames/999').status_code==422
         assert client.get(url+'/episodes/0/frames/3/image/not-a-camera').status_code==422
         response=client.post('/api/processing/jobs',json={'dataset_id':did,'revision':0},headers=headers)
@@ -66,3 +72,28 @@ def test_http_preview_and_detached_job_reattach(tmp_path):
     assert status['state']=='succeeded',status
     assert DatasetIndex(Path(job['output_root'])).info['total_episodes']==2
     with pytest.raises(FileExistsError):resumed.start(did,0)
+
+
+def test_numeric_window_is_bounded_exact_and_keeps_missing_values(tmp_path):
+    import numpy as np
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    index=synthetic(tmp_path/'raw',episodes=1)
+    length=6001
+    state=np.zeros((length,len(index.names)),dtype=np.float32)
+    state[:,0]=np.arange(length)
+    state[3001,1]=np.nan
+    table=pa.table({'frame_index':np.arange(length),'episode_index':np.zeros(length,dtype=int),
+                    'timestamp':np.arange(length)/30,'observation.state':state.tolist(),
+                    'action':[[0.]*len(index.features['action']['names'])]*length})
+    pq.write_table(table,index.file(0),row_group_size=128)
+    index.rows.loc[0,'length']=length
+    window=index.window(0,3001,60)
+    assert (window['start'],window['stop'])==(1201,4802)
+    assert window['sampled'] and len(window['rows'])<=2001
+    current=next(r for r in window['rows'] if r['frame_index']==3001)
+    assert current['observation.state'][:2]==[3001.,None]
+    assert window['rows'][0]['frame_index']==1201
+    assert window['rows'][-1]['frame_index']==4801
+    assert index.window(0,0)['start']==0
+    assert index.window(0,length-1)['stop']==length

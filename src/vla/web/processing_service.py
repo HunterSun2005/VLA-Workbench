@@ -261,6 +261,13 @@ class ProcessingService:
             with read_lease(index.root):
                 return index.frame(episode,frame)
 
+    def window(self,dataset_id,episode,frame,seconds=10):
+        from vla.datacollection.processing import read_lease
+        with self.preview_slot(), self.lock:
+            index,_ = self._index(dataset_id)
+            with read_lease(index.root):
+                return index.window(episode,frame,seconds)
+
     def jpeg(self,dataset_id,episode,frame,camera):
         from vla.datacollection.processing import read_lease
         with self.preview_slot(), self.lock:

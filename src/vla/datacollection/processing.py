@@ -145,6 +145,37 @@ class DatasetIndex:
             offset -= size
         raise ValueError('找不到帧')
 
+    def window(self, episode, frame, seconds=10):
+        """Bounded numeric context for preview, independent of export selection."""
+        path = self.file(episode)
+        length = int(self.rows.iloc[episode]['length'])
+        if type(frame) is not int or not 0 <= frame < length:
+            raise ValueError('帧编号越界')
+        if seconds not in (10, 30, 60):
+            raise ValueError('曲线窗口必须为 10、30 或 60 秒')
+        # Twice the visible window leaves room for nearby scrubbing without I/O.
+        radius = max(1, int(seconds * self.fps))
+        start, stop = max(0, frame-radius), min(length, frame+radius+1)
+        parquet = pq.ParquetFile(path)
+        if parquet.metadata.num_rows != length:
+            raise ValueError('parquet 帧数与回合元数据不一致')
+        indices = np.unique(np.append(np.linspace(start, stop-1, min(stop-start, 2000), dtype=int), frame))
+        columns = ['timestamp', 'frame_index', 'episode_index', 'observation.state', 'action']
+        rows, offset = [], 0
+        for group in range(parquet.num_row_groups):
+            size = parquet.metadata.row_group(group).num_rows
+            selected = indices[(indices >= offset) & (indices < offset+size)]
+            if len(selected):
+                table = parquet.read_row_group(group, columns=columns)
+                rows.extend(table.take(pa.array(selected-offset)).to_pylist())
+            offset += size
+            if offset >= stop:
+                break
+        if any(row['frame_index'] != int(i) or row['episode_index'] != episode for i, row in zip(indices, rows)):
+            raise ValueError('帧索引与元数据不一致')
+        return scalar({'start': start, 'stop': stop, 'length': length,
+                       'sampled': len(indices) < stop-start, 'rows': rows})
+
     def jpeg(self, episode, frame, camera):
         import av
         import cv2

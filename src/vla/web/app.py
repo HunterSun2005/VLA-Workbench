@@ -121,6 +121,10 @@ def create_app(root=None, *, demo=False):
     async def episodes(dataset_id: str, offset: int = 0, limit: int = 25):
         return await processing_call(processing.episodes, dataset_id, offset, limit)
 
+    @app.get('/api/processing/datasets/{dataset_id}/episodes/{episode}/window')
+    async def processing_window(dataset_id: str, episode: int, frame: int, seconds: int = 10):
+        return await processing_call(processing.window, dataset_id, episode, frame, seconds)
+
     @app.get('/api/processing/datasets/{dataset_id}/episodes/{episode}/frames/{frame}')
     async def offline_frame(dataset_id: str, episode: int, frame: int):
         return await processing_call(processing.frame, dataset_id, episode, frame)
