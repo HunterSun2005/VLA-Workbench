@@ -27,6 +27,7 @@ class RLTokenConfig(PreTrainedConfig):
     """
 
     # --- VLA backbone (frozen, not serialized) ---
+    action_contract: dict | None = None
     vla_pretrained_path: str = "lerobot/pi05_base"
     vla_revision: str | None = None
     vla_dtype: str = "bfloat16"
@@ -101,6 +102,14 @@ class RLTokenConfig(PreTrainedConfig):
         return load_concrete_policy_config(cls, pretrained_name_or_path, **kwargs)
 
     def __post_init__(self) -> None:
+        from pathlib import Path
+        import json
+        contract_path = Path(self.vla_pretrained_path) / 'config.json'
+        if contract_path.is_file():
+            source_contract = json.loads(contract_path.read_text()).get('action_contract')
+            if self.action_contract is not None and source_contract != self.action_contract:
+                raise ValueError('RLT action contract differs from SFT checkpoint')
+            self.action_contract = source_contract
         self.ensure_registered()
         apply_rlt_schema_file(self)
         super().__post_init__()

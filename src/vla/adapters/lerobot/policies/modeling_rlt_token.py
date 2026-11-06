@@ -83,7 +83,9 @@ def _load_pi05_config_from_dir(pretrained_path: str) -> PI05Config:
         tmp_path = tmp.name
     try:
         with draccus.config_type("json"):
-            return draccus.parse(PI05Config, tmp_path, args=[])
+            from .configuration_vla_pi05 import VLAPI05Config
+            cls = VLAPI05Config if 'action_contract' in raw else PI05Config
+            return draccus.parse(cls, tmp_path, args=[])
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 

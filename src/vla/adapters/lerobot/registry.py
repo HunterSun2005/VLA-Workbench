@@ -4,7 +4,8 @@ from pathlib import Path
 
 def register() -> None:
     from vla.adapters.lerobot.policies import configuration_rlt, configuration_rlt_ac, configuration_rlt_token
-    from vla.robots.franka_robotiq import FrankaRobotiqConfig
+    from vla.adapters.lerobot.policies import configuration_vla_pi05
+    from vla.adapters.lerobot import action_processor
     for cls in (configuration_rlt.RLTPretrainedConfig, configuration_rlt_ac.ChunkACConfig, configuration_rlt_token.RLTokenConfig):
         cls.ensure_registered()
 

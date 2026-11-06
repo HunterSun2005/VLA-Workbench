@@ -21,7 +21,7 @@ from vla.diagnostics.franka_sft_split import (
 INPUT_FEATURES_PREFIX = "--policy.input_features="
 EMPTY_CAMERAS_PREFIX = "--policy.empty_cameras="
 SPLIT_MANIFEST_OPTION = "--split-manifest"
-SUPPORTED_ACTION_DIMS = (10, 20)
+SUPPORTED_ACTION_DIMS = (8, 10, 16, 20)
 
 
 def _add_average_meter(tracker: Any, key: str, display_name: str, value: float) -> None:
@@ -69,14 +69,16 @@ def record_pi05_loss_metrics(
             value,
         )
 
+    width = 8 if action_dim in (8, 16) else 10
     per_arm = [
         {"position": sum(values[i:i+3]) / 3,
          "rotation_6d": sum(values[i+3:i+9]) / 6,
-         "gripper": values[i+9]}
-        for i in range(0, action_dim, 10)
+         "gripper": values[i+9]} if width == 10 else
+        {"joint": sum(values[i:i+7])/7, "gripper": values[i+7]}
+        for i in range(0, action_dim, width)
     ]
     groups = {key: sum(arm[key] for arm in per_arm) / len(per_arm) for key in per_arm[0]}
-    if action_dim == 20:
+    if action_dim == 2 * width:
         groups.update({f"{side}/{key}": value
                        for side, arm in zip(("left", "right"), per_arm, strict=True)
                        for key, value in arm.items()})
@@ -102,7 +104,7 @@ def install_pi05_loss_metrics_patch(lerobot_train_module: Any) -> None:
             accelerator = args[5]
         unwrapped = accelerator.unwrap_model(policy) if accelerator is not None else policy
         policy_type = getattr(getattr(unwrapped, "config", None), "type", None)
-        if policy_type != "pi05":
+        if policy_type not in ("pi05", "vla_pi05"):
             raise ValueError(f"Franka PI0.5 training entrypoint received policy type {policy_type!r}")
         action_names = getattr(unwrapped.config, "action_feature_names", None)
         if action_names is None:
@@ -181,8 +183,8 @@ def validate_split_training_args(
     if any(arg.startswith("--dataset.episodes=") for arg in args):
         raise ValueError("materialized split training must not also set --dataset.episodes")
     relative = _argument_value(args, "--policy.use_relative_actions")
-    if relative is None or relative.lower() != "false":
-        raise ValueError("split-manifest training requires --policy.use_relative_actions=false")
+    if relative and relative.lower() != "false":
+        raise ValueError("use the VLA action contract for chunk_relative; generic rot6d subtraction is unsupported")
     return manifest, Path(output_dir).expanduser().resolve()
 
 
@@ -231,6 +233,8 @@ def main() -> None:
 
     from lerobot.scripts import lerobot_train
 
+    from vla.adapters.lerobot.action_training import install_action_training
+    install_action_training(lerobot_train)
     install_pi05_loss_metrics_patch(lerobot_train)
     lerobot_train.main()
     if split_contract is not None and output_dir is not None and split_manifest_path is not None:

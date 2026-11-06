@@ -23,6 +23,7 @@ class RLTPretrainedConfig(PreTrainedConfig):
     """
 
     # --- VLA backbone ---
+    action_contract: dict | None = None
     vla_pretrained_path: str = "lerobot/pi05_base"
     vla_revision: str | None = None
     task_instruction: str = ""
@@ -80,6 +81,14 @@ class RLTPretrainedConfig(PreTrainedConfig):
             PreTrainedConfig.register_subclass("rlt")(cls)
 
     def __post_init__(self) -> None:
+        from pathlib import Path
+        import json
+        contract_path = Path(self.vla_pretrained_path) / 'config.json'
+        if contract_path.is_file():
+            source_contract = json.loads(contract_path.read_text()).get('action_contract')
+            if self.action_contract is not None and source_contract != self.action_contract:
+                raise ValueError('RLT action contract differs from SFT checkpoint')
+            self.action_contract = source_contract
         self.ensure_registered()
         super().__post_init__()
         if self.phase_mode not in ("always_rl", "always_vla", "manual"):

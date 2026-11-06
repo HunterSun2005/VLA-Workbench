@@ -478,11 +478,15 @@ class ChunkACPolicy(PreTrainedPolicy):
 
         time_per_chunk = 1.0 / self._rtc_fps
         with self._rtc_lock:
-            prev_actions = self._rtc_action_queue.get_left_over()
+            runtime = getattr(self, 'action_runtime', None)
+            prev_actions = (self._rtc_action_queue.get_processed_left_over() if runtime
+                            else self._rtc_action_queue.get_left_over())
             if prev_actions is not None:
                 prev_actions = prev_actions.clone()
             action_index_before_inference = self._rtc_action_queue.get_action_index()
             generation = self._rtc_generation
+        if runtime and prev_actions is not None:
+            prev_actions = runtime.encode(prev_actions, batch)
         inference_delay = math.ceil(self._rtc_latency_tracker.max() / time_per_chunk)
         return (
             self._clone_rtc_batch(batch),
@@ -529,6 +533,8 @@ class ChunkACPolicy(PreTrainedPolicy):
                 raise ValueError(f"RTC deployment expects batch size 1, got {chunk.shape[0]}")
 
             original_actions = chunk.squeeze(0).detach()
+            runtime = getattr(self, 'action_runtime', None)
+            absolute_actions = runtime.decode(original_actions, batch) if runtime else original_actions
             step_metadata = list(mod._step_metadata)
             mod._step_metadata.clear()
         if len(step_metadata) != len(original_actions):
@@ -556,7 +562,7 @@ class ChunkACPolicy(PreTrainedPolicy):
                 merge_start_index = action_index_before_inference
             self._rtc_action_queue.merge(
                 original_actions,
-                original_actions,
+                absolute_actions,
                 real_delay,
                 merge_start_index,
             )
@@ -688,6 +694,8 @@ class ChunkACPolicy(PreTrainedPolicy):
         mod = self._ensure_modifier()
         if mod.needs_new_chunk:
             chunk = self.predict_action_chunk(batch, **kwargs)
+            if getattr(self, 'action_runtime', None):
+                chunk = self.action_runtime.decode(chunk, batch)
             mod.enqueue(chunk)
         return mod.pop_action()
 

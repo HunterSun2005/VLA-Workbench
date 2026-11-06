@@ -1,0 +1,69 @@
+"""Offline action export and sampling, without model or ROS imports."""
+from dataclasses import replace
+import hashlib
+from pathlib import Path
+import numpy as np
+from .spec import ActionSpec
+from .statistics import compute_statistics
+
+
+def dataset_fingerprint(root):
+    digest = hashlib.sha256()
+    root = Path(root)
+    paths = [root/'meta/info.json', *sorted((root/'data').rglob('*.parquet'))]
+    for path in paths:
+        digest.update(str(path.relative_to(root)).encode())
+        with path.open('rb') as stream:
+            while chunk := stream.read(8*1024*1024):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
+def anchors_from_state(states, names, spec, *, gripper_unit):
+    if len(names) != len(set(names)):
+        raise ValueError('ambiguous measured field names')
+    measured = dict(zip(names, np.asarray(states).T))
+    if gripper_unit not in ('metres', 'open_fraction'):
+        raise ValueError('measured gripper unit must be declared')
+    if gripper_unit == 'metres':
+        for name in spec.measured_fields:
+            if name.endswith('gripper_position') and name in measured:
+                measured[name] = np.clip(measured[name] / .085, 0, 1)
+    return spec.anchor_from_fields(measured)
+
+
+def export_actions(table, source_spec, target_space, *, allow_derived=False):
+    """Conversion uses recorded commands only; never invent joints with IK or measurements."""
+    target_spec = replace(source_spec, space=target_space, representation='absolute')
+    if source_spec.space == target_space:
+        return np.stack(table['action']), target_spec, None
+    if not allow_derived:
+        raise ValueError('cross-space export requires allow_derived and records derivation provenance')
+    field, derivation = (('command.joint', 'tcp_submitted_joints') if target_space == 'joint'
+                         else ('command.fk_tcp', 'joint_command_fk'))
+    if field not in table:
+        raise ValueError(f'cannot reconstruct original commands: missing {field}')
+    actions = np.stack(table[field])
+    if actions.shape != (len(table), target_spec.dim) or not np.isfinite(actions).all():
+        raise ValueError('invalid auxiliary absolute commands')
+    return actions, target_spec, derivation
+
+
+def dataset_statistics(root, spec, sampling):
+    import pyarrow.parquet as pq
+    from vla.dataset_metadata import load_info
+    info = load_info(root)
+    recorded = ActionSpec.from_dict(info['action_spec'])
+    spec.require_compatible(recorded, training=False)
+    def episodes():
+        for path in sorted((Path(root)/'data').rglob('*.parquet')):
+            table = pq.read_table(path).to_pandas()
+            for _, group in table.groupby('episode_index', sort=False):
+                actions = np.stack(group['action'])
+                if 'observation.anchor' not in group:
+                    raise ValueError('dataset lacks independent raw observation.anchor; re-export from full measured state')
+                anchors = np.stack(group['observation.anchor'])
+                valid = (np.stack(group['complementary_info.action_valid']).reshape(-1).astype(bool)
+                         if 'complementary_info.action_valid' in group else np.ones(len(group), bool))
+                yield actions, anchors, valid
+    return compute_statistics(episodes(), spec, sampling, dataset_fingerprint(root))

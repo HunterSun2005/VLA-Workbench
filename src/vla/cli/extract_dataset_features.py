@@ -288,31 +288,17 @@ def _rewrite_data_and_episode_stats(
 
 
 def _relative_action_stats(root: Path, chunk_size: int, num_workers: int) -> dict[str, np.ndarray]:
-    if chunk_size <= 0:
-        raise ValueError("action-chunk-size must be positive")
-    from lerobot.datasets.compute_stats import compute_relative_action_stats
-    from lerobot.datasets.lerobot_dataset import LeRobotDataset
-
-    dataset = LeRobotDataset(repo_id=_local_repo_id(root), root=root, video_backend="pyav")
-    state_names = dataset.meta.features["observation.state"].get("names")
-    action_names = dataset.meta.features["action"].get("names")
-    action_dim = len(action_names or [])
-    if action_dim < 10 or action_dim % 10 != 0 or len(state_names or []) < action_dim:
-        raise ValueError(
-            "relative action stats require aligned 10D TCP blocks in state and action"
-        )
-    gripper_indices = list(range(9, action_dim, 10))
-    if any("gripper" not in str(action_names[index]).lower() for index in gripper_indices):
-        raise ValueError(
-            f"relative action stats require gripper dimensions at indices {gripper_indices}"
-        )
-    return compute_relative_action_stats(
-        dataset.hf_dataset,
-        dataset.meta.features,
-        chunk_size=chunk_size,
-        exclude_joints=["gripper"],
-        num_workers=num_workers,
-    )
+    from dataclasses import replace
+    from vla.actions import ActionSpec, SamplingSpec
+    from vla.actions.dataset import dataset_statistics
+    from vla.dataset_metadata import load_info
+    info = load_info(root)
+    if 'action_spec' not in info:
+        raise ValueError('relative statistics require an explicit VLA action contract and raw named anchors')
+    spec = replace(ActionSpec.from_dict(info['action_spec']), representation='chunk_relative')
+    result = dataset_statistics(root, spec, SamplingSpec(chunk_size))
+    (root/'meta/action_statistics.json').write_text(json.dumps(result, indent=2) + '\n')
+    return {key: np.asarray(result[key]) for key in ('min', 'max', 'mean', 'std', 'q01', 'q99')}
 
 
 def _update_metadata(

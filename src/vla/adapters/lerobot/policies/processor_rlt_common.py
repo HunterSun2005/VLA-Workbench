@@ -44,6 +44,7 @@ def load_sft_pi05_processors(
             "QUANTILES stats — deploy parity depends on it."
         )
 
+    from vla.adapters.lerobot import action_processor  # register VLA processor on load
     tokenizer_path = tokenizer_path or _read_tokenizer_path(vla_pretrained_path)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     overrides = {

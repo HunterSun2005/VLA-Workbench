@@ -10,4 +10,5 @@ def predict_action(observation, policy, device, preprocessor, postprocessor, use
     precision = torch.autocast(device_type="cuda") if use_amp and device.type == "cuda" else nullcontext()
     with torch.inference_mode(), precision:
         batch = prepare_observation_for_inference(dict(observation), device, task, robot_type)
-        return postprocessor(policy.select_action(preprocessor(batch)))
+        action = policy.select_action(preprocessor(batch))
+        return action if getattr(policy, "action_runtime", None) else postprocessor(action)

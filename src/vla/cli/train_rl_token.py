@@ -9,7 +9,10 @@ def main() -> None:
 
     register()
 
-    from lerobot.scripts.lerobot_train import main as lerobot_train_main
+    from lerobot.scripts import lerobot_train
+    from vla.adapters.lerobot.action_training import install_action_training
+    install_action_training(lerobot_train)
+    lerobot_train_main = lerobot_train.main
 
     import sys
     if not any(arg.startswith("--dataset.eval_split=") for arg in sys.argv):

@@ -64,7 +64,7 @@ class QuantileNormalizer:
         self.low, self.high = np.asarray(stats['q01']), np.asarray(stats['q99'])
         if self.low.shape != self.high.shape or not np.isfinite([self.low, self.high]).all() or np.any(self.high < self.low):
             raise ValueError('invalid action quantiles')
-        self.scale = np.maximum(self.high - self.low, 1e-8)
+        self.scale = self.high - self.low + 1e-8
 
     def normalize(self, actions):
         return 2 * (np.asarray(actions) - self.low) / self.scale - 1

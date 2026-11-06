@@ -523,6 +523,10 @@ def encode_saved_episode(
                 "exec_chunk": actions[local],
                 "ref_chunk": refs[local],
             }
+            if 'observation.anchor' in batch:
+                encoded[raw_index]['action_anchor'] = batch['observation.anchor'][local].detach().cpu().clone()
+                encoded[raw_index]['absolute_exec_chunk'] = batch['action'][local, :chunk_length, :action_dim].detach().cpu().clone()
+
     if offset != len(encode_indices):
         raise ValueError(
             f"encoded {offset} online anchors, expected {len(encode_indices)}"
@@ -553,6 +557,8 @@ def encode_saved_episode(
                     "reward_seq": reward,
                     "next_state_vec": following["state_vec"],
                     "next_ref_chunk": following["ref_chunk"],
+                **({'action_anchor': current['action_anchor'], 'next_action_anchor': following['action_anchor'],
+                    'absolute_exec_chunk': current['absolute_exec_chunk']} if 'action_anchor' in current else {}),
                     "done": torch.tensor(float(spec.terminal)),
                     "intervention": torch.tensor(intervention),
                     "actual_steps": torch.tensor(spec.actual_steps, dtype=torch.int64),

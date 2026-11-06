@@ -135,6 +135,7 @@ class AsyncPolicyClient:
         task: str,
         phase: str,
         reset_episode: bool = False,
+        anchor: np.ndarray | None = None,
     ) -> int | None:
         with self._lock:
             if self._closed:
@@ -153,6 +154,8 @@ class AsyncPolicyClient:
             if self.control_mode in ("vla", "rlt"):
                 phase = "rl" if self.control_mode == "rlt" else "vla"
         arrays = {"observation.state": np.asarray(state, dtype=np.float32), **images}
+        if anchor is not None:
+            arrays["observation.anchor"] = np.asarray(anchor, dtype=np.float64)
         self._requests.put(
             (
                 {

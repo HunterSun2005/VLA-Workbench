@@ -210,6 +210,10 @@ class FrankaRolloutPolicyServer:
             .eval()
         )
         self.policy.prepare_for_inference()
+        from vla.actions.metadata import checkpoint_contract
+        from vla.adapters.lerobot.action_runtime import ActionRuntime
+        self.action_contract = checkpoint_contract(config.vla_pretrained_path)
+        self.policy.action_runtime = ActionRuntime(self.action_contract)
         self.preprocessor, self.postprocessor = make_rlt_ac_pre_post_processors(config)
         self.device = get_safe_torch_device(args.device)
         self.task = str(args.task)
@@ -357,6 +361,8 @@ class FrankaRolloutPolicyServer:
                     "robot_type": self.robot_type,
                     "actions_stored_as": self.actions_stored_as,
                     "use_relative_actions": self.use_relative_actions,
+                    "action_spec": self.action_contract["action_spec"],
+                    "wire_action_representation": "absolute",
                     "rtc": None if self.rtc_profile_path is None else yaml.safe_load(self.rtc_profile_path.read_text()),
                     "tokenizer_sha256": self._tokenizer_digest(config.tokenizer_path),
                 },
@@ -385,6 +391,8 @@ class FrankaRolloutPolicyServer:
             "action_names": self.action_names,
             "actions_stored_as": self.actions_stored_as,
             "use_relative_actions": self.use_relative_actions,
+                    "action_spec": self.action_contract["action_spec"],
+                    "wire_action_representation": "absolute",
             "phase_mode": self.phase_mode,
             "control_modes": getattr(self, "control_modes", []),
             "control_mode_protocol": 1,
@@ -551,7 +559,8 @@ class FrankaRolloutPolicyServer:
             raise ValueError(
                 f"observation.state must be finite with shape {(self.state_dim,)}, got {state.shape}"
             )
-        observation: dict[str, np.ndarray] = {"observation.state": state}
+        observation: dict[str, np.ndarray] = {"observation.state": state,
+            "observation.anchor": np.asarray(arrays["observation.anchor"], dtype=np.float64)}
         for key in self.camera_keys:
             image = np.asarray(arrays.get(key))
             expected_shape = tuple(self.camera_shapes_hwc[key])

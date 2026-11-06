@@ -214,6 +214,9 @@ class Pi05RTC:
         self.policy, self.preprocessor, self.postprocessor = policy, preprocessor, postprocessor
         self.fps, self.queue_threshold, self.clock = float(fps), int(queue_threshold), clock
         self.trace = trace
+        from vla.adapters.lerobot.action_runtime import ActionRuntime
+        contract = getattr(getattr(policy, 'config', None), 'action_contract', None)
+        self.action_runtime = ActionRuntime(contract) if contract else None
         self.queue = ActionQueue(rtc_config)
         self.latency = LatencyTracker()
         self._lock = threading.RLock()
@@ -235,7 +238,8 @@ class Pi05RTC:
     def publish(self, observation: dict[str, Any]) -> None:
         with self._lock:
             self._trace_observation_id += 1
-            self._snapshot = dict(observation)
+            self._snapshot = {k: v.detach().clone() if isinstance(v, torch.Tensor) else
+                              v.copy() if isinstance(v, np.ndarray) else v for k, v in observation.items()}
             self._snapshot["_rtc_trace"] = {
                 "observation_id": self._trace_observation_id,
                 "published_monotonic_s": time.monotonic(),
@@ -268,7 +272,7 @@ class Pi05RTC:
             if self._snapshot is None:
                 raise RuntimeError("no observation snapshot has been published")
             snapshot = self._snapshot
-            leftover = self.queue.get_left_over()
+            leftover = (self.queue.get_processed_left_over() if self.action_runtime else self.queue.get_left_over())
             leftover = None if leftover is None else leftover.clone()
             action_index = self.queue.get_action_index()
             inference_delay = math.ceil(float(self.latency.max() or 0.0) * self.fps)
@@ -301,14 +305,17 @@ class Pi05RTC:
                     if generation != self._generation:
                         return
                 batch = self.preprocessor({k: v for k, v in snapshot.items() if k != "_rtc_trace"})
+                if self.action_runtime and leftover is not None:
+                    leftover = self.action_runtime.encode(leftover, snapshot)
                 normalized = self.policy.predict_action_chunk(
                     batch, inference_delay=inference_delay, prev_chunk_left_over=leftover
                 )
                 if normalized.ndim == 3 and normalized.shape[0] == 1:
                     normalized = normalized.squeeze(0)
-                if normalized.ndim != 2 or normalized.shape[1] != 10:
+                if normalized.ndim != 2 or normalized.shape[1] != (self.action_runtime.spec.dim if self.action_runtime else 10):
                     raise ValueError(f"pi0.5 returned invalid RTC chunk shape {tuple(normalized.shape)}")
-                absolute = self.postprocessor(normalized)
+                absolute = (self.action_runtime.decode(normalized, snapshot) if self.action_runtime
+                            else self.postprocessor(normalized))
                 if absolute.ndim == 3 and absolute.shape[0] == 1:
                     absolute = absolute.squeeze(0)
                 if absolute.shape != normalized.shape:

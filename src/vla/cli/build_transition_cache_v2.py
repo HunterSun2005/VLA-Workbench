@@ -237,6 +237,8 @@ def _encoded_to_transitions(
                 ),
                 "next_state_vec": following["state_vec"],
                 "next_ref_chunk": following["ref_chunk"],
+                **({'action_anchor': current['action_anchor'], 'next_action_anchor': following['action_anchor'],
+                    'absolute_exec_chunk': current['absolute_exec_chunk']} if 'action_anchor' in current else {}),
                 "done": torch.tensor(float(terminal)),
                 "intervention": torch.tensor(annotation["intervention"]),
                 "actual_steps": torch.tensor(chunk_length, dtype=torch.int64),
@@ -442,6 +444,10 @@ def _encode_episode(
                 "exec_chunk": exec_chunk[local_index],
                 "ref_chunk": ref_chunk[local_index],
             }
+            if 'observation.anchor' in batch:
+                encoded[raw_index]['action_anchor'] = batch['observation.anchor'][local_index].detach().cpu().clone()
+                encoded[raw_index]['absolute_exec_chunk'] = batch['action'][local_index, :chunk_length, :action_dim].detach().cpu().clone()
+
         if (
             device.startswith("cuda")
             and empty_cache_every > 0
@@ -526,7 +532,16 @@ def _build_contract(
             "transition cache requires evo_rlt.actions_stored_as='absolute' in dataset metadata"
         )
     sft_config = _load_json(pathlib.Path(config.vla_pretrained_path) / "config.json")
-    use_relative_actions = bool(sft_config.get("use_relative_actions", False))
+    action_contract = sft_config.get('action_contract')
+    use_relative_actions = (action_contract['action_spec']['representation'] == 'chunk_relative'
+                            if action_contract else bool(sft_config.get('use_relative_actions', False)))
+    if action_contract:
+        from vla.actions import ActionSpec
+        ActionSpec.from_dict(action_contract['action_spec']).require_compatible(
+            ActionSpec.from_dict(info['action_spec']), training=False)
+        sampling = action_contract['statistics']['contract']['sampling']
+        if sampling['frame_stride'] != 1:
+            raise ValueError('RLT transition reward timing requires frame_stride=1; use SFT for sparse action sampling')
     sft_preprocessor = _load_json(
         pathlib.Path(config.vla_pretrained_path) / "policy_preprocessor.json"
     )
@@ -540,7 +555,7 @@ def _build_contract(
         None,
     )
     expected_stats = "relative" if use_relative_actions else "absolute"
-    if vla.get("action_stats") != expected_stats:
+    if not action_contract and vla.get("action_stats") != expected_stats:
         raise ValueError(
             f"dataset action_stats={vla.get('action_stats')!r} does not match SFT "
             f"use_relative_actions={use_relative_actions}"
@@ -579,6 +594,7 @@ def _build_contract(
             "use_relative_actions": use_relative_actions,
             "relative_action_processor": relative_processor,
             "action_space": "sft_preprocessed",
+            "action_contract": action_contract,
         },
         "cache": {
             "training_semantics_version": TRAINING_SEMANTICS_VERSION,

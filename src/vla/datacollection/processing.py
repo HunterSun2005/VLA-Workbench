@@ -251,6 +251,19 @@ def export_selection(source, output, chosen, *, progress=None, cancelled=None, v
         try:
             info = deepcopy(index.info)
             info['features']['observation.state'].update(shape=[len(names)], names=names)
+            native_spec = None
+            if 'action_spec' in info:
+                from vla.actions import ActionSpec
+                from vla.actions.dataset import export_actions, anchors_from_state
+                from dataclasses import replace
+                native_spec = ActionSpec.from_dict(info['action_spec'])
+                export_spec = replace(native_spec, space=chosen.get('action_space', native_spec.space))
+                info['action_spec'] = export_spec.to_dict()
+                info['features']['action'].update(shape=[export_spec.dim], names=list(export_spec.action_fields))
+                info['features']['observation.anchor'] = {'dtype': 'float64', 'shape': [export_spec.dim],
+                                                          'names': list(export_spec.measured_fields)}
+            elif chosen.get('action_space'):
+                raise ValueError('legacy dataset has no command contract for action-space conversion')
             action_dim = info['features']['action']['shape'][0]
             total = sum(int(index.rows.iloc[e]['length']) for e in episodes)
             states = np.memmap(parent/'states.bin', mode='w+', dtype='float32', shape=(total, len(names)))
@@ -269,6 +282,18 @@ def export_selection(source, output, chosen, *, progress=None, cancelled=None, v
                     raise ValueError(f'回合 {old_ep} 帧数或索引不一致')
                 raw = np.stack(table['observation.state'].to_numpy()).reshape(length, -1)
                 action = np.stack(table['action'].to_numpy()).reshape(length, -1)
+                if native_spec is not None:
+                    action, _, derivation = export_actions(table, native_spec, export_spec.space,
+                                                           allow_derived=chosen.get('allow_derived', False))
+                    table['action'] = list(action)
+                    if 'observation.anchor' not in table or export_spec.space != native_spec.space:
+                        table['observation.anchor'] = list(anchors_from_state(
+                            raw, index.names, export_spec, gripper_unit='metres'))
+                    if derivation:
+                        recording = info.get('recording_contract') or info.get('processing', {}).get('source_contract', {}).get('recording_contract')
+                        if not recording:
+                            raise ValueError('derived export requires source recording identity')
+                        recording.update(action_spec=export_spec.to_dict(), derived_from=derivation, recording_point='derived')
                 if raw.shape != (length, len(index.names)) or action.shape != (length, action_dim):
                     raise ValueError('状态／动作维度与字段元数据不符')
                 selected = raw[:, columns].astype('float32')

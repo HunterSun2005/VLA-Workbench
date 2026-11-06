@@ -497,7 +497,7 @@ class RolloutCollector(Node):
             "franka_robotiq_dual" if len(self.config.arms) == 2 else "franka_robotiq"
         )
         expected_state_names = list(_prefixed_fields(self.config.arms, schema.TCP_STATE_FIELDS))
-        expected_action_names = list(_prefixed_fields(self.config.arms, schema.ACTION_FIELDS))
+        expected_action_names = list(self.config.action_spec.action_fields)
         expected_camera_shapes = {
             key: [*self.config.image_size, 3] for key in expected_cameras
         }
@@ -730,8 +730,17 @@ class RolloutCollector(Node):
             )
         return np.concatenate(parts)
 
-    def _policy_state(self, raw_state: np.ndarray) -> np.ndarray:
-        return policy_state_from_raw(raw_state, len(self.config.arms))
+    def _raw_anchor(self, raw_state):
+        from vla.actions.dataset import anchors_from_state
+        return anchors_from_state(np.asarray(raw_state)[None], _prefixed_fields(self.config.arms, schema.STATE_FIELDS),
+                                  self.config.action_spec, gripper_unit='metres')[0]
+
+    def _policy_state(self, raw_state):
+        names = self.policy_client.contract['state_names']
+        available = dict(zip(_prefixed_fields(self.config.arms, schema.STATE_FIELDS), raw_state))
+        if any(name not in available for name in names):
+            raise ValueError('checkpoint requests unavailable measured fields')
+        return np.asarray([available[name] for name in names], dtype=np.float32)
 
     def _reset_servo_tracking(self) -> None:
         for servo in self.servos.values():
@@ -1218,6 +1227,7 @@ class RolloutCollector(Node):
             return
         submitted = self.policy_client.submit(
             state=self._policy_state(raw_state),
+            anchor=self._raw_anchor(raw_state),
             images=images,
             task=self.config.tasks[self._episode_task_index],
             phase=self._phase,

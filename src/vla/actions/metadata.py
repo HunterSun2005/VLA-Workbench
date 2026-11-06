@@ -69,3 +69,16 @@ def load_model_contract(path):
 def require_model_contract(expected, actual):
     if fingerprint(expected) != fingerprint(actual):
         raise ValueError('checkpoint/replay action contract mismatch; rebuild cache')
+
+
+def checkpoint_contract(root):
+    root = Path(root)
+    config = json.loads((root/'config.json').read_text())
+    value = config.get('action_contract')
+    if value is None:
+        return load_model_contract(root/'action_contract.json')[2]
+    spec = ActionSpec.from_dict(value['action_spec'])
+    stats = value['statistics']
+    sampling = SamplingSpec(**stats['contract']['sampling'])
+    validate_statistics(stats, spec, sampling, stats['contract']['data_fingerprint'])
+    return value
