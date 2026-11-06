@@ -4,7 +4,7 @@
 
 ## 独立开发副本
 
-当前独立仓库为 `/data0/sht/VLA-Workbench`，在本地 main 维护，无 remotes。原采集仓库和已有环境不修改。
+当前独立仓库为 `/data0/sht/VLA-Workbench`，在 `ros-dev` 分支维护，远端推送须由用户明确请求。原采集仓库和已有环境不修改。
 
 ```bash
 cd /data0/sht/VLA-Workbench

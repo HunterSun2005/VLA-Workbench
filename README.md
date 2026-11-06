@@ -2,6 +2,106 @@
 
 从 Evo-RLT 独立提取的 Franka 采集、训练和部署框架。采用官方 LeRobot 0.6.1，不包含 LeRobot fork、旧数据集、模型、tokenizer、回放数据库或训练结果。
 
+## Workbench 整体架构
+
+Workbench 覆盖「采集 → 数据处理 → 训练 → 部署 → 在线回放与更新」。单／双臂、GELLO／Gamepad 共用 ROS 控制入口；模型与 Web 使用 Python 3.12，ROS 采集与控制使用系统 Python 3.10，二者通过本地协议交换观测和绝对目标。
+
+图中**实线表示数据或命令流，虚线表示管理操作或共享契约约束**。框内是模块职责，存储节点是本地文件，不代表独立服务。
+
+```mermaid
+flowchart TB
+    subgraph ENTRY["操作入口"]
+        WEB["Web 面板 · Python 3.12<br/>采集 / 处理 / 部署 / 监控"]
+        CLI["终端 CLI<br/>会话操作 / 离线训练 / 在线训练管理"]
+    end
+
+    CONTRACT["共享动作契约 · vla/actions<br/>ActionSpec / 原始实测锚点 / rot6d / 统计与来源校验<br/>不依赖 ROS 或 Torch；两个 Python 环境分别加载"]
+
+    subgraph MODEL["模型与离线处理 · Python 3.12"]
+        PROCESS["数据浏览、筛选与导出<br/>保留绝对标签及独立锚点"]
+        TRAIN["模型适配层 + 官方 LeRobot<br/>SFT → RLToken → transition cache → Actor-Critic<br/>Handover 训练"]
+        INFER["PI05 / RLT 推理服务 + RTC<br/>按请求锚点还原绝对 chunk<br/>执行队列存绝对目标；重编码重叠前缀"]
+        ONLINE["在线 RLT<br/>回合编码 / 持久回放 / 更新 / 恢复"]
+    end
+
+    subgraph ROSPY["ROS 采集与上层控制 · 系统 Python 3.10"]
+        SESSION["共用 ROSBackend 会话生命周期<br/>启停 / 接管 / 暂停 / 姿态恢复 / 故障处理"]
+        INPUT["GELLO / Gamepad 输入适配器<br/>joint 直接跟随或 IK；TCP 直接目标或 FK"]
+        CONTROL["唯一控制协调器 · vla/control/ros<br/>joint / TCP 公共入口：30 Hz 接受目标<br/>代际与命令 ID；公共跟踪与 IK：100 Hz"]
+        COLLECT["RolloutCollector<br/>实测状态 / 相机 / 请求锚点 / 标注<br/>接受命令、提交命令与诊断分别记录"]
+    end
+
+    subgraph EXEC["ROS 2 Humble 执行层"]
+        IMP["现有 C++ 关节阻抗控制器 · 1000 Hz<br/>滤波 / 关节限速 / 力矩变化率保护"]
+        GRIP["统一夹爪命令适配与 ROS 驱动<br/>绝对开度 / 松手保持"]
+    end
+
+    subgraph HARDWARE["设备层"]
+        ROBOT["单左臂 / 双臂 Franka + 夹爪"]
+        CAMERA["RealSense<br/>base / wrist / 可选 side"]
+    end
+
+    subgraph FILES["本地资产 · 内容不进入 Git"]
+        RAW[("原始采集与部署回合<br/>datasets/raw、rollouts、online<br/>绝对 action + 实测状态 + 命令来源 + 视频")]
+        DATA[("训练数据与离线缓存<br/>datasets/sft、transitions")]
+        CKPT[("Checkpoint + 动作契约 + 统计量<br/>outputs/")]
+        REPLAY[("在线回放数据库与恢复状态<br/>独立 replay 路径")]
+    end
+
+    WEB -. 会话管理 .-> SESSION
+    WEB -. 离线处理 .-> PROCESS
+    CLI -. 会话操作 .-> SESSION
+    CLI -. 训练任务 .-> TRAIN
+    CLI -. 在线服务管理 .-> ONLINE
+    SESSION -. 控制权与安全边界 .-> CONTROL
+    SESSION -. 录制生命周期 .-> COLLECT
+    INPUT --> CONTROL
+    COLLECT -->|观测与原始锚点 · 本地 socket| INFER
+    INFER -->|绝对目标 · 本地 socket| CONTROL
+    CONTROL -->|绝对关节目标| IMP
+    CONTROL -->|0～1 目标开度| GRIP
+    IMP --> ROBOT
+    GRIP --> ROBOT
+    ROBOT -->|实测状态| COLLECT
+    CAMERA -->|直接 RealSense SDK| COLLECT
+    COLLECT -->|实测反馈| CONTROL
+    CONTROL -->|接受目标与实际提交目标| COLLECT
+    IMP -->|代际确认与滤波后目标诊断| COLLECT
+    COLLECT -->|预览与监控| WEB
+    COLLECT --> RAW
+    RAW --> PROCESS
+    PROCESS --> DATA
+    DATA --> TRAIN
+    TRAIN --> CKPT
+    CKPT --> INFER
+    COLLECT -. 保存完成且停止确认后通知 .-> ONLINE
+    RAW -->|已保存在线回合| ONLINE
+    ONLINE <--> REPLAY
+    ONLINE -->|更新与恢复检查点| CKPT
+    ONLINE -->|更新 Actor / Critic| INFER
+    CONTRACT -.-> PROCESS
+    CONTRACT -.-> TRAIN
+    CONTRACT -.-> INFER
+    CONTRACT -.-> CONTROL
+```
+
+检查架构时重点核对以下边界：
+
+- **动作与标签**：joint 为 8D／臂，TCP 为 10D／臂，双臂按左、右拼接。Parquet 始终保存绝对目标与每臂 50D 原始实测状态；`absolute`／`chunk_relative` 是模型表示。相对化在归一化之前进行，使用 chunk 起点实测锚点，旋转通过矩阵组合，夹爪始终是绝对开度。
+- **执行与控制权**：关节模式在公共关节入口记录；TCP 模式在公共 TCP 入口、平滑和 IK 之前记录。输入适配器与模型不能绕过协调器发布机械臂目标；接管、暂停、故障和回合边界使旧代际命令失效。
+- **进程与训练**：ROS 进程不加载模型或 Torch，模型进程不直接控制硬件。Web 管理采集和推理会话，在线训练仍由终端入口管理。在线更新先持久化回合，再等待控制器停止确认。
+
+| 架构职责 | 主要实现位置 | 检查入口 |
+| --- | --- | --- |
+| 动作契约、变换与统计 | [vla/actions](src/vla/actions/) | [动作测试](tests/actions/)、[契约说明](docs/ROS_ACTION_CONTRACT.md) |
+| 共用会话与 Web | [ros_session.py](src/vla/cli/ros_session.py)、[web/backends.py](src/vla/web/backends.py)、[vla/web](src/vla/web/) | [Web 测试](tests/web/)、[终端测试](tests/rlt/test_terminal.py) |
+| 采集、输入适配与控制协调 | [collect_ros.py](src/vla/datacollection/franka_robotiq_rollout/collect_ros.py)、[vla/control/ros](src/vla/control/ros/) | [控制测试](tests/control/)、[模拟采集测试](tests/rlt/test_dual_gamepad_record.py) |
+| ROS 实时执行与启动 | [关节阻抗控制器](ros_ws/src/franka_fr3_arm_controllers/)、[ROS 工作空间](ros_ws/) | [ROS 导入检查](scripts/check_ros.py)、[启动链测试](tests/rlt/test_teleop_entrypoints.py) |
+| 数据处理、模型与 RTC | [processing.py](src/vla/datacollection/processing.py)、[LeRobot 适配层](src/vla/adapters/lerobot/)、[vla/deployment](src/vla/deployment/) | [数据处理测试](tests/rlt/test_dataset_processing.py)、[RTC 测试](tests/rlt/test_rlt_ac_rtc.py) |
+| 在线 RLT 与持久回放 | [online_training.py](src/vla/core/online_training.py)、[online_replay.py](src/vla/core/online_replay.py) | [在线一致性测试](tests/rlt/test_online_consistency.py)、[稀疏动作时序测试](tests/rlt/test_sparse_action_timing.py) |
+
+维护约定：修改模块边界、解释器归属、控制权、动作记录点或训练数据流时，同步更新本图与定位表。离线验证和实机待验收范围见 [ROS 验收报告](docs/ROS_VALIDATION.md)。
+
 ## 本机使用
 
 ```bash
@@ -54,12 +154,6 @@ vla-web --root "$VLA_ROOT"
 Demo 的采集／部署不连接硬件，也不生成真实采集数据集；**数据处理页即使在 Demo 下仍读取本地数据并写入真实转换结果**。浏览器关闭不结束独立 runner 中的会话。软件暂停不是硬件急停，各后端暂停对未保存回合的影响见 [Web 面板说明](docs/WEB_PANEL.md)。姿态库位于忽略目录 `runtime/web/poses.json`，应单独备份。
 
 服务仅监听本机。远程访问使用 SSH 隧道，例如 `ssh -N -L 8765:127.0.0.1:8765 用户@机器人主机`。操作细节见 [Web 面板说明](docs/WEB_PANEL.md)、[离线数据处理](docs/DATA_PROCESSING.md)；当前验收结果见 [ROS 离线验收](docs/ROS_VALIDATION.md)，历史证据见 [Web 验收](docs/web/VALIDATION.md)。
-
-## 当前控制与采集架构
-
-单／双臂、GELLO／Gamepad、采集与部署统一使用 ROS 2 Humble 和现有 C++ 关节阻抗控制器。模型与 Web 使用 Python 3.12；ROS 使用系统 Python 3.10，通过本地协议传递绝对目标。RealSense 直接使用 SDK。
-
-采集前选择 joint（8D／臂）或 TCP（10D／臂），Parquet 始终保存绝对目标与原始实测状态。模型配置选择 absolute／chunk_relative；相对动作以请求起点的原始实测状态为锚点，旋转通过矩阵组合。RTC 队列保存绝对目标，跨锚点前缀重新编码。细节、当前限制和实机待验收项目见 [ROS 动作契约](docs/ROS_ACTION_CONTRACT.md)。
 
 ## 专用 ROS 工作空间
 
@@ -114,7 +208,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 配置中的设备编号和网络地址必须按现场核对，不按枚举顺序推断视角。旧部署 home 配置默认关闭，启用时必须提供通过校验的目标；Web 采集前姿态库是另一个显式操作流程，保存 TCP 位姿、不包含夹爪状态。旧数据格式中的 `evo_rlt` 元数据字段保留，以维持格式兼容；额外字段同时保存到 `meta/vla_metadata.json`。
 
-本仓库独立维护在本地 `main`，不配置 remotes、不发布。原采集仓库与已有环境不修改。数据、权重、tokenizer、回放、日志和第三方源码／构建产物不进入 Git。
+本仓库独立维护，当前开发分支为 `ros-dev`。配置远端和推送须由用户明确请求。原采集仓库与已有环境不修改。数据、权重、tokenizer、回放、日志和第三方源码／构建产物不进入 Git。
 
 ## 开发与验证
 
