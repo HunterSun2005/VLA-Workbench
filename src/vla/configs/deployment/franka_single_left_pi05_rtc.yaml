@@ -1,85 +1,82 @@
-robot:
-  id: fr3-left
-  robot_ip: 172.16.0.2
-  cameras:
-    base:
-      serial: "260722303785"
-    left_wrist:
-      serial: "346222073620"
-  camera_width: 640
-  camera_height: 480
-  camera_fps: 30
-  image_size: 224
-  camera_timeout_s: 1.0
-  # Independent 30 Hz devices can occasionally arrive one frame apart.
-  camera_max_pair_skew_s: 0.050
-  observation_max_image_age_s: 0.100
-  gripper:
-    port: /dev/serial/by-id/usb-FTDI_USB_TO_RS-485_DABC0KC0-if00-port0
-    baudrate: 115200
-    bytesize: 8
-    parity: N
-    stopbits: 1
-    device_id: 9
-    timeout_s: 0.2
-    state_timeout_s: 0.5
-    deadband: 0.01
-    max_delta_per_s: 2.0
-    speed: 128
-    force: 128
-    action_threshold: 0.75
-    close_trigger: 0.75
-    open_trigger: 0.875
-    post_close_lock_s: 2.0
-    startup_open_fraction: 0.95
-    startup_open_timeout_s: 5.0
-  workspace:
-    min: [0.10, -0.55, 0.05]
-    max: [0.80, 0.50, 0.75]
-  control_frequency: 30.0
-  dynamics_factor: 0.10
-  max_linear_velocity: 0.05
-  max_angular_velocity: 0.20
-  target_smoothing_alpha: 0.25
-  velocity_smoothing: 0.30
+action_space: tcp
+arms:
+- base_link: left_fr3_link0
+  command_gripper_topic: /left/teleop/gripper_action_width_percent
+  command_joint_topic: /left/teleop/joint_states
+  gamepad:
+    joint7_button_sign: -1.0
+    joy_topic: /left/gamepad/joy
+    left_stick_x_sign: 1.0
+    left_stick_y_sign: 1.0
+  gripper_action_topic: /left/gripper/robotiq_gripper_controller/gripper_cmd
+  gripper_closed_position: 0.8
+  gripper_joint_name: robotiq_85_left_knuckle_joint
+  gripper_max_effort: 50.0
+  gripper_open_position: 0.0
+  gripper_speed_topic: /left/gripper/left_gripper_speed_controller/commands
+  gripper_state_topic: /left/gripper/joint_state_broadcaster_robotiq/joint_states
+  measured_joint_topic: /left/franka_robot_state_broadcaster/measured_joint_states
+  name: left
+  robot_state_publisher: /left/robot_state_publisher
+  robot_state_topic: /left/franka_robot_state_broadcaster/robot_state
+  tip_link: left_fr3_link8
+  workspace_max:
+  - 0.75
+  - 0.45
+  - 0.75
+  workspace_min:
+  - 0.2
+  - -0.45
+  - 0.05
+backend: ros2
+cameras:
+- name: base
+  serial: '260722303785'
+- name: left_wrist
+  serial: '346222073620'
+control:
+  damping: 0.05
+  gamepad_control_rate: 100
+  gamepad_deadzone: 0.08
+  gamepad_gripper_speed: 0.4
+  gamepad_gripper_trigger_deadzone: 0.05
+  gamepad_joint7_speed: 0.3
+  gamepad_joy_timeout_s: 0.2
+  gamepad_max_angular_speed: 0.3
+  gamepad_orientation_gain: 3.0
+  gamepad_position_gain: 8.0
+  gamepad_state_timeout_s: 0.5
+  gamepad_xy_speed: 0.02
+  gamepad_z_speed: 0.01
+  joint_limit_margin: 0.05
+  low_success_rate_samples: 3
+  max_angular_velocity: 0.3
+  max_joint_speed: 0.3
+  max_linear_velocity: 0.04
+  min_control_command_success_rate: 0.9
+  policy_gripper_speed: 1.0
+  policy_timeout_s: 30.0
   smooth_angular_velocity: true
+  sync_tolerance_ms: 100
+  target_smoothing_alpha: 0.25
+  velocity_smoothing: 0.3
   velocity_tracking_tau_s: 0.15
-  velocity_motion_duration_ms: 100
-  min_command_position_delta: 0.0008
-  min_command_rotation_delta: 0.01
-  max_consecutive_motion_failures: 5
-  # CPU6 is isolated for the left Franky/libfranka native 1 kHz thread.
-  realtime_cpu: 6
+dataset:
+  fps: 30
+  image_size:
+  - 224
+  - 224
+  root: datasets/raw/franka_single_left
+  subtasks: []
+  task: Place the white lid firmly onto the jig.
+  tasks: []
+input_source: gamepad
+transport:
+  socket_path: /tmp/vla_franka_single_left.sock
+version: 1
 
 rtc:
   execution_horizon: 10
+  queue_threshold: 28
   max_guidance_weight: 5.0
   prefix_attention_schedule: EXP
-  queue_threshold: 28
-
-deployment:
-  fps: 30
-  device: cuda
-  # Keep background RTC inference from starving libfranka's 1 kHz FCI thread.
-  torch_num_threads: 1
-  torch_num_interop_threads: 1
-  # Exclude CPU5 (xHCI IRQ), CPU6 (left FCI), and CPU7 (right FCI).
-  housekeeping_cpus: 0-4,8-23
-  # Must exactly match the task prompt used by the SFT dataset.
-  task: Place the white lid firmly onto the jig.
-  debug_log_dir: logs
-  debug_console_every: 30
-  control_discontinuity_timeout_ms: 100
-  home:
-    enabled: false
-    key: h
-    # Supply and validate a task-specific target before enabling home.
-    target_action: null
-    # Lift before translating in XY and descending to the target.
-    clearance_z: 0.45
-    # Between the close/open triggers: preserve the current gripper state while lifting.
-    gripper_hold_action: 0.80
-    phase_timeout_s: 20.0
-    position_tolerance_m: 0.005
-    rotation_tolerance_rad: 0.034906585
-    settled_steps: 5

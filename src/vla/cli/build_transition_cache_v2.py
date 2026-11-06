@@ -186,14 +186,14 @@ def split_episode_ids(
     return shuffled[:n_train], shuffled[n_train:]
 
 
-def validate_chunk_settings(chunk_length: int, stride: int, horizon: int) -> None:
+def validate_chunk_settings(chunk_length: int, stride: int, horizon: int, action_stride: int = 1) -> None:
     if not 1 <= chunk_length <= horizon:
         raise ValueError(
             f"chunk_length must be between 1 and PI0.5 chunk_size={horizon}, got {chunk_length}"
         )
     if stride <= 0:
         raise ValueError(f"frame_stride must be positive, got {stride}")
-    if chunk_length % stride != 0:
+    if (chunk_length * action_stride) % stride != 0:
         raise ValueError(
             f"chunk_length={chunk_length} must be divisible by frame_stride={stride}"
         )
@@ -207,10 +207,11 @@ def _encoded_to_transitions(
     episode_success: bool,
     episode_id: int,
     frame_annotations: dict[int, dict[str, float | int]] | None = None,
+    action_stride: int = 1,
 ) -> list[dict[str, Tensor]]:
     transitions: list[dict[str, Tensor]] = []
     for frame in frame_indices:
-        next_frame = frame + chunk_length
+        next_frame = frame + chunk_length * action_stride
         if next_frame > episode_last_frame:
             continue
         if next_frame not in encoded:
@@ -221,14 +222,14 @@ def _encoded_to_transitions(
         annotation = _chunk_annotation(
             frame_annotations,
             start_frame=frame,
-            chunk_length=chunk_length,
+            chunk_length=chunk_length * action_stride,
         )
         transitions.append(
             {
                 "state_vec": current["state_vec"],
                 "exec_chunk": current["exec_chunk"],
                 "ref_chunk": supervision_reference(
-                    current["exec_chunk"], current["ref_chunk"], frame_annotations, frame,
+                    current["exec_chunk"], current["ref_chunk"], frame_annotations, frame, action_stride=action_stride,
                 ),
                 "reward_seq": build_reward_seq(
                     chunk_length=chunk_length,
@@ -239,6 +240,8 @@ def _encoded_to_transitions(
                 "next_ref_chunk": following["ref_chunk"],
                 **({'action_anchor': current['action_anchor'], 'next_action_anchor': following['action_anchor'],
                     'absolute_exec_chunk': current['absolute_exec_chunk']} if 'action_anchor' in current else {}),
+                **({'elapsed_steps': torch.tensor(chunk_length*action_stride),
+                    'reward_offsets': torch.arange(1,chunk_length+1)*action_stride-1} if action_stride != 1 else {}),
                 "done": torch.tensor(float(terminal)),
                 "intervention": torch.tensor(annotation["intervention"]),
                 "actual_steps": torch.tensor(chunk_length, dtype=torch.int64),
@@ -360,6 +363,10 @@ def load_episode_frame_annotations(
                 and contract.get("action_encoding") == "controller_joint_command_fk_absolute_tcp_rot6d_gripper_goal_v2")
         )
     )
+    phase_only_demo = phase_only_demo or (
+        available == {FRAME_PHASE_KEY} and info.get('collection_kind') == 'human_demonstration'
+        and contract.get('backend') == 'ros2_joint_impedance'
+        and contract.get('recording_point') in ('accepted_before_tracking', 'derived'))
     if FRAME_COLLECTOR_KEY not in available and not phase_only_demo:
         raise ValueError(
             f"rollout annotations require {FRAME_COLLECTOR_KEY!r} when complementary fields are present"
@@ -401,6 +408,7 @@ def _encode_episode(
     episode_success: bool,
     episode_id: int,
     frame_annotations: dict[int, dict[str, float | int]] | None = None,
+    action_stride: int = 1,
 ) -> list[dict[str, Tensor]]:
     if not frame_indices:
         return []
@@ -464,6 +472,7 @@ def _encode_episode(
         episode_success,
         episode_id,
         frame_annotations,
+        action_stride=action_stride,
     )
 
 
@@ -538,10 +547,8 @@ def _build_contract(
     if action_contract:
         from vla.actions import ActionSpec
         ActionSpec.from_dict(action_contract['action_spec']).require_compatible(
-            ActionSpec.from_dict(info['action_spec']), training=False)
+            ActionSpec.from_dict(dataset_info['action_spec']), training=False)
         sampling = action_contract['statistics']['contract']['sampling']
-        if sampling['frame_stride'] != 1:
-            raise ValueError('RLT transition reward timing requires frame_stride=1; use SFT for sparse action sampling')
     sft_preprocessor = _load_json(
         pathlib.Path(config.vla_pretrained_path) / "policy_preprocessor.json"
     )
@@ -598,6 +605,7 @@ def _build_contract(
         },
         "cache": {
             "training_semantics_version": TRAINING_SEMANTICS_VERSION,
+            "reward_timing": "physical_control_frames_v1",
             "chunk_length": args.chunk_length,
             "frame_stride": args.frame_stride,
             "train_ratio": args.train_ratio,
@@ -675,7 +683,9 @@ def main() -> None:
     _log(f"load RLTokenPolicy from {args.rl_token_policy_path}")
     policy, sft_contract, rl_token_contract = _load_policy(args)
     config = policy.config
-    validate_chunk_settings(args.chunk_length, args.frame_stride, config.chunk_size)
+    validate_chunk_settings(args.chunk_length, args.frame_stride, config.chunk_size,
+        (config.action_contract["statistics"]["contract"]["sampling"]["frame_stride"]
+         if getattr(config, "action_contract", None) else 1))
 
     if dataset_info.get("codebase_version") != "v3.0":
         raise ValueError(
@@ -685,7 +695,9 @@ def main() -> None:
     fps = float(dataset_info["fps"])
     if fps <= 0:
         raise ValueError(f"dataset FPS must be positive, got {fps}")
-    delta = {"action": [index / fps for index in range(config.chunk_size)]}
+    action_stride = (config.action_contract['statistics']['contract']['sampling']['frame_stride']
+                     if getattr(config, 'action_contract', None) else 1)
+    delta = {"action": [index * action_stride / fps for index in range(config.chunk_size)]}
     dataset = LeRobotDataset(
         repo_id=args.demo_dataset_repo_id,
         root=dataset_root,
@@ -777,7 +789,7 @@ def main() -> None:
                 frame_indices = build_overlap_frame_indices(
                     episode_start=episode_start,
                     episode_stop=episode_stop,
-                    chunk_length=args.chunk_length,
+                    chunk_length=args.chunk_length * action_stride,
                     stride=args.frame_stride,
                 )
                 _log(
@@ -791,6 +803,7 @@ def main() -> None:
                     capture=capture,
                     dataset=dataset,
                     frame_indices=frame_indices,
+                    action_stride=action_stride,
                     episode_last_frame=episode_stop - 1,
                     chunk_length=args.chunk_length,
                     action_dim=config.action_dim,

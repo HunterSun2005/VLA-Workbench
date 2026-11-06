@@ -59,8 +59,8 @@ def parse_args() -> argparse.Namespace:
         type=pathlib.Path,
         default=None,
         help=(
-            "RTC deployment YAML used by the Franky collector. Required for the "
-            "single-arm Franky rollout path."
+            "RTC deployment YAML for the shared ROS collector. Used by the "
+            "ROS rollout path."
         ),
     )
     parser.add_argument("--socket-timeout-s", type=float, default=30.0)
@@ -143,7 +143,7 @@ def _load_rollout_rtc_profile(
             f"RTC deployment config must be a YAML mapping: {profile_path}"
         )
     rtc_values = values.get("rtc")
-    deployment = values.get("deployment")
+    deployment = values.get("dataset") if values.get("backend") == "ros2" else values.get("deployment")
     if not isinstance(rtc_values, dict) or not isinstance(deployment, dict):
         raise ValueError(
             "RTC deployment config must contain rtc and deployment mappings"
@@ -213,6 +213,8 @@ class FrankaRolloutPolicyServer:
         from vla.actions.metadata import checkpoint_contract
         from vla.adapters.lerobot.action_runtime import ActionRuntime
         self.action_contract = checkpoint_contract(config.vla_pretrained_path)
+        self.action_stride = self.action_contract["statistics"]["contract"]["sampling"]["frame_stride"]
+        self._hold_remaining = 0
         self.policy.action_runtime = ActionRuntime(self.action_contract)
         self.preprocessor, self.postprocessor = make_rlt_ac_pre_post_processors(config)
         self.device = get_safe_torch_device(args.device)
@@ -268,7 +270,7 @@ class FrankaRolloutPolicyServer:
                 )
             self.policy.configure_rtc(
                 rtc_config,
-                fps=rtc_fps,
+                fps=rtc_fps / self.action_stride,
                 action_queue_size_to_get_new_actions=self.rtc_queue_threshold,
             )
             self.rtc_enabled = True
@@ -465,6 +467,7 @@ class FrankaRolloutPolicyServer:
             for key in ("run_uuid", "dataset_uuid"):
                 if header.get(key) != session.run[key]:
                     raise ValueError(f"online {key} mismatch")
+            self._hold_remaining = 0
             result = session.recover(progress_callback) if kind == "recover_online" else session.begin_episode()
             return {"kind": kind, "request_id": request_id, **result, **self.contract}, {}
         if kind == "episode_saved":
@@ -482,6 +485,7 @@ class FrankaRolloutPolicyServer:
                 raise ValueError(
                     "online episode dataset root does not match the policy server"
                 )
+            self._hold_remaining = 0
             metrics = self.online_session.process_saved_episode(
                 episode_id=int(header.get("episode_id", -1)),
                 outcome=str(header.get("outcome", "")),
@@ -570,6 +574,14 @@ class FrankaRolloutPolicyServer:
                     f"got {image.shape}/{image.dtype}"
                 )
             observation[key] = image
+        hold_key = (task, managed_mode, getattr(self, 'mode_version', -1), requested_phase)
+        if reset_episode or hold_key != getattr(self, '_hold_key', None):
+            self._hold_remaining = 0
+        self._hold_key = hold_key
+        if getattr(self, '_hold_remaining', 0) > 0:
+            self._hold_remaining -= 1
+            cached_header, cached_actions = self._held_response
+            return {**cached_header, 'request_id':request_id}, {'action':cached_actions['action'].copy()}
         inference_started = time.perf_counter()
         action = self._predict_action(
             observation=observation,
@@ -624,11 +636,12 @@ class FrankaRolloutPolicyServer:
             )
         if trace_request:
             action_parts = []
-            for arm_index in range(self.action_dim // 10):
-                arm_action = action_array[10 * arm_index : 10 * (arm_index + 1)]
+            for arm_index in range(len(self.action_contract['action_spec']['arms'])):
+                width = self.action_dim // len(self.action_contract['action_spec']['arms'])
+                arm_action = action_array[width * arm_index : width * (arm_index + 1)]
                 action_parts.append(
-                    f"arm{arm_index}_xyz={np.round(arm_action[:3], 4).tolist()} "
-                    f"arm{arm_index}_gripper={float(arm_action[9]):.4f}"
+                    f"arm{arm_index}_target_head={np.round(arm_action[:3], 4).tolist()} "
+                    f"arm{arm_index}_gripper={float(arm_action[-1]):.4f}"
                 )
             source = "RLT_ACTOR" if source_type > 0.5 else "VLA"
             print(
@@ -638,7 +651,7 @@ class FrankaRolloutPolicyServer:
                 + " ".join(action_parts),
                 flush=True,
             )
-        return (
+        response = (
             {
                 "kind": "action",
                 "request_id": request_id,
@@ -652,6 +665,10 @@ class FrankaRolloutPolicyServer:
             },
             {"action": action_array},
         )
+        self._held_response = response
+        self._hold_remaining = getattr(self, 'action_stride', 1)-1
+        return response
+
 
 
 def _send_error(

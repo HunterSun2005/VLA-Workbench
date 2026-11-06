@@ -143,7 +143,8 @@ class RLTokenConfig(PreTrainedConfig):
 
     @property
     def action_delta_indices(self) -> list[int]:
-        return list(range(self.chunk_size))
+        stride = self.action_contract['statistics']['contract']['sampling']['frame_stride'] if self.action_contract else 1
+        return [i*stride for i in range(self.chunk_size)]
 
     @property
     def reward_delta_indices(self) -> None:

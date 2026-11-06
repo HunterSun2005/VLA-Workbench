@@ -7,8 +7,6 @@ from fastapi.testclient import TestClient
 from vla.web.app import create_app
 from vla.web.config import SessionConfig, workspace_defaults
 from vla.web.backends import BaseBackend
-from vla.datacollection.start_teleop.gamepad_record import DEFAULT_CONFIG
-from vla.datacollection.start_teleop.gamepad_recording import load_recording_config, dataset_contract
 
 
 BOUNDS = {'left': {'min':[-.1,-.6,.02], 'max':[.85,.6,.8]}}
@@ -22,15 +20,6 @@ def test_invalid_workspace_rejected(bounds):
         SessionConfig.parse({'task':'test', 'workspace_bounds':bounds})
 
 
-def test_workspace_applies_to_robot_and_recording_contract():
-    config = SessionConfig.parse({'task':'test', 'workspace_bounds':BOUNDS})
-    control, recording = load_recording_config(DEFAULT_CONFIG)
-    assert SessionConfig().apply_robot_workspace(control.robot) is control.robot
-    robot = config.apply_robot_workspace(control.robot)
-    assert robot.workspace_min == tuple(BOUNDS['left']['min'])
-    assert robot.workspace_max == tuple(BOUNDS['left']['max'])
-    contract = dataset_contract(replace(control, robot=robot), recording, 'test')
-    assert contract['settings']['robot']['workspace_min'] == BOUNDS['left']['min']
 
 
 def test_dual_workspace_reaches_real_rollout_config(tmp_path):

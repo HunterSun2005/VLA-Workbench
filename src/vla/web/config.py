@@ -16,9 +16,11 @@ class SessionConfig:
     arms: str = 'single_left'
     source: str = 'gamepad'
     schema: str = 'full'
+    action_space: str = 'tcp'
     config_path: str = ''
     dataset_root: str = ''
     task: str = ''
+    tasks: tuple[str, ...] = ()
     resume: bool = False
     policy_kind: str = 'rlt'
     policy_path: str = ''
@@ -38,7 +40,7 @@ class SessionConfig:
         if not isinstance(data, dict) or set(data) - {f.name for f in fields(cls)}:
             raise ValueError('unknown session settings')
         result = cls(**data)
-        for name in ('workflow','arms','source','schema','config_path','dataset_root','task',
+        for name in ('workflow','arms','source','schema','action_space','config_path','dataset_root','task',
                      'policy_kind','policy_path','tokenizer_path','handover_path','mode','device',
                      'model_python','ros_workspace','ros_config','side_camera_serial'):
             value = getattr(result, name)
@@ -52,12 +54,17 @@ class SessionConfig:
         if type(result.resume) is not bool:
             raise ValueError('resume must be boolean')
         for name, choices in {'workflow': ('collect','deploy'), 'arms': ('single_left','dual'),
-                              'source': ('gamepad','gello'), 'schema': ('full',),
+                              'source': ('gamepad','gello'), 'schema': ('full',), 'action_space': ('joint','tcp'),
                               'policy_kind': ('sft','rlt'), 'mode': ('vla','rlt','auto')}.items():
             if getattr(result, name) not in choices:
                 raise ValueError(f'invalid {name}')
-        if result.workflow == 'deploy' and result.source != 'gamepad':
-            raise ValueError('deployment intervention uses gamepad')
+        if (not isinstance(result.tasks, (list, tuple)) or any(
+                not isinstance(task, str) or not task.strip() or len(task) > 4096 or '\x00' in task
+                for task in result.tasks)):
+            raise ValueError('invalid task prompts')
+        result = replace(result, tasks=tuple(dict.fromkeys(result.tasks)))
+        if result.tasks and result.task not in result.tasks:
+            raise ValueError('tasks must include the current task')
         if not result.task.strip():
             raise ValueError('task is required')
         if result.workflow == 'deploy' and result.policy_kind == 'sft' and result.mode != 'vla':
@@ -69,10 +76,10 @@ class SessionConfig:
     def validate_camera_serials(self):
         if self.camera_serials is None:
             return
-        if self.workflow != 'collect' or self.ros:
+        if self.workflow != 'collect':
             raise ValueError('独立相机角色设置仅用于单臂 gamepad 采集；ROS 路线请使用硬件配置')
         import re
-        if not isinstance(self.camera_serials, dict) or set(self.camera_serials) - {'base', 'left_wrist'}:
+        if not isinstance(self.camera_serials, dict) or set(self.camera_serials) - set(self.cameras):
             raise ValueError('相机角色仅支持 base / left_wrist')
         for value in self.camera_serials.values():
             if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value):
@@ -128,7 +135,7 @@ class SessionConfig:
 
     @property
     def ros(self):
-        return self.arms == 'dual' or self.source == 'gello'
+        return True
 
     @property
     def cameras(self):
@@ -137,8 +144,6 @@ class SessionConfig:
     def default_config(self):
         if self.config_path:
             return Path(self.config_path).expanduser().resolve()
-        if self.workflow == 'collect' and self.source == 'gamepad' and not self.ros:
-            return resource('datacollection/start_teleop/configs/single_left_gamepad_record.yaml')
         suffix = 'dual' if self.arms == 'dual' else 'single_left_sft_takeover'
         return resource(f'datacollection/franka_robotiq_rollout/configs/{suffix}.yaml')
 
@@ -156,11 +161,7 @@ def workspace_defaults(config):
     if config.workflow != 'collect' or config.source != 'gamepad':
         return {}
     raw = yaml.safe_load(config.default_config().read_text())
-    if config.arms == 'single_left':
-        bounds = raw['robot']['workspace']
-        result = {'left': {'min': bounds['min'], 'max': bounds['max']}}
-    else:
-        result = {arm['name']: {'min':arm['workspace_min'], 'max':arm['workspace_max']} for arm in raw['arms']}
+    result = {arm['name']: {'min':arm['workspace_min'], 'max':arm['workspace_max']} for arm in raw['arms']}
     replace(config, workspace_bounds=result).validate_workspace()
     return result
 
@@ -168,16 +169,14 @@ def workspace_defaults(config):
 def collection_camera_serials(config, hardware=None):
     """Resolve the selected collection cameras without opening any device."""
     config.validate_camera_serials()
-    if config.ros:
-        from .hardware import preset
-        values = {**preset(config.arms), **(hardware or {})}
-        keys = {'base':'BASE_CAMERA_SERIAL', 'left_wrist':'LEFT_WRIST_CAMERA_SERIAL',
-                'right_wrist':'RIGHT_WRIST_CAMERA_SERIAL'}
-        serials = {role:values[keys[role]] for role in config.cameras if role != 'side'}
-    else:
-        import yaml
-        raw = yaml.safe_load(config.default_config().read_text())
-        serials = {role:str(raw['robot']['cameras'][role]['serial']) for role in ('base','left_wrist')}
+    from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
+    rollout = load_rollout_config(config.default_config())
+    serials = {camera.name: camera.serial for camera in rollout.cameras}
+    keys = {'base':'BASE_CAMERA_SERIAL', 'left_wrist':'LEFT_WRIST_CAMERA_SERIAL',
+            'right_wrist':'RIGHT_WRIST_CAMERA_SERIAL'}
+    for role, key in keys.items():
+        if role in serials and hardware and hardware.get(key):
+            serials[role] = hardware[key]
     if config.camera_serials:
         serials.update(config.camera_serials)
     if config.side_camera_serial:
@@ -280,12 +279,18 @@ def preflight(config, *, demo=False, root=None):
         try:
             cfg = json.loads((Path(config.policy_path).expanduser() / 'config.json').read_text())
             kind = cfg.get('type')
-            if kind != ('pi05' if config.policy_kind == 'sft' else 'rlt_ac'):
+            if kind not in (('pi05', 'vla_pi05') if config.policy_kind == 'sft' else ('rlt_ac',)):
                 errors.append('模型类型与选择的 SFT/RLT 不匹配')
-            dim = 20 if config.arms == 'dual' else 10
-            for group, key in [('input_features','observation.state'), ('output_features','action')]:
-                if cfg.get(group, {}).get(key, {}).get('shape') != [dim]:
-                    errors.append(f'{key} 需要 {dim} 维')
+            from vla.actions.metadata import checkpoint_contract
+            from vla.actions import ActionSpec
+            contract = checkpoint_contract(config.policy_path)
+            spec = ActionSpec.from_dict(contract['action_spec'])
+            expected_arms = ('left', 'right') if config.arms == 'dual' else ('left',)
+            if spec.arms != expected_arms:
+                errors.append('checkpoint 机械臂顺序不匹配')
+            checks.append(f'动作空间: {spec.space}; 训练表示: {spec.representation}; 传输目标: absolute')
+            if cfg.get('output_features', {}).get('action', {}).get('shape') != [spec.dim]:
+                errors.append('动作维度与 checkpoint 契约不一致')
             expected = {f'observation.images.{r}' for r in config.cameras}
             actual = {k for k in cfg.get('input_features', {}) if k.startswith('observation.images.')}
             if actual != expected:

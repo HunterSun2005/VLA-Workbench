@@ -27,9 +27,18 @@ def install_action_training(trainer):
                 raise ValueError('training dataset changed since action statistics were computed')
             if tuple(info['features']['action']['names']) != spec.action_fields:
                 raise ValueError('dataset action names disagree with action contract')
+            from vla.actions.metadata import validate_mixture
+            recording = info.get('recording_contract') or info.get('processing', {}).get('source_contract', {}).get('recording_contract')
+            if recording:
+                validate_mixture([recording], allow_derived=bool(contract.get('sources', {}).get('allow_derived', False)))
             if 'observation.anchor' not in info['features']:
                 raise ValueError('training dataset lacks independent raw anchors')
-        return original_datasets(cfg)
+        result = original_datasets(cfg)
+        if contract and cfg.policy.type in ('vla_pi05', 'rlt_token'):
+            from vla.adapters.lerobot.action_dataset import ActionDataset
+            sampling = contract['statistics']['contract']['sampling']
+            return tuple(ActionDataset(ds, sampling) if ds is not None else None for ds in result)
+        return result
 
     def processors(policy_cfg, **kwargs):
         contract = getattr(policy_cfg, 'action_contract', None)

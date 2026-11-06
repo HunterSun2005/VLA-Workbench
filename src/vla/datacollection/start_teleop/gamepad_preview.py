@@ -26,6 +26,16 @@ SLOT_SIZE = HEADER_SIZE + int(np.prod(SHAPE))
 ROLES = ("base", "left_wrist")
 
 
+def configure_roles(roles):
+    global ROLES, SHAPE, SLOT_SIZE
+    roles=tuple(roles)
+    if not roles or len(roles)>4 or len(set(roles))!=len(roles):
+        raise ValueError('preview needs one to four distinct camera roles')
+    ROLES=roles
+    SHAPE=(len(roles),224,224,3)
+    SLOT_SIZE=HEADER_SIZE+int(np.prod(SHAPE))
+
+
 def write_slot(slot, images, status):
     """One writer, one reader, latest frame only; odd sequence means in progress."""
     for role in ROLES:
@@ -67,11 +77,11 @@ def render_frame(images, status, *, now=None):
     import cv2
 
     now = time.monotonic() if now is None else now
-    canvas = np.zeros((560, 896, 3), dtype=np.uint8)
+    canvas = np.zeros((560, 448*len(ROLES), 3), dtype=np.uint8)
     for index, role in enumerate(ROLES):
         image = cv2.cvtColor(images[index], cv2.COLOR_RGB2BGR)
         canvas[60:508, index * 448:(index + 1) * 448] = cv2.resize(image, (448, 448))
-        cv2.putText(canvas, "BASE" if role == "base" else "LEFT WRIST", (index * 448 + 12, 51),
+        cv2.putText(canvas, role.replace("_", " ").upper(), (index * 448 + 12, 51),
                     cv2.FONT_HERSHEY_SIMPLEX, .55, (220, 220, 220), 1, cv2.LINE_AA)
     critical = status.get("critical") == "critical"
     phase_label = "RLT FULL" if status.get("full_episode") else f"critical {'ON' if critical else 'OFF'}"
@@ -83,7 +93,7 @@ def render_frame(images, status, *, now=None):
     age = now - status.get("captured_at", 0.)
     if status.get("camera_error") or age > .5 or age < 0:
         message = "CAMERA UNAVAILABLE / STALE - do not treat this as a live image"
-        cv2.rectangle(canvas, (0, 255), (895, 295), (0, 0, 100), -1)
+        cv2.rectangle(canvas, (0, 255), (448*len(ROLES)-1, 295), (0, 0, 100), -1)
         cv2.putText(canvas, message, (10, 280), cv2.FONT_HERSHEY_SIMPLEX, .57, (255, 255, 255), 1, cv2.LINE_AA)
     cv2.putText(canvas, "q/Esc/window close: preview only. Recording keys: use the TERMINAL.", (12, 538),
                 cv2.FONT_HERSHEY_SIMPLEX, .55, (220, 220, 220), 1, cv2.LINE_AA)
@@ -166,7 +176,7 @@ class CameraPreview:
             self._slot = mmap.mmap(self._file.fileno(), SLOT_SIZE)
             self._log = (self.runtime / "camera-preview.log").open("w")
             self._process = subprocess.Popen(
-                [sys.executable, str(Path(__file__).resolve()), "--slot", str(path)],
+                [sys.executable, str(Path(__file__).resolve()), "--slot", str(path), "--roles", *ROLES],
                 stdin=subprocess.DEVNULL, stdout=self._log, stderr=self._log,
                 start_new_session=True, cwd=self.runtime,
             )
@@ -235,7 +245,9 @@ class CameraPreview:
 def main():
     parser = argparse.ArgumentParser(description="Display existing gamepad recording frames; never opens cameras")
     parser.add_argument("--slot", type=Path, required=True)
+    parser.add_argument("--roles", nargs="+", default=list(ROLES))
     args = parser.parse_args()
+    configure_roles(args.roles)
     import resource
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     with args.slot.open("rb") as stream, mmap.mmap(stream.fileno(), SLOT_SIZE, access=mmap.ACCESS_READ) as slot:

@@ -335,11 +335,13 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     config_path = Path(path).expanduser().resolve()
     with config_path.open(encoding="utf-8") as stream:
         raw = _mapping(yaml.safe_load(stream), "rollout config")
+    if "robot" in raw or raw.get("backend") == "franky":
+        raise ValueError("Legacy Franky configuration removed; migrate explicitly to a ROS2 rollout YAML")
     if raw.get("version") != 1:
         raise ValueError("rollout config version must be 1")
     backend = str(raw.get("backend", "ros2"))
-    if backend not in {"franky", "ros2"}:
-        raise ValueError("rollout backend must be 'franky' or 'ros2'")
+    if backend != "ros2":
+        raise ValueError("Legacy Franky configuration is unsupported; migrate explicitly to the ROS2 rollout YAML")
     from vla.actions import ActionSpec
     ActionSpec(space=str(raw.get("action_space", "tcp")))
     if raw.get("input_source", "gamepad") not in ("gamepad", "gello"):
@@ -369,8 +371,8 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     gamepad_profile = control.get("gamepad_profile")
     if gamepad_profile not in (None, "sft_record"):
         raise ValueError("gamepad_profile must be sft_record or omitted")
-    if gamepad_profile is not None and backend != "franky":
-        raise ValueError("sft_record gamepad profile requires the Franky backend")
+    if gamepad_profile is not None:
+        raise ValueError("Legacy gamepad profile: migrate to the ROS2 control configuration")
     arms_raw = raw.get("arms")
     cameras_raw = raw.get("cameras")
     if not isinstance(arms_raw, list) or len(arms_raw) not in {1, 2}:
@@ -475,7 +477,7 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         )
         if any(index < 0 for index in indices):
             raise ValueError(f"{arm.name}.gamepad axis/button indices must be non-negative")
-        if backend == "franky" and len(set(indices[:6])) != 6:
+        if len(set(indices[:6])) != 6:
             raise ValueError(f"{arm.name}.gamepad stick and trigger axes must be distinct")
         if arm.gamepad.joint7_button_sign not in {-1.0, 1.0}:
             raise ValueError(

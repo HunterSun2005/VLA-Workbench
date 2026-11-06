@@ -26,8 +26,6 @@ lerobot = [
     "evdev>=1.7",
 ]
 franka = [
-    "franky-control==1.1.4",
-    "pymodbus[serial]>=3.8,<4",
     "pyrealsense2>=2.54.2; python_version >= '3.12'",
 ]
 test = ["pytest>=8.1", "pytest-timeout>=2.4"]

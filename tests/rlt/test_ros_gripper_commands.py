@@ -47,68 +47,40 @@ def ros_transport(ros_module, monkeypatch):
 
 
 @pytest.mark.parametrize('arm_name', ['left', 'right'])
-def test_gamepad_rows_record_submitted_goals_and_latched_hold(ros_transport, arm_name, capsys):
+def test_gamepad_rows_record_submitted_goals_and_latched_hold(ros_transport, arm_name):
     m = ros_transport
     arm = next(a for a in load_rollout_config(DEFAULT_CONFIG).arms if a.name == arm_name)
     c = object.__new__(m.RolloutCollector)
-    c.config = NS(arms=(arm,), gamepad_gripper_speed=.4, subtasks=(), control_discontinuity_timeout_s=.1)
-    goals = []
-    def submit(goal):
-        goals.append(goal.command.position)
-        return Future()  # Transport only: no action server or robot.
-    c._gripper_action_clients = {arm_name: NS(send_goal_async=submit)}
+    c.config = NS(gamepad_gripper_speed=.4, arms=(arm,))
+    goals, faults = [], []
+    c._gripper_action_clients = {arm_name: NS(send_goal_async=lambda goal: (goals.append(goal.command.position) or Future()))}
     c._gripper_goal_futures = set()
     c._gripper_speed_publishers = {arm_name: Messages()}
     c._gripper_publishers = {arm_name: Messages()}
-    c._gripper_drive_publishers = {arm_name: Messages()}
     c._joint_publishers = {arm_name: NS(publish=lambda _: None)}
     c.get_clock = lambda: NS(now=lambda: NS(to_msg=lambda: None))
-    c.servos = {arm_name: NS(model=NS(joint_names=[f'j{i}' for i in range(7)]),
-                            forward=lambda _: (np.array([.4, 0., .3]), np.eye(3)))}
-    c._last_applied_control = (m.COLLECTOR_HUMAN, 'vla')
-    c._recording = c.demonstration = True
-    c._video_writers = {}
-    c._states, c._actions, c._frame_times = [], [], []
-    c._annotations = {'complementary_info.phase': []}
-    c._last_command_snapshot = None
-    c._gamepad_targets = {}
-    c._measured_joints = lambda a, msg: np.zeros(7)
-    values = {f'{arm_name}.robot_state': NS(f_t_ee=pose_message()),
-              f'{arm_name}.measured_joint': NS(),
-              f'{arm_name}.gripper_state': NS(name=[arm.gripper_joint_name], position=[0.4])}
-    c._initialize_episode_hold(values)
-    assert len(goals) == 1 and c._gripper_drive_publishers[arm_name].values == []
+    c.servos = {arm_name: NS(model=NS(joint_names=[f'j{i}' for i in range(7)]))}
+    c.coordinator = NS(owner='gamepad')
+    c._last_gripper_goal = {}
+    c._publish_sequence = 0
+    c._latch_fault = faults.append
     target = NS(gripper=.5, gripper_direction=0)
-    for motion, measured, expected, count in [(1., .2, 1., 2), (1., .4, 1., 2),
-                                              (0., .37, .37, 3), (0., .41, .37, 3),
-                                              (-1., .6, 0., 4)]:
+    for motion, measured, expected, count in [(1., .2, 1., 1), (1., .4, 1., 1),
+                                              (0., .37, .37, 2), (0., .41, .37, 2),
+                                              (-1., .6, 0., 3)]:
         c._update_gamepad_gripper(arm, target, measured, motion)
+        c._coordinated_publish(arm_name, np.zeros(7), target.gripper, 1, 1)
         assert target.gripper == expected and len(goals) == count
-        c._publish_commands({arm_name: (np.zeros(7), target.gripper)}, m.COLLECTOR_HUMAN, 0., publish_gripper=False)
-        state = np.zeros(50, np.float32)
-        state[9] = measured * .085
-        c._record_frame(state, values, {}, c._last_command_snapshot.published_at_ns)
-        assert c._actions[-1][9] == pytest.approx(expected)
-        assert c._states[-1][9] == pytest.approx(measured * .085)
-    assert c._gripper_drive_publishers[arm_name].values == []
-    c._publish_arm_command(arm, np.zeros(7), .8)
-    assert c._gripper_drive_publishers[arm_name].values == [.8]
-    assert c._gripper_publishers[arm_name].values[-1] == .8
-    before = target.gripper, target.gripper_direction
-    def fail(_):
-        raise RuntimeError('submission failed')
-    c._gripper_action_clients[arm_name].send_goal_async = fail
-    with pytest.raises(RuntimeError, match='submission failed'):
-        c._update_gamepad_gripper(arm, target, .22, 0.)
-    assert (target.gripper, target.gripper_direction) == before
-
-    # Rejection/result errors remain visible, never converted into sensor values.
+        assert c._gripper_publishers[arm_name].values[-1] == expected
+    # Policy's intermediate aperture passes through the identical adapter unchanged.
+    c.coordinator.owner = 'policy'
+    c._coordinated_publish(arm_name, np.zeros(7), .73, 2, 1)
+    assert goals[-1] == pytest.approx(arm.gripper_closed_position + .73*(arm.gripper_open_position-arm.gripper_closed_position))
     rejected = Future(); rejected.set_result(NS(accepted=False))
     c._gripper_goal_response(arm_name, rejected)
     failed = Future(); failed.set_exception(RuntimeError('execution failed'))
     c._gripper_goal_result(arm_name, failed)
-    errors = capsys.readouterr().err
-    assert "rejected" in errors and "execution failed" in errors
+    assert len(faults) == 2
 
 
 @pytest.fixture
@@ -239,9 +211,9 @@ def test_collector_preflight_requires_drive_consumer_not_recording_listener(ros_
     c._snapshot = lambda **_: None
     missing.update(a.command_gripper_topic for a in c.config.arms)
     assert c._preflight_problems() == []
-    missing.add(c.config.arms[0].gripper_drive_topic)
+    c._gripper_action_clients[c.config.arms[0].name].server_is_ready = lambda: False
     problems = c._preflight_problems()
-    assert len(problems) == 1 and c.config.arms[0].gripper_drive_topic in problems[0]
+    assert len(problems) == 1 and 'gripper' in problems[0]
 
 
 @pytest.mark.parametrize("managed", [False, True], ids=["terminal", "web"])

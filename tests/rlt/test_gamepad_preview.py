@@ -8,7 +8,6 @@ import pytest
 
 from vla.datacollection.start_teleop import gamepad_preview as preview
 from vla.datacollection.start_teleop import gamepad_record as entry
-from vla.robots.franka_robotiq.robot import FrankaRobotiqRobot
 
 
 def images():
@@ -183,24 +182,3 @@ def test_gui_spawn_failure_is_optional(tmp_path, monkeypatch):
     with preview.CameraPreview(tmp_path, lambda: None, report=messages.append):
         pass
     assert any("recording remains available" in message for message in messages)
-
-
-def test_camera_buffer_api_never_touches_arm_or_connects():
-    expected = object()
-    class Camera:
-        def snapshot(self):
-            return expected
-        def connect(self):
-            pytest.fail("camera connected again")
-    robot = SimpleNamespace(_camera=Camera())
-    assert FrankaRobotiqRobot.get_camera_preview_snapshot(robot) is expected
-
-
-@pytest.mark.parametrize("extra,enabled", [([], True), (["--no-preview"], False)])
-def test_cli_preview_default_and_headless_override(tmp_path, monkeypatch, extra, enabled):
-    monkeypatch.setattr(entry, "recording_preflight", lambda *a: None)
-    calls = []
-    monkeypatch.setattr(entry, "run", lambda *a, **kw: calls.append(kw))
-    monkeypatch.setattr("sys.argv", ["record", "--execute", "--dataset-root", str(tmp_path), "--task", "test", *extra])
-    entry.main()
-    assert calls == [{"preview": enabled}]

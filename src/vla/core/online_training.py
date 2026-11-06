@@ -336,23 +336,28 @@ def load_frame_annotations(
 class _TimedActionDataset(torch.utils.data.Dataset):
     """Assemble explicit same-segment action rows; video timestamps stay unchanged."""
 
-    def __init__(self, dataset, annotations, chunk_length, action_dim):
+    def __init__(self, dataset, annotations, chunk_length, action_dim, action_stride=1):
         self.dataset, self.annotations = dataset, annotations
         self.chunk_length, self.action_dim = chunk_length, action_dim
+        self.action_stride = action_stride
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, index):
         item = dict(self.dataset[index])
-        actions = torch.zeros(self.chunk_length, self.action_dim)
+        first = torch.as_tensor(self.dataset.hf_dataset[index]['action'])[:self.action_dim]
+        actions = first.repeat(self.chunk_length, 1)
+        is_pad = torch.ones(self.chunk_length, dtype=torch.bool)
         segment = self.annotations[index]["segment_id"]
         for offset in range(self.chunk_length):
-            row = self.annotations.get(index + offset)
+            row = self.annotations.get(index + offset * self.action_stride)
             if row is None or not row["action_valid"] or row["segment_id"] != segment:
                 break
-            raw = self.dataset.hf_dataset[index + offset]["action"]
-            actions[offset] = torch.as_tensor(raw)[:self.action_dim]
+            raw = self.dataset.hf_dataset[index + offset * self.action_stride]["action"]
+            actions[offset:] = torch.as_tensor(raw)[:self.action_dim]
+            is_pad[offset] = False
+        item['action_is_pad'] = is_pad
         item["action"] = actions
         return item
 
@@ -428,7 +433,12 @@ def encode_saved_episode(
     fps: float | None = None,
     require_timing: bool = False,
     require_full_episode: bool = False,
+    action_stride: int = 1,
 ) -> tuple[list[ReplayTransitionRecord], int]:
+    if type(action_stride) is not int or action_stride < 1:
+        raise ValueError('action_stride must be positive')
+    if action_stride != 1 and not require_timing:
+        raise ValueError('sparse online actions require physical timing annotations')
     annotations = load_frame_annotations(dataset, episode_start, episode_stop)
     if require_full_episode and (warmup or any(
         float(row["phase"]) != 1.0
@@ -442,7 +452,7 @@ def encode_saved_episode(
         annotations,
         episode_start=episode_start,
         episode_stop=episode_stop,
-        chunk_length=chunk_length,
+        chunk_length=chunk_length*action_stride,
         stride=stride,
         fps=fps,
     )
@@ -458,7 +468,7 @@ def encode_saved_episode(
         return [], int(warmup_steps)
 
     if require_timing:
-        dataset = _TimedActionDataset(dataset, annotations, chunk_length, action_dim)
+        dataset = _TimedActionDataset(dataset, annotations, chunk_length, action_dim, action_stride)
 
     encode_indices = sorted(
         {value for spec in specs for value in (spec.anchor_frame, spec.next_frame)}
@@ -536,16 +546,17 @@ def encode_saved_episode(
     for spec in specs:
         current = encoded[spec.anchor_frame]
         following = encoded[spec.next_frame]
+        action_steps = (spec.actual_steps + action_stride - 1)//action_stride
         exec_chunk = current["exec_chunk"].clone()
         ref_chunk = supervision_reference(
-            exec_chunk, current["ref_chunk"], annotations, spec.anchor_frame, spec.actual_steps,
+            exec_chunk, current["ref_chunk"], annotations, spec.anchor_frame, action_steps, action_stride=action_stride,
         )
-        if spec.actual_steps < chunk_length:
-            exec_chunk[spec.actual_steps :].zero_()
-            ref_chunk[spec.actual_steps :].zero_()
+        if action_steps < chunk_length:
+            exec_chunk[action_steps :].zero_()
+            ref_chunk[action_steps :].zero_()
         reward = torch.zeros(chunk_length, dtype=torch.float32)
         if spec.terminal and episode_success:
-            reward[spec.actual_steps - 1] = 1.0
+            reward[action_steps - 1] = 1.0
         source, intervention = _transition_source(annotations, spec, warmup=warmup)
         records.append(
             ReplayTransitionRecord(
@@ -561,7 +572,9 @@ def encode_saved_episode(
                     'absolute_exec_chunk': current['absolute_exec_chunk']} if 'action_anchor' in current else {}),
                     "done": torch.tensor(float(spec.terminal)),
                     "intervention": torch.tensor(intervention),
-                    "actual_steps": torch.tensor(spec.actual_steps, dtype=torch.int64),
+                    "actual_steps": torch.tensor(action_steps, dtype=torch.int64),
+                    **({'elapsed_steps': torch.tensor(spec.actual_steps),
+                        'reward_offsets': torch.clamp(torch.arange(1,chunk_length+1)*action_stride-1, max=spec.actual_steps-1)} if action_stride != 1 else {}),
                     "source": torch.tensor(source, dtype=torch.int64),
                     "episode_id": torch.tensor(episode_id, dtype=torch.int64),
                     "is_critical": torch.tensor(1.0),
@@ -1123,6 +1136,8 @@ class OnlineRLTSession:
             fps=self.fps,
             require_timing=True,
             require_full_episode=self.config.full_episode,
+            action_stride=(self.policy.config.action_contract["statistics"]["contract"]["sampling"]["frame_stride"]
+                           if getattr(self.policy.config, 'action_contract', None) else 1),
         )
         committed = self.replay.commit_episode(
             episode_key=episode_key,

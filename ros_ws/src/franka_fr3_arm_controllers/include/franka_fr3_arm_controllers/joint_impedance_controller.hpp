@@ -58,6 +58,7 @@ class JointImpedanceController : public controller_interface::ControllerInterfac
   uint64_t received_command_id_{0};
   uint64_t received_sequence_{0};
   bool command_watchdog_fault_{false};
+  std::atomic<uint64_t> diagnostic_sequence_{0};
   std::atomic<bool> diagnostic_fault_{false};
   std::array<std::atomic<double>, 7> diagnostic_positions_{};
   std::atomic<uint64_t> diagnostic_generation_{0};

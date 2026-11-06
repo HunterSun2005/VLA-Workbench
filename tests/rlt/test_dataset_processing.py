@@ -144,3 +144,53 @@ def test_rejections_cancel_and_source_lease(tmp_path):
     with pytest.raises(Exception):export_selection(index.root,tmp_path/'broken',choose(index))
     assert not (tmp_path/'broken').exists()
 
+
+
+def test_native_ros_export_preserves_anchors_and_requires_recorded_derivation(tmp_path):
+    from vla.actions import ActionSpec
+    from vla.actions.metadata import RecordingContract
+    from vla.dataset_metadata import load_info, write_metadata_sidecar
+    from vla.web.manager import Manager
+    from vla.web.processing_service import ProcessingService
+    source = tmp_path/'raw'
+    index = synthetic(source, episodes=1)
+    spec = ActionSpec('joint')
+    info = load_info(source)
+    info.update(action_spec=spec.to_dict(), recording_contract=RecordingContract(spec, 'device', 'tool', 'model', 'control').to_dict())
+    for field, dim, names in [('action', 8, spec.action_fields), ('observation.anchor', 8, spec.measured_fields),
+                               ('command.fk_tcp', 10, ActionSpec().action_fields)]:
+        info['features'][field] = {'dtype':'float64', 'shape':[dim], 'names':list(names)}
+    (source/'meta/info.json').write_text(json.dumps(info))
+    write_metadata_sidecar(source, info)
+    path = index.file(0)
+    rows = pd.read_parquet(path)
+    raw = np.zeros((8, 8)); raw[:, 0] = np.arange(8)*.01; raw[:, -1] = .5
+    anchor = raw.copy(); anchor[:, 0] -= .1
+    tcp = np.zeros((8, 10)); tcp[:, 3:9] = [1, 0, 0, 0, 1, 0]; tcp[:, -1] = .5
+    states = np.stack(rows['observation.state'])
+    for k, field in enumerate(ActionSpec().measured_fields):
+        states[:, index.names.index(field)] = tcp[:, k]
+    states[:, index.names.index('gripper_position')] *= .085
+    rows['observation.state'] = list(states)
+    rows['action'], rows['observation.anchor'], rows['command.fk_tcp'] = list(raw), list(anchor), list(tcp)
+    rows.to_parquet(path, index=False)
+    index = DatasetIndex(source)
+    before = hashes(source)
+    selected = {**choose(index, [index.names[-1]]), 'action_space':'joint'}
+    output = export_selection(source, tmp_path/'joint', selected, validate=False)
+    result = DatasetIndex(output)
+    assert result.frame(0, 2)['observation.anchor'] == pytest.approx(anchor[2])
+    assert result.frame(0, 2)['action'] == pytest.approx(raw[2])
+    with pytest.raises(ValueError, match='allow_derived'):
+        export_selection(source, tmp_path/'rejected', {**selected, 'action_space':'tcp'}, validate=False)
+    derived = export_selection(source, tmp_path/'tcp', {**selected, 'action_space':'tcp', 'allow_derived':True}, validate=False)
+    assert DatasetIndex(derived).frame(0, 2)['action'] == pytest.approx(tcp[2])
+    metadata = load_info(derived)
+    assert metadata['processing']['source_contract']['recording_contract']['derived_from'] == 'joint_command_fk'
+    service = ProcessingService(Manager(tmp_path))
+    draft = service.open('joint')['draft']
+    service.update(draft['dataset_id'], {'revision':0, 'preview_representation':'chunk_relative', 'preview_anchor_frame':1})
+    preview = service.frame(draft['dataset_id'], 0, 3)
+    assert preview['preview.chunk_relative_action'][0] == pytest.approx(.12)
+    assert preview['action'][-1] == .5
+    assert hashes(source) == before

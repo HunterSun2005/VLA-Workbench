@@ -18,14 +18,7 @@ from vla.datacollection.franka_robotiq_rollout.gamepad import (
     gripper_direction_transition,
 )
 from vla.datacollection.franka_robotiq_rollout.collect import configured_backend
-from vla.datacollection.franka_robotiq_rollout.collect_franky import (
-    COLLECTOR_HUMAN,
-    COLLECTOR_PI05,
-    COLLECTOR_RLT_ACTOR,
-    FrankyRolloutCollector,
-    episode_source_frame_counts,
-    rollout_state,
-)
+from vla.datacollection.franka_robotiq_rollout.recording import COLLECTOR_HUMAN, COLLECTOR_PI05, COLLECTOR_RLT_ACTOR, episode_source_frame_counts, rollout_state
 from vla.datacollection.franka_robotiq_rollout.joy_transport import (
     JoyPacket,
     JoyReceiver,
@@ -62,7 +55,7 @@ from vla.cli.serve_franka_rollout import (
 from vla.cli.extract_dataset_features import FEATURE_CONFIG_DIR, load_feature_config
 from vla.cli.merge_transition_caches import merge_transition_caches
 from vla_rollout_protocol import recv_packet, send_packet
-from vla.robots.franka_robotiq.robot import ACTION_FIELDS, FrankaRolloutSnapshot
+from vla.control.geometry import ACTION_FIELDS, FrankaRolloutSnapshot
 
 
 def _image_stats(count: int) -> dict[str, np.ndarray]:
@@ -153,6 +146,8 @@ def _mock_rollout_server() -> FrankaRolloutPolicyServer:
     server.robot_type = "franka_robotiq"
     server.action_dim = 10
     server.state_dim = 10
+    from vla.actions import ActionSpec
+    server.action_contract = {"action_spec": ActionSpec().to_dict()}
     server.camera_keys = ["observation.images.base", "observation.images.left_wrist"]
     server.camera_shapes_hwc = {key: [224, 224, 3] for key in server.camera_keys}
     server.state_names = [f"state_{index}" for index in range(10)]
@@ -188,6 +183,7 @@ def test_rollout_server_rejects_task_and_exact_camera_shape_mismatches() -> None
     server = _mock_rollout_server()
     arrays = {
         "observation.state": np.zeros(10, dtype=np.float32),
+        "observation.anchor": np.array([.4,0,.3,1,0,0,0,1,0,.5]),
         **{key: np.zeros((224, 224, 3), dtype=np.uint8) for key in server.camera_keys},
     }
     header = {
@@ -217,6 +213,7 @@ def test_rollout_server_inference_value_logging_is_opt_in(capsys) -> None:
     server = _mock_rollout_server()
     arrays = {
         "observation.state": np.zeros(10, dtype=np.float32),
+        "observation.anchor": np.array([.4,0,.3,1,0,0,0,1,0,.5]),
         **{key: np.zeros((224, 224, 3), dtype=np.uint8) for key in server.camera_keys},
     }
     header = {
@@ -248,6 +245,7 @@ def test_rollout_server_reset_forces_requested_vla_phase() -> None:
     )
     arrays = {
         "observation.state": np.zeros(10, dtype=np.float32),
+        "observation.anchor": np.array([.4,0,.3,1,0,0,0,1,0,.5]),
         **{key: np.zeros((224, 224, 3), dtype=np.uint8) for key in server.camera_keys},
     }
     response, _ = server.handle(
@@ -278,6 +276,7 @@ def test_rollout_server_rejects_actor_metadata_for_requested_vla_phase() -> None
     )
     arrays = {
         "observation.state": np.zeros(10, dtype=np.float32),
+        "observation.anchor": np.array([.4,0,.3,1,0,0,0,1,0,.5]),
         **{key: np.zeros((224, 224, 3), dtype=np.uint8) for key in server.camera_keys},
     }
 
@@ -457,7 +456,7 @@ def test_rollout_server_uses_vla_inference_adapter() -> None:
     assert "config.tokenizer_path = args.tokenizer_path" in source
 
 
-def test_rollout_server_loads_the_franky_rtc_profile() -> None:
+def test_rollout_server_loads_the_ros_rtc_profile() -> None:
     profile = (
         Path(__file__).parents[2]
         / "src/vla/configs/deployment/franka_single_left_pi05_rtc.yaml"
@@ -672,29 +671,23 @@ def test_rollout_yaml_profiles_are_single_and_dual() -> None:
     assert [arm.name for arm in single.arms] == ["left"]
     assert [arm.gamepad.joy_topic for arm in single.arms] == ["/left/gamepad/joy"]
     assert single.policy_state_dim == single.action_dim == 10
-    assert single.backend == "franky"
+    assert single.backend == "ros2"
     assert dual.backend == "ros2"
     assert single.task == "Place the white lid firmly onto the jig."
     assert single.image_size == (224, 224)
     assert single.cameras[1].serial == "346222073620"
     assert single.min_control_command_success_rate == pytest.approx(0.90)
     assert single.low_success_rate_samples == 3
-    assert (
-        single.rtc_deployment_config
-        == (
-            Path(__file__).parents[2]
-            / "src/vla/configs/deployment/franka_single_left_pi05_rtc.yaml"
-        ).resolve()
-    )
-    assert single.max_linear_velocity == pytest.approx(0.05)
-    assert single.max_angular_velocity == pytest.approx(0.20)
+    assert single.rtc_deployment_config is None
+    assert single.max_linear_velocity == pytest.approx(0.04)
+    assert single.max_angular_velocity == pytest.approx(0.30)
     assert single.velocity_tracking_tau_s == pytest.approx(0.15)
     assert single.target_smoothing_alpha == pytest.approx(0.25)
     assert single.velocity_smoothing == pytest.approx(0.30)
     assert single.smooth_angular_velocity is True
     assert single.policy_timeout_s == pytest.approx(30.0)
     assert single.control_discontinuity_timeout_s == pytest.approx(0.1)
-    assert single.joy_socket_path == Path("/tmp/vla_franka_single_left_joy.sock")
+    assert single.joy_socket_path == Path("/tmp/vla_rollout_joy.sock")
     assert single.gamepad_control_rate == pytest.approx(100.0)
     assert single.gamepad_joy_timeout_s == pytest.approx(0.20)
     assert single.gamepad_state_timeout_s == pytest.approx(0.50)
@@ -712,8 +705,8 @@ def test_rollout_yaml_profiles_are_single_and_dual() -> None:
     assert single.arms[0].gripper_open_position == pytest.approx(0.0)
     assert single.arms[0].gripper_closed_position == pytest.approx(0.8)
     assert single.arms[0].gripper_max_effort == pytest.approx(50.0)
-    assert single.arms[0].workspace_min == pytest.approx((0.10, -0.55, 0.05))
-    assert single.arms[0].workspace_max == pytest.approx((0.80, 0.50, 0.75))
+    assert single.arms[0].workspace_min == pytest.approx((0.20, -0.45, 0.05))
+    assert single.arms[0].workspace_max == pytest.approx((0.75, 0.45, 0.75))
     assert [arm.name for arm in dual.arms] == ["left", "right"]
     assert [arm.gripper_joint_name for arm in dual.arms] == [
         "robotiq_85_left_knuckle_joint",
@@ -747,10 +740,10 @@ def test_rollout_yaml_profiles_are_single_and_dual() -> None:
 @pytest.mark.parametrize(
     ("mutation", "error"),
     [
-        (lambda raw: raw["dataset"].update(fps=20), "FPS must match"),
+        (lambda raw: raw["dataset"].update(fps=20), "RTC deployment robot config"),
         (
             lambda raw: raw["arms"][0].update(workspace_min=[0.0, -0.45, 0.05]),
-            "must stay within",
+            "RTC deployment robot config",
         ),
     ],
 )
@@ -829,21 +822,16 @@ def test_rollout_collector_does_not_import_fine_teleop_node() -> None:
         Path(__file__).parents[2]
         / "src/vla/datacollection/franka_robotiq_rollout/collect_ros.py"
     ).read_text(encoding="utf-8")
-    franky_collector = (
-        Path(__file__).parents[2]
-        / "src/vla/datacollection/franka_robotiq_rollout/collect_franky.py"
-    ).read_text(encoding="utf-8")
     assert "import rclpy" not in dispatcher
-    assert "import rclpy" not in franky_collector
     assert "fine_teleop import" not in ros_collector
-    assert "action_from_joint_command" in ros_collector
-    assert "self.policy_client.invalidate()" in franky_collector
-    assert "self.robot.send_action" in franky_collector
+    assert "self.coordinator.accept" in ros_collector
+    assert "self.policy_client.invalidate()" in ros_collector
+    assert not (Path(__file__).parents[2]/"src/vla/datacollection/franka_robotiq_rollout/collect_franky.py").exists()
 
 
 def test_rollout_dispatcher_selects_backends() -> None:
     root = Path(__file__).parents[2] / "src/vla/datacollection/franka_robotiq_rollout/configs"
-    assert configured_backend(root / "single_left.yaml") == "franky"
+    assert configured_backend(root / "single_left.yaml") == "ros2"
     assert configured_backend(root / "dual.yaml") == "ros2"
 
 
@@ -886,252 +874,6 @@ def test_franky_rollout_state_preserves_29d_prefix_and_appends_joint_dynamics() 
     np.testing.assert_allclose(state[43:50], np.arange(7)+30)
 
 
-def test_franky_collector_switches_sources_without_recording_priming_frames(
-    monkeypatch, tmp_path: Path
-) -> None:
-    root = Path(__file__).parents[2] / "src/vla/datacollection/franka_robotiq_rollout/configs"
-    config = load_rollout_config(root / "single_left.yaml")
-
-    class FakeVideo:
-        def __init__(self, *_args, **_kwargs):
-            self.frames = []
-            self.image_stats = SimpleNamespace(
-                as_dict=lambda: _image_stats(len(self.frames))
-            )
-
-        def write(self, image):
-            self.frames.append(image)
-
-        def close(self):
-            pass
-
-        def abort(self):
-            pass
-
-    monkeypatch.setattr(
-        "vla.datacollection.franka_robotiq_rollout.collect_franky.AsyncVideoWriter",
-        FakeVideo,
-    )
-
-    class FakeWriter:
-        def next_episode_index(self):
-            return 0
-
-        def discard_uncommitted_files(self, _index):
-            pass
-
-        def video_path(self, _index, key):
-            return tmp_path / f"{key}.mp4"
-
-        def discard_latest_episode(self):
-            return None
-
-    class FakePolicy:
-        def __init__(self):
-            self.results = []
-            self.submissions = []
-            self.invalidations = 0
-            self.contract = {
-                "checkpoint_fingerprint": "test",
-                "state_dim": 10,
-                "action_dim": 10,
-                "robot_type": "franka_robotiq",
-                "task": config.task,
-                "camera_keys": [camera.feature_key for camera in config.cameras],
-                "camera_shapes_hwc": {
-                    camera.feature_key: [224, 224, 3] for camera in config.cameras
-                },
-                "state_names": list(schema.TCP_STATE_FIELDS),
-                "action_names": list(schema.ACTION_FIELDS),
-                "actions_stored_as": "absolute",
-                "use_relative_actions": False,
-                "fps": 30.0,
-                "rtc_enabled": True,
-                "rtc_execution_horizon": 10,
-                "rtc_queue_threshold": 28,
-            }
-
-        def raise_if_failed(self):
-            pass
-
-        def poll_latest(self):
-            return self.results.pop(0) if self.results else None
-
-        def submit(self, **kwargs):
-            self.submissions.append(kwargs)
-            return len(self.submissions) - 1
-
-        def invalidate(self):
-            self.invalidations += 1
-
-    class FakeJoy:
-        packet = JoyPacket(1, time.monotonic_ns(), (0, 0, 1, 0, 0, 1), (0,) * 11)
-        polls = 0
-
-        def poll_latest(self):
-            self.polls += 1
-            return self.packet
-
-        def require_fresh(self, _timeout):
-            return self.packet
-
-    class FakeRobot:
-        def __init__(self):
-            self.counter = 0
-            self.events = []
-            self.snapshot_errors = []
-
-        def get_rollout_snapshot(self):
-            if self.snapshot_errors:
-                raise self.snapshot_errors.pop(0)
-            self.counter += 1
-            pose = np.eye(4)
-            pose[:3, 3] = [0.4, -0.2, 0.3]
-            return FrankaRolloutSnapshot(
-                observed_at_ns=self.counter * 40_000_000,
-                pose=pose,
-                joint_positions=np.array([0, 0, 0, -1, 0, 1, 0], dtype=float),
-                base_wrench=np.zeros(6),
-                joint_torques=np.zeros(7), external_joint_torques=np.zeros(7), joint_velocities=np.zeros(7),
-                gripper_width=0.085,
-                gripper_open_fraction=1.0,
-                images={
-                    camera.name: np.zeros((224, 224, 3), dtype=np.uint8)
-                    for camera in config.cameras
-                },
-                image_timestamps={camera.name: 0.0 for camera in config.cameras},
-            )
-
-        def get_control_state(self):
-            pose = np.eye(4)
-            pose[:3, 3] = [0.4, -0.2, 0.3]
-            return SimpleNamespace(O_T_EE=pose.T.flatten(), q=[0, 0, 0, -1, 0, 1, 0], robot_mode=1, control_command_success_rate=1.0, time=time.monotonic())
-
-        def send_action(self, value):
-            self.events.append("policy")
-            return dict(zip(ACTION_FIELDS, value))
-
-        def send_human_command(self, *_args, **_kwargs):
-            self.events.append("human")
-            value = np.array([0.4, -0.2, 0.3, 1, 0, 0, 0, 1, 0, 1], dtype=float)
-            return dict(zip(ACTION_FIELDS, value))
-
-        def begin_human_control(self):
-            self.events.append("begin_human")
-
-        def end_human_control(self):
-            self.events.append("end_human")
-
-        def stop(self):
-            self.events.append("stop")
-
-        def command_debug_snapshot(self):
-            return {"motion_command_sent": True, "commanded_linear_velocity": [0, 0, 0]}
-
-        def check_health(self):
-            self.events.append("health")
-
-        def disconnect(self):
-            pass
-
-    policy, robot = FakePolicy(), FakeRobot()
-    collector = FrankyRolloutCollector(
-        config,
-        robot,
-        policy_client=policy,
-        joy_receiver=FakeJoy(),
-        writer=FakeWriter(),
-    )
-    action = np.array([0.4, -0.2, 0.3, 1, 0, 0, 0, 1, 0, 1], dtype=np.float32)
-
-    # This test covers recording transitions; teleop enable guards have their own tests.
-    collector._setup_teleop.mode = "active"
-    collector._sft_interface = False  # exercise the retained RLT transition interface
-    collector.start_episode()
-    collector.gamepad_tick()
-    assert collector.joy_receiver.polls == 1
-    collector.tick()
-    assert len(collector._states) == 0
-    assert policy.submissions[-1]["reset_episode"] is True
-
-    policy.results.append(
-        PolicyResult(0, action, "vla", True, 0.0, 0.0, "test", 0.01, time.monotonic())
-    )
-    collector.tick()
-    assert collector._command.source == COLLECTOR_PI05
-    assert len(collector._states) == 0
-    collector.tick()
-    assert len(collector._states) == 1
-
-    invalidations_before_timeout = policy.invalidations
-    robot.snapshot_errors.append(TimeoutError("camera skew"))
-    collector.tick()
-    assert collector.episode_active and not collector.faulted
-    assert collector._priming and collector._command is None
-    assert policy.invalidations == invalidations_before_timeout + 1
-    collector.tick()
-    assert policy.submissions[-1]["reset_episode"] is True
-    assert collector._consecutive_observation_timeouts == 0
-
-    collector._latest_policy_result = PolicyResult(
-        0,
-        action,
-        "vla",
-        False,
-        0.0,
-        0.0,
-        "test",
-        0.01,
-        time.monotonic() - 1.0,
-    )
-    frames_before_reprime = len(collector._states)
-    invalidations_before_reprime = policy.invalidations
-    submissions_before_reprime = len(policy.submissions)
-    collector.tick()
-    assert collector.episode_active and not collector.faulted
-    assert collector._priming and collector._command is None
-    assert len(collector._states) == frames_before_reprime
-    assert policy.invalidations == invalidations_before_reprime + 1
-    assert len(policy.submissions) == submissions_before_reprime
-    collector.tick()
-    assert len(collector._states) == frames_before_reprime
-    assert policy.submissions[-1]["reset_episode"] is True
-
-    collector.toggle_phase()
-    assert collector._priming and collector._command is None
-    policy.results.append(
-        PolicyResult(1, action, "rl", False, 1.0, 1.0, "test", 0.01, time.monotonic())
-    )
-    collector.tick()
-    assert collector._command.source == COLLECTOR_RLT_ACTOR
-    assert len(collector._states) == 1
-
-    collector.toggle_intervention()
-    collector.gamepad_tick()
-    assert collector._command.source == COLLECTOR_HUMAN
-    collector.tick()
-    assert collector._annotations["complementary_info.is_intervention"][-1] == [1.0]
-    collector.toggle_intervention()
-    assert collector._priming and collector._command is None
-    assert "begin_human" in robot.events and "end_human" in robot.events
-
-    robot.snapshot_errors.extend(
-        [TimeoutError("camera stalled")]
-        * collector._MAX_CONSECUTIVE_OBSERVATION_TIMEOUTS
-    )
-    for _ in range(collector._MAX_CONSECUTIVE_OBSERVATION_TIMEOUTS - 1):
-        collector.tick()
-        assert collector.episode_active and not collector.faulted
-    collector.tick()
-    assert collector.faulted and not collector.episode_active
-    assert collector._fault_reason == "TimeoutError: camera stalled"
-    invalidations_before_recovery = policy.invalidations
-    assert collector.recover_fault()
-    assert not collector.faulted and not collector.episode_active
-    assert collector._fault_reason is None
-    assert policy.invalidations == invalidations_before_recovery + 1
-    assert robot.events[-1] == "end_human"
-    assert robot.counter > 0
 
 
 def test_episode_source_frame_counts_are_critical_and_mutually_exclusive() -> None:
@@ -1154,183 +896,14 @@ def test_episode_source_frame_counts_are_critical_and_mutually_exclusive() -> No
     }
 
 
-def test_online_collector_never_deletes_a_saved_episode(capsys) -> None:
-    deleted = []
-    collector = object.__new__(FrankyRolloutCollector)
-    collector._faulted = False
-    collector._episode_active = False
-    collector.require_online = True
-    collector.writer = SimpleNamespace(
-        discard_latest_episode=lambda: deleted.append(True)
-    )
-
-    collector.discard_latest()
-
-    assert deleted == []
-    assert "keeps saved episodes immutable" in capsys.readouterr().out
 
 
-def test_fault_latch_blocks_historical_discard(capsys) -> None:
-    deleted = []
-    collector = object.__new__(FrankyRolloutCollector)
-    collector._faulted = True
-    collector._episode_active = False
-    collector.require_online = False
-    collector.writer = SimpleNamespace(
-        discard_latest_episode=lambda: deleted.append(True)
-    )
-
-    collector.discard_latest()
-
-    assert deleted == []
-    assert "请先执行故障恢复" in capsys.readouterr().out
 
 
-def test_franky_collector_aborts_partial_video_setup(
-    monkeypatch, tmp_path: Path
-) -> None:
-    root = Path(__file__).parents[2] / "src/vla/datacollection/franka_robotiq_rollout/configs"
-    config = load_rollout_config(root / "single_left.yaml")
-    opened = []
-
-    class FakeVideo:
-        def __init__(self, path, **_kwargs):
-            if opened:
-                raise RuntimeError("second camera failed")
-            self.path = path
-            self.aborted = False
-            opened.append(self)
-
-        def abort(self):
-            self.aborted = True
-
-    class FakeWriter:
-        def __init__(self):
-            self.discarded = []
-
-        def next_episode_index(self):
-            return 7
-
-        def discard_uncommitted_files(self, index):
-            self.discarded.append(index)
-
-        def video_path(self, index, key):
-            return tmp_path / str(index) / f"{key}.mp4"
-
-    monkeypatch.setattr(
-        "vla.datacollection.franka_robotiq_rollout.collect_franky.AsyncVideoWriter",
-        FakeVideo,
-    )
-    collector = object.__new__(FrankyRolloutCollector)
-    collector.config = config
-    collector.writer = FakeWriter()
-    collector._episode_active = False
-    collector._faulted = False
-    collector._fault_reason = None
-    collector._video_writers = {}
-    collector._preflight = lambda: None
-    collector.require_online = False
-
-    collector.start_episode()
-
-    assert opened[0].aborted
-    assert collector._video_writers == {}
-    assert collector.writer.discarded == [7, 7]
-    assert not collector._episode_active
 
 
-def test_franky_collector_closes_all_resources_after_stop_error() -> None:
-    events = []
-
-    class FakeRobot:
-        def stop(self):
-            events.append("stop")
-            raise RuntimeError("stop failed")
-
-        def disconnect(self):
-            events.append("disconnect")
-
-    collector = object.__new__(FrankyRolloutCollector)
-    collector._closed = False
-    collector._episode_active = False
-    collector._owns_policy_client = True
-    collector._owns_joy_receiver = True
-    collector.policy_client = SimpleNamespace(close=lambda: events.append("policy"))
-    collector.joy_receiver = SimpleNamespace(close=lambda: events.append("joy"))
-    collector.robot = FakeRobot()
-
-    with pytest.raises(RuntimeError, match="stop failed"):
-        collector.close()
-
-    assert collector._closed
-    assert events == ["stop", "policy", "joy", "disconnect"]
 
 
-def test_franky_collector_contract_setup_cleans_up_before_hardware_connect(
-    monkeypatch,
-) -> None:
-    root = Path(__file__).parents[2] / "src/vla/datacollection/franka_robotiq_rollout/configs"
-    config = load_rollout_config(root / "single_left.yaml")
-    events = []
-
-    class FakePolicy:
-        def __init__(self, *_args):
-            self.contract = {
-                "checkpoint_fingerprint": "test",
-                "state_dim": 10,
-                "action_dim": 10,
-                "robot_type": "franka_robotiq",
-                "task": config.task,
-                "camera_keys": [camera.feature_key for camera in config.cameras],
-                "camera_shapes_hwc": {
-                    camera.feature_key: [224, 224, 3] for camera in config.cameras
-                },
-                "state_names": list(schema.TCP_STATE_FIELDS),
-                "action_names": list(schema.ACTION_FIELDS),
-                "actions_stored_as": "absolute",
-                "use_relative_actions": False,
-                "fps": 30.0,
-                "rtc_enabled": True,
-                "rtc_execution_horizon": 10,
-                "rtc_queue_threshold": 28,
-            }
-
-        def close(self):
-            events.append("policy_closed")
-
-    class RejectingWriter:
-        def __init__(self, *_args, **_kwargs):
-            events.append("writer_checked")
-            raise RuntimeError("dataset contract mismatch")
-
-    class UnexpectedJoy:
-        def __init__(self, *_args, **_kwargs):
-            events.append("joy_created")
-
-    monkeypatch.setattr(
-        "vla.datacollection.franka_robotiq_rollout.collect_franky.AsyncPolicyClient",
-        FakePolicy,
-    )
-    monkeypatch.setattr(
-        "vla.datacollection.franka_robotiq_rollout.collect_franky.V30DatasetWriter",
-        RejectingWriter,
-    )
-    monkeypatch.setattr(
-        "vla.datacollection.franka_robotiq_rollout.collect_franky.JoyReceiver",
-        UnexpectedJoy,
-    )
-
-    with pytest.raises(RuntimeError, match="dataset contract mismatch"):
-        FrankyRolloutCollector(config, SimpleNamespace())
-
-    assert events == ["writer_checked", "policy_closed"]
-    source = (
-        Path(__file__).parents[2]
-        / "src/vla/datacollection/franka_robotiq_rollout/collect_franky.py"
-    ).read_text(encoding="utf-8")
-    assert source.index("collector = FrankyRolloutCollector") < source.index(
-        "robot.connect()"
-    )
 
 
 def test_rollout_policy_state_extracts_each_arms_first_10_of_50_dimensions() -> None:

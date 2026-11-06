@@ -141,20 +141,13 @@ def test_ac_resume_processor_keeps_cache_bypass():
     assert wrapped.steps == pre.steps
 
 
-def test_home_requires_explicit_valid_target():
+def test_old_automatic_home_config_requires_explicit_ros_migration(tmp_path):
     import yaml
-    from vla.paths import resource
-    from vla.cli.deploy_franka_pi05_rtc import _build_robot_config, _load_home_config
-    for path in resource("configs/deployment").glob("*.yaml"):
-        values = yaml.safe_load(path.read_text())
-        if "home" not in values.get("deployment", {}):
-            continue
-        cfg = _build_robot_config(values)
-        assert _load_home_config(values["deployment"], cfg) is None
-        assert values["deployment"]["home"]["target_action"] is None
-        values["deployment"]["home"]["enabled"] = True
-        with pytest.raises(ValueError, match="finite absolute 10D"):
-            _load_home_config(values["deployment"], cfg)
+    from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
+    path=tmp_path/'old-home.yaml'
+    path.write_text(yaml.safe_dump({'robot':{'type':'franka_robotiq'},'deployment':{'home':{'enabled':True}}}))
+    with pytest.raises(ValueError,match='Legacy Franky configuration'):
+        load_rollout_config(path)
 
 
 def test_all_lerobot_imports_resolve_including_lazy_entrypoints():

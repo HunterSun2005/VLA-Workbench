@@ -70,7 +70,7 @@ class PoseActions:
         if self.moving or status.get('state') != 'standby' or status.get('enabled') or status.get('recording') or status.get('saving') or status.get('error'):
             raise RuntimeError('请先结束／保存当前回合并软件暂停；姿态操作要求无故障待命状态')
         if self.driver is None:
-            self.driver = DemoPoseDriver(self.backend) if self.demo else ROSPoseDriver(self.backend) if self.backend.config.ros else FrankyPoseDriver(self.backend)
+            self.driver = DemoPoseDriver(self.backend) if self.demo else ROSPoseDriver(self.backend)
         if operation == 'pose_capture':
             note_text(args.get('note'))
             arm = args.get('arm')
@@ -110,50 +110,6 @@ class PoseActions:
                 self.finish(state, '已恢复，回到待命；夹爪未恢复' if state == 'completed' else '输入接管或控制暂停，已取消恢复')
         except Exception as error:
             self.finish('failed', str(error))
-
-
-class FrankyPoseDriver:
-    def __init__(self, backend):
-        self.b = backend
-        self.c = backend.session.controller
-
-    def read(self, arm):
-        if arm != 'left':
-            raise ValueError('本会话没有该机械臂')
-        from vla.datacollection.start_teleop.gamepad_teleop import pose_matrix
-        state = self.c._read_state()
-        pose, tool = pose_matrix(state.O_T_EE), pose_matrix(state.F_T_EE)
-        return pose_value(arm, self.c.config.robot.robot_ip, 'franky:base/EE', pose[:3,3], pose[:3,:3], tool[:3,3], tool[:3,:3])
-
-    def start(self, target):
-        from vla.datacollection.start_teleop.gamepad_teleop import PoseReturn
-        check_bounds(target, self.c.config.robot.workspace_min, self.c.config.robot.workspace_max)
-        if not (self.c.config.robot.human_linear_velocity_control and self.c.config.robot.human_angular_velocity_control):
-            raise ValueError('恢复姿态需要直接线速度和角速度控制配置')
-        self.c.enable()
-        if self.c.mode != 'active':
-            raise RuntimeError('无法启用恢复：检查机械臂状态，并松开手柄所有按键和摇杆')
-        self.c._pose_return = PoseReturn('saved pose', np.array(target['position']), np.array(target['rotation']), self.c.clock()+60)
-        self.c._pose_return_path = []
-
-    def tick(self, target):
-        if self.c.mode == 'fault':
-            raise RuntimeError(self.c.reason)
-        if self.c.mode != 'active':
-            return 'cancelled'
-        # Any input cancels BEFORE controller.tick, so gripper/shortcuts cannot
-        # run for one frame during cancellation. No implicit manual takeover.
-        if not self.c._neutral(self.c._packet()):
-            return 'cancelled'
-        current = self.read(target['arm'])
-        if reached(target, current, self.c.config.pose_shortcuts.position_tolerance_m,
-                   self.c.config.pose_shortcuts.orientation_tolerance_deg):
-            return 'completed'
-        if self.c._pose_return is None:
-            raise RuntimeError('恢复已中止，尚未达到保存姿态')
-
-    def stop(self):
-        self.c.pause('saved pose positioning stopped')
 
 
 class ROSPoseDriver:
@@ -204,82 +160,48 @@ class ROSPoseDriver:
         return self._state(arm)[0]
 
     def start(self, target):
-        from vla.datacollection.franka_robotiq_rollout.collect_ros import CartesianServo
         self.arm = target['arm']
         arm = self.arms[self.arm]
         check_bounds(target, arm.workspace_min, arm.workspace_max)
-        current, joints = self._state(self.arm)
-        if self.b.collector:
-            if not self.b.collector._neutral_gamepads():
-                raise RuntimeError('请松开双手柄并确认输入在线')
-            model = self.b.collector.servos[self.arm].model
-        else:
-            model = self.b.arbiters[self.b.arms.index(self.arm)].model
-        if np.any(joints < model.lower_limits) or np.any(joints > model.upper_limits):
-            raise ValueError('当前关节超出配置范围，拒绝自动拉回')
-        # Same bounded Cartesian solver as ROS rollout; separate tracking state
-        # and conservative speeds for unrecorded positioning.
-        self.servo = CartesianServo(model, replace(self.config,
-            max_linear_velocity=min(.03,self.config.max_linear_velocity),
-            max_angular_velocity=min(.15,self.config.max_angular_velocity),
-            max_joint_speed=min(.15,self.config.max_joint_speed)))
-        xyz, rotation = self.servo.forward_tcp(joints, np.array(current['tool']['position']), np.array(current['tool']['rotation']))
-        if not reached({**current, 'position':xyz, 'rotation':rotation}, current):
-            raise ValueError('运动学模型与实测 TCP 不一致，请检查基座、法兰及工具坐标系')
-        self.last_command = joints.copy()
+        self.read(self.arm)
+        c = self.b.collector
+        if not c._neutral_gamepads():
+            raise RuntimeError('请松开手柄并确认输入在线')
+        c._control_boundary('pose', reason='saved pose restore')
         self.last = time.monotonic()
 
-    def _publish(self, joints):
-        if self.b.collector:
-            self.b.collector._publish_arm_command(self.arms[self.arm], joints, 0., publish_gripper=False)
-        else:
-            from sensor_msgs.msg import JointState
-            node = self.b.arbiters[self.b.arms.index(self.arm)]
-            message = JointState()
-            message.header.stamp = node.get_clock().now().to_msg()
-            message.header.frame_id = self.arms[self.arm].base_link
-            message.name = list(node.model.joint_names)
-            message.position = np.asarray(joints).tolist()
-            node.joint_publisher.publish(message)
-
     def tick(self, target):
-        now = time.monotonic()
-        elapsed = now-self.last
-        if elapsed < .01:
-            return
-        self.last = now
-        if elapsed > .1:
-            raise RuntimeError('恢复控制循环超时，已停止')
-        if self.b.collector and not self.b.collector._neutral_gamepads():
+        from vla.actions import matrix_to_rot6d
+        c = self.b.collector
+        if c._faulted or c.coordinator.mode == 'fault':
+            raise RuntimeError(c._fault_reason or c.coordinator.reason)
+        if not c._neutral_gamepads():
             return 'cancelled'
-        current, joints = self._state(self.arm)
+        current = self.read(self.arm)
         compatible(target, current)
         if reached(target, current):
             return 'completed'
-        if np.max(np.abs(joints-self.last_command)) > .12:
-            raise RuntimeError('关节跟踪误差过大，已停止')
-        tool_p, tool_r = np.array(current['tool']['position']), np.array(current['tool']['rotation'])
-        dt = min(elapsed, .02)
-        command = self.servo.step(self.last_command, np.array(target['position']), np.array(target['rotation']), tool_p, tool_r, dt)
-        model = self.servo.model
-        if not np.isfinite(command).all() or np.any(command < model.lower_limits) or np.any(command > model.upper_limits):
-            raise RuntimeError('关节目标无效／超限')
-        xyz, rot = self.servo.forward_tcp(command, tool_p, tool_r)
-        arm = self.arms[self.arm]
-        check_bounds({'arm':self.arm,'position':xyz}, arm.workspace_min, arm.workspace_max)
-        self._publish(command)
-        self.last_command = command.copy()
+        if c.coordinator.mode != 'active':
+            return
+        now = time.monotonic()
+        dt = now-self.last
+        if dt < .01:
+            return
+        self.last = now
+        if dt > .1:
+            raise RuntimeError('恢复控制循环超时')
+        c._observe_control()
+        tcp = {}
+        for arm in c.config.arms:
+            pose = target if arm.name == self.arm else self.read(arm.name)
+            m = c.coordinator._measurements[arm.name]
+            tcp[arm.name] = (np.asarray(pose['position']), np.asarray(pose['rotation']), m.gripper)
+        action = c.coordinator.gamepad_target(tcp, 1/c.config.fps)
+        c.coordinator.accept(action, source='pose', generation=c.coordinator.generation)
+        c._track_control(min(dt, .05))
 
     def stop(self):
-        if self.arm is not None and self.last_command is not None:
-            # Hold fresh measured joints; if disconnected retain the last small
-            # bounded target. Never publish a stored or computed gripper target.
-            try:
-                _, joints = self._state(self.arm)
-            except Exception:
-                joints = self.last_command
-            self._publish(joints)
-        self.last_command = None
+        self.b.collector._control_boundary(reason='pose restore stopped')
         self.b.enabled = False
 
 

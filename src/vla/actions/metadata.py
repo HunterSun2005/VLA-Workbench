@@ -77,6 +77,8 @@ def checkpoint_contract(root):
     value = config.get('action_contract')
     if value is None:
         return load_model_contract(root/'action_contract.json')[2]
+    if value.get('version') != 1:
+        raise ValueError('missing or unsupported checkpoint action contract')
     spec = ActionSpec.from_dict(value['action_spec'])
     stats = value['statistics']
     sampling = SamplingSpec(**stats['contract']['sampling'])

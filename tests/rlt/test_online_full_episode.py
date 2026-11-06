@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from vla.datacollection.franka_robotiq_rollout.collect_franky import FrankyRolloutCollector
 from vla.cli.serve_franka_rollout import parse_args, FrankaRolloutPolicyServer
 from vla.core.online_replay import ReplayTransitionRecord
 from vla.core.online_training import OnlineRLTTrainingConfig, encode_saved_episode
@@ -52,26 +51,6 @@ def test_full_episode_trains_only_after_a_full_batch(tmp_path):
         session.close()
 
 
-def test_collector_starts_rl_and_ignores_phase_keys():
-    collector = object.__new__(FrankyRolloutCollector)
-    collector._episode_active = collector._faulted = False
-    collector.require_online = collector._full_episode = True
-    collector._preflight = lambda: None
-    collector.policy_client = SimpleNamespace(begin_episode=lambda: {"online_warmup": False}, invalidate=lambda: None)
-    collector.robot = SimpleNamespace(stop=lambda: None)
-    collector.writer = SimpleNamespace(next_episode_index=lambda: 0, discard_uncommitted_files=lambda _: None)
-    collector.config = SimpleNamespace(cameras=[])
-    collector._frame_features = {}
-    collector._skip_reasons = Counter()
-    collector._emit = lambda *args, **kwargs: None
-    collector.start_episode()
-    assert collector._phase == "rl" and collector._reset_policy_on_request
-    assert collector._episode_active and not collector._intervention
-    collector.toggle_phase()
-    assert collector._phase == "rl" and collector._pending_event is None
-    collector._intervention = True
-    collector.toggle_phase()
-    assert collector._phase == "rl" and collector._intervention
 
 
 def test_server_rejects_vla_request_in_full_episode_mode():
@@ -83,15 +62,6 @@ def test_server_rejects_vla_request_in_full_episode_mode():
         server.handle({"kind": "infer", "task": "test", "phase": "vla"}, {})
 
 
-def test_collector_rejects_vla_output_in_full_episode_mode():
-    collector = object.__new__(FrankyRolloutCollector)
-    collector._full_episode = True
-    collector._intervention = False
-    collector._phase = "rl"
-    collector.policy_client = SimpleNamespace(poll_latest=lambda: SimpleNamespace(
-        requested_phase="rl", phase=1.0, source_type=0.0))
-    with pytest.raises(RuntimeError, match="requires Actor output"):
-        collector._consume_policy_result()
 
 
 @pytest.mark.parametrize("bad_field", [None, "phase", "collector_policy_id"])

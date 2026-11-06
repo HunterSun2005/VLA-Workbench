@@ -117,6 +117,9 @@ def ros_module(monkeypatch):
         def create_timer(self, *_):
             pass
 
+        def destroy_node(self):
+            pass
+
     symbols = {
         "PyKDL": {}, "rclpy": {}, "rclpy.node": {"Node": Node},
         "rclpy.action": {"ActionClient": object},
@@ -127,7 +130,7 @@ def ros_module(monkeypatch):
         "franka_msgs.msg": {"FrankaRobotState": object},
         "rcl_interfaces.srv": {"GetParameters": object},
         "sensor_msgs.msg": {"JointState": object, "Joy": object},
-        "std_msgs.msg": {"Float32": object, "Float64MultiArray": object},
+        "std_msgs.msg": {"Float32": object, "Float64MultiArray": object, "UInt64": object},
         "vla.datacollection.franka_robotiq_single_left.auto_record": {
             k: object for k in ("AsyncVideoWriter", "KeyboardEvents", "RealSenseCamera", "prepare_image")},
         "vla.datacollection.start_teleop.franka_kinematics": {
@@ -154,12 +157,19 @@ def collector(ros_module, monkeypatch, tmp_path, request):
         monkeypatch.setattr(cls, name, lambda self: None)
     monkeypatch.setattr(cls, "_load_kinematic_model", lambda self, arm: None)
     monkeypatch.setattr(cls, "_preflight_problems", lambda self: [])
-    monkeypatch.setattr(cls, "_publish_arm_command", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cls, "_coordinated_publish", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cls, "_tool_definition", lambda self: {a.name: {'position': [0,0,0], 'rotation': np.eye(3).tolist()} for a in self.config.arms})
+    def reset(self, generation):
+        self._observe_control()
+        for arm in self.config.arms:
+            self.coordinator.acknowledge(arm.name, generation, 0, np.zeros(7), time.monotonic_ns())
+    monkeypatch.setattr(cls, '_request_controller_reset', reset)
     monkeypatch.setattr(cls, "_send_gripper_goal", lambda *args: None)
     monkeypatch.setattr(cls, "_restore_policy_gripper_speed", lambda self: pytest.fail("demo used policy gripper"))
     monkeypatch.setattr(module, "AsyncPolicyClient", lambda *args: pytest.fail("demo opened policy socket"))
     monkeypatch.setattr(module, "CartesianServo", lambda *args: SimpleNamespace(
-        reset_tracking=lambda: None, model=SimpleNamespace(joint_names=[f"j{i}" for i in range(7)]),
+        reset_tracking=lambda: None, model=SimpleNamespace(joint_names=[f"j{i}" for i in range(7)], lower_limits=np.full(7,-3.), upper_limits=np.full(7,3.)),
+        step=lambda *args: np.zeros(7),
         forward_tcp=lambda *args: (np.array([.4, 0., .3]), np.eye(3))))
 
     class Video:
@@ -215,7 +225,8 @@ def test_demo_enable_record_pause_and_fault(collector):
     c.enable_teleop()
     assert c._teleop_enabled and c._intervention
     c.start_episode()
-    assert c._recording and c._last_command_snapshot.source == 0
+    assert c._recording and c.coordinator.owner == "gamepad"
+    assert c._last_command_snapshot is None  # reset never fabricates a command label
     c.toggle_phase()
     c.next_subtask()
     assert c._phase == "rl" and c._subtask_index == 1 and c._intervention
@@ -241,14 +252,17 @@ def test_demo_save_preserves_stage_and_is_cache_demonstration(collector, monkeyp
     for offset in (0, 50):
         state[offset:offset+9] = action[:9]
         state[offset+9] = .085
-    monkeypatch.setattr(c, "_actual_action", lambda *args: action.copy())
+
     values, images = c._snapshot()
     for frame in range(12):
         action[10] += .001  # Left holds; only the right arm moves.
         if frame == 6:
             c.next_subtask()
             c.toggle_phase()
-            c._last_command_snapshot = replace(c._last_command_snapshot, phase=1.)
+
+        c.coordinator._next_accept = None
+        c.coordinator.accept(action.copy(), source='gamepad', generation=c.coordinator.generation)
+        c._track_control(.01)
         c._record_frame(state.copy(), values, images, time.monotonic_ns())
     c.finish_episode("success")
     assert c.writer.episode_count == 1 and not c._teleop_enabled
@@ -337,6 +351,8 @@ def test_demo_camera_poll_does_not_duplicate_images_and_faults_on_gap(collector,
     monkeypatch.setattr(c, "_record_frame", lambda *args: recorded.append(args[-1]))
     for camera in c.config.cameras:
         c._latest[f"camera.{camera.name}"] = (clock[0], None)
+    c._input_action = np.tile([.4,0,.3,1,0,0,0,1,0,1], 2)
+    c.coordinator.clock = lambda: clock[0]
     c._tick()
     c._tick()
     assert recorded == [clock[0]]
@@ -348,3 +364,87 @@ def test_demo_camera_poll_does_not_duplicate_images_and_faults_on_gap(collector,
     clock[0] += 100_000_000
     c._tick()
     assert c._faulted and not c._recording and not c._teleop_enabled
+
+
+def test_online_save_waits_for_terminal_observation_and_controller_reset(collector):
+    import threading
+    from vla.core.online_contract import TIMING_FEATURES
+    c=collector
+    c.enable_teleop(); c.start_episode()
+    c.require_online=True
+    c._extra_features.update(TIMING_FEATURES)
+    c._annotations.update({key:[] for key in TIMING_FEATURES})
+    c._phase='rl'; c._subtask_index=1
+    action=np.tile([.4,0,.3,1,0,0,0,1,0,.7],2)
+    state=np.zeros(100)
+    for off in (0,50):
+        state[off:off+9]=action[:9]
+        state[off+9]=.04
+    values,images=c._snapshot()
+    stamp=[time.monotonic_ns()]
+    c.coordinator.clock=lambda:stamp[0]
+    for _ in range(12):
+        c.coordinator._next_accept=None
+        c.coordinator.accept(action, source='gamepad', generation=c.coordinator.generation)
+        c._track_control(.01)
+        c._last_command_snapshot=replace(c._last_command_snapshot,published_at_ns=stamp[0])
+        c._record_frame(state.copy(),values,images,stamp[0])
+        stamp[0]+=33_333_333
+        c._complete_interval(stamp[0])
+    assert all(v==[1] for v in c._annotations['complementary_info.action_valid'])
+    c.finish_episode('success')
+    assert c._pending_finish=='success' and c._recording
+    c._record_frame(state.copy(),values,images,stamp[0])
+    c._annotations['complementary_info.segment_terminal'][-1]=[1]
+    c._at_boundary=True
+    # Writer schema is configured at construction in real online sessions.
+    c.writer.extra_features.update(TIMING_FEATURES)
+    c.finish_episode('success')
+    assert not c._recording and c._pending_online_save==(0,'success')
+    called=threading.Event()
+    c.policy_client=SimpleNamespace(process_saved_episode=lambda **kwargs:called.set(), close=lambda:None)
+    c.coordinator.mode='resetting'
+    c._online_save_tick()
+    assert not called.is_set()
+    c.coordinator.mode='standby'
+    c._online_save_tick()
+    assert called.wait(1)
+    c._online_worker.join(1)
+
+
+@pytest.mark.parametrize('space,arms', [('joint',1),('joint',2),('tcp',1),('tcp',2)])
+def test_native_labels_are_accepted_commands_for_every_ros_contract(collector,ros_module,monkeypatch,space,arms):
+    base=collector
+    config=replace(base.config,action_space=space,arms=base.config.arms[:arms],
+        cameras=tuple(cam for cam in base.config.cameras if arms==2 or cam.name!='right_wrist'),
+        dataset_root=base.config.dataset_root.parent/f'{space}-{arms}',subtasks=())
+    c=ros_module.RolloutCollector(config,demonstration=True)
+    c._latest=dict(base._latest)
+    values={key:v[1] for key,v in c._latest.items()}
+    images={cam.feature_key:np.zeros((224,224,3),np.uint8) for cam in config.cameras}
+    monkeypatch.setattr(c,'_snapshot',lambda **kwargs:(values,images))
+    try:
+        c.enable_teleop(); c.start_episode()
+        block=([.1]*7+[.73]) if space=='joint' else [.41,.02,.31,1,0,0,0,1,0,.73]
+        target=np.tile(block,arms)
+        raw=np.zeros(50*arms)
+        for off in range(0,len(raw),50):
+            raw[off:off+9]=[.4,0,.3,1,0,0,0,1,0]
+            raw[off+9]=.02
+        for _ in range(12):
+            c.coordinator._next_accept=None
+            command=c.coordinator.accept(target,source='gamepad',generation=c.coordinator.generation)
+            c._track_control(.01)
+            c._record_frame(raw.copy(),values,images,time.monotonic_ns())
+            np.testing.assert_array_equal(c._actions[-1],command.target)
+        c.finish_episode('success')
+        assert c.writer.episode_count==1
+        table=pd.read_parquet(c.writer.data_path(0))
+        np.testing.assert_allclose(np.stack(table['action']),np.tile(target,(12,1)))
+        assert np.stack(table['observation.anchor']).shape==(12,config.action_dim)
+        if space=='tcp':
+            assert not np.allclose(np.stack(table['action']),np.stack(table['command.fk_tcp']))
+        else:
+            np.testing.assert_allclose(np.stack(table['action']),np.stack(table['command.joint']))
+    finally:
+        c.close()

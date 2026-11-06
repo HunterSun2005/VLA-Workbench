@@ -19,9 +19,7 @@ from vla.core.online_training import (
     build_critical_transition_specs,
 )
 from vla.datacollection.franka_robotiq_single_left.v30_writer import V30DatasetWriter, repair_committed_metadata
-from vla.datacollection.franka_robotiq_rollout.collect_franky import (
-    EXTRA_FEATURES, CommandSnapshot, FrankyRolloutCollector,
-)
+from vla.datacollection.franka_robotiq_rollout.recording import EXTRA_FEATURES, CommandSnapshot
 from tests.rlt.test_online_training import _Policy, _transition
 
 
@@ -227,48 +225,8 @@ def test_changed_dataset_latches_recovery(tmp_path, monkeypatch):
         session.replay.close()
 
 
-def test_collector_records_new_action_with_pre_action_observation():
-    collector = object.__new__(FrankyRolloutCollector)
-    collector.require_online = True
-    collector.config = SimpleNamespace(fps=30)
-    collector._states, collector._actions = [], []
-    collector._annotations = {key: [] for key in {**EXTRA_FEATURES, **TIMING_FEATURES}}
-    collector._video_writers = {}
-    collector._pending_frame = collector._pending_event = None
-    collector._segment_id = 0
-    collector._priming = collector._faulted = collector._intervention = False
-    collector._phase = "rl"
-    collector._emit = lambda *args, **kwargs: None
-    collector._consume_policy_result = lambda: True
-    collector._policy_stream_discontinuous = lambda result: None
-    collector._submit_policy = lambda *args: None
-    now = [1_000_000_000]
-    collector._command = CommandSnapshot(np.array([1.0]), 1, 1, 0.9)
-    def apply():
-        collector._command = CommandSnapshot(np.array([2.0 + len(collector._states)]), 1, 1, (now[0] + 1_000_000) / 1e9, len(collector._states))
-    collector._apply_policy = apply
-    collector._tick_timed(SimpleNamespace(observed_at_ns=now[0]), np.array([10.0]), {})
-    assert collector._states[0].tolist() == [10.0]
-    assert collector._actions[0].tolist() == [2.0]
-    now[0] += 33_333_333
-    collector._tick_timed(SimpleNamespace(observed_at_ns=now[0]), np.array([20.0]), {})
-    assert collector._annotations["complementary_info.action_valid"] == [[1], [0]]
-    collector._pending_event = ("finish", "success")
-    collector.finish_episode = lambda outcome: None
-    now[0] += 33_333_333
-    collector._tick_timed(SimpleNamespace(observed_at_ns=now[0]), np.array([30.0]), {})
-    assert collector._annotations["complementary_info.action_valid"] == [[1], [1], [0]]
-    assert collector._annotations["complementary_info.segment_terminal"][-1] == [1]
 
 
-def test_second_phase_request_has_no_robot_side_effect():
-    collector = object.__new__(FrankyRolloutCollector)
-    collector.require_online = collector._episode_active = collector._critical_entered = True
-    collector._intervention = False
-    collector._phase = "vla"
-    collector._pending_event = None
-    collector.toggle_phase()
-    assert collector._pending_event is None
 
 
 @pytest.mark.parametrize("fail_save", [1, 2])
@@ -372,51 +330,10 @@ def test_server_refuses_inference_while_training_faulted(tmp_path):
         session.replay.close()
 
 
-def test_human_servo_tracks_fixed_target_and_expires(tmp_path, monkeypatch):
-    from vla.robots.franka_robotiq.config import FrankaRobotiqConfig
-    from vla.robots.franka_robotiq.robot import FrankaRobotiqRobot, action_vector
-    from tests.rlt.test_franka_pi05_robot import FakeArm, FakeCamera, FakeGripper
-    import time
-
-    arm = FakeArm("unused")
-    arm.state.O_T_EE[:3, 3] = [0.4, -0.2, 0.3]
-    arm.state.F_T_EE = arm.state.EE_T_K = np.eye(4)
-    def pose(_frame, joints, *_transforms):
-        result = arm.state.O_T_EE.copy()
-        angle = joints[6]
-        result[:2, :2] = [[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]]
-        return result
-    arm.model.pose = pose
-    robot = FrankaRobotiqRobot(FrankaRobotiqConfig(id="test", calibration_dir=tmp_path), arm_factory=lambda _: arm, camera=FakeCamera(), gripper=FakeGripper())
-    # Exercise deterministic servo iterations without a timing-sensitive live loop.
-    monkeypatch.setattr(robot, "_target_loop", lambda: robot._target_stop.wait())
-    robot.connect()
-    try:
-        robot.begin_human_control()
-        limits = dict(damping=0.01, max_joint_speed=0.2, joint_limit_margin=0.01, position_gain=2.0, orientation_gain=2.0, max_linear_speed=0.04, max_angular_speed=0.3, gripper_speed_scale=0.5)
-        sent = action_vector(robot.send_human_target(np.array([0.02, 0, 0]), 0, 0, 1 / 30, **limits))
-        fixed = robot._human_target_position.copy()
-        for _ in range(3):
-            with robot._target_lock:
-                robot._servo_target_once()
-        np.testing.assert_allclose(fixed, [0.4 + 0.02 / 30, -0.2, 0.3])
-        np.testing.assert_array_equal(robot._human_target_position, fixed)
-        np.testing.assert_allclose(sent[:3], fixed)
-        wrist = action_vector(robot.send_human_target(np.array([0.02, 0, 0]), 0.1, 0, 1 / 30, **limits))
-        assert wrist[0] > sent[0]
-        assert not np.allclose(wrist[3:9], sent[3:9])
-        with robot._target_lock:
-            robot._target_command = (*robot._target_command[:-1], time.monotonic() - 1)
-            with pytest.raises(TimeoutError, match="expired"):
-                robot._servo_target_once()
-        robot.stop()
-        assert robot._target_thread is None
-        assert not robot._motion_started
-    finally:
-        robot.disconnect()
 
 
-def test_timed_encoder_assembles_actions_without_crossing_endpoints():
+@pytest.mark.parametrize('action_stride', [1, 2, 4])
+def test_timed_encoder_assembles_actions_without_crossing_endpoints(action_stride):
     from tests.rlt.test_online_training import _FakeDataset, _FakeHFDataset, _FakeCapture, _FakePI05, _FakeRLToken
     from vla.core.online_training import encode_saved_episode
 
@@ -438,13 +355,23 @@ def test_timed_encoder_assembles_actions_without_crossing_endpoints():
         episode_success=True, warmup=True, pi05=_FakePI05(), rl_token=_FakeRLToken(),
         preprocessor=lambda batch: batch, capture=_FakeCapture(), chunk_length=4, stride=2,
         action_dim=2, proprio_dim=2, batch_size=1, num_workers=0, device="cpu",
-        task_instruction=None, require_timing=True, fps=30,
+        task_instruction=None, require_timing=True, fps=30, action_stride=action_stride,
     )
     assert steps == 6
-    assert records[0].transition["exec_chunk"][:, 0].tolist() == [1, 2, 3, 4]
-    assert records[-1].transition["exec_chunk"][:, 0].tolist() == [3, 4, 5, 6]
-    assert records[-1].transition["next_state_vec"][-2:].tolist() == [6, 0]
-    assert records[-1].transition["done"].item() == 1
+    first = records[0].transition
+    last = records[-1].transition
+    if action_stride == 1:
+        assert first['exec_chunk'][:, 0].tolist() == [1, 2, 3, 4]
+        assert last['exec_chunk'][:, 0].tolist() == [3, 4, 5, 6]
+    else:
+        assert len(records) == 1
+        expected = [1, 3, 5, 0] if action_stride == 2 else [1, 5, 0, 0]
+        assert first['exec_chunk'][:, 0].tolist() == expected
+        assert first['actual_steps'].item() == (6 + action_stride - 1)//action_stride
+        assert first['elapsed_steps'].item() == 6
+        assert first['reward_offsets'][first['actual_steps']-1].item() == 5
+    assert last['next_state_vec'][-2:].tolist() == [6, 0]
+    assert last['done'].item() == 1
 
 
 def test_client_restarts_failed_worker_only_after_server_recovery(monkeypatch):

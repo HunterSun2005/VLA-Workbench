@@ -163,6 +163,10 @@ class ChunkACConfig(PreTrainedConfig):
             return
 
         policy = contract["policy"]
+        if policy.get("action_contract") is not None:
+            self._contract_value("action_contract", policy["action_contract"])
+        elif self.action_contract is not None:
+            raise ValueError("legacy cache has no action contract; rebuild it")
         cache = contract["cache"]
         self._contract_value("action_dim", policy["action_dim"])
         self._contract_value("proprio_dim", policy["proprio_dim"])

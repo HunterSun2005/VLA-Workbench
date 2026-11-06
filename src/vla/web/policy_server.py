@@ -15,6 +15,7 @@ def main():
     p.add_argument('--handover-path',default='')
     p.add_argument('--socket-path',required=True,type=Path)
     p.add_argument('--task',required=True)
+    p.add_argument('--tasks',nargs='+')
     p.add_argument('--arms',choices=('single_left','dual'),required=True)
     p.add_argument('--device',default='cuda')
     p.add_argument('--rtc-deployment-config',type=Path)
@@ -25,6 +26,8 @@ def main():
         sys.argv=[sys.argv[0],'--policy-path',args.policy_path,'--socket-path',str(args.socket_path),
                   '--task',args.task,'--device',args.device,'--tokenizer-path',args.tokenizer_path,
                   '--robot-type','franka_robotiq_dual' if args.arms=='dual' else 'franka_robotiq']
+        if args.tasks:
+            sys.argv += ['--tasks', *args.tasks]
         if args.rtc_deployment_config:
             sys.argv += ['--rtc-deployment-config',str(args.rtc_deployment_config)]
         defaults=parse_args()

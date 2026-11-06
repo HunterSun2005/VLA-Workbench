@@ -20,20 +20,7 @@ from vla.deployment.franka_pi05_rtc import (
     policy_observation,
     validate_checkpoint,
 )
-from vla.cli.deploy_franka_pi05_rtc import (
-    _ControlSessionConfig,
-    _HomeConfig,
-    _build_robot_config,
-    _confirm_execute,
-    _confirm_restart,
-    _control_timing,
-    _load_yaml,
-    _load_home_config,
-    _move_robot_home,
-    _parse_cpu_list,
-    _run_control_sessions,
-)
-from vla.robots.franka_robotiq.robot import ACTION_FIELDS, STATE_FIELDS
+from vla.control.geometry import ACTION_FIELDS, STATE_FIELDS
 
 
 def _checkpoint(tmp_path, **updates):
@@ -65,43 +52,30 @@ def _checkpoint(tmp_path, **updates):
     return root
 
 
-def test_checkpoint_requires_absolute_10d_and_two_camera_contract(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("huggingface_hub.snapshot_download", lambda *a, **k: "/cached/tokenizer")
-    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", lambda *a, **k: object())
-    contract = validate_checkpoint(_checkpoint(tmp_path))
-    assert contract.tokenizer == "/cached/tokenizer"
-    assert set(PHYSICAL_CAMERAS).isdisjoint(LEGACY_PADDING_CAMERAS)
-    bad = tmp_path / "bad"
-    bad.mkdir()
-    root = _checkpoint(bad, use_relative_actions=True)
-    with pytest.raises(ValueError, match="absolute actions"):
-        validate_checkpoint(root)
-
-
-def test_checkpoint_rejects_legacy_padding_camera_features(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("huggingface_hub.snapshot_download", lambda *a, **k: "/cached/tokenizer")
+@pytest.mark.parametrize('space', ['joint', 'tcp'])
+@pytest.mark.parametrize('representation', ['absolute', 'chunk_relative'])
+def test_checkpoint_requires_versioned_native_action_contract(monkeypatch, tmp_path, space, representation):
+    from vla.actions import ActionSpec
+    from vla.actions.statistics import SamplingSpec, compute_statistics
+    monkeypatch.setattr('huggingface_hub.snapshot_download', lambda *a, **k: '/cached/tokenizer')
+    monkeypatch.setattr('transformers.AutoTokenizer.from_pretrained', lambda *a, **k: object())
+    spec = ActionSpec(space=space, representation=representation)
     root = _checkpoint(tmp_path)
-    config_path = root / "config.json"
-    config = json.loads(config_path.read_text())
-    for key in LEGACY_PADDING_CAMERAS:
-        config["input_features"][key] = {"type": "VISUAL", "shape": [3, 224, 224]}
-    config_path.write_text(json.dumps(config))
-    with pytest.raises(ValueError, match="exact two physical cameras"):
+    with pytest.raises(FileNotFoundError):
         validate_checkpoint(root)
-
-
-def test_checkpoint_rejects_degenerate_action_unnormalizer(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("huggingface_hub.snapshot_download", lambda *a, **k: "/cached/tokenizer")
-    root = _checkpoint(tmp_path)
-    fixed = torch.tensor([0.55, -0.04, 0.41, 0.7, 0.71, -0.03, 0.71, -0.7, -0.02, 0.0])
-    stats = {
-        "action.min": fixed,
-        "action.max": fixed.clone(),
-        "action.q01": fixed.clone(),
-        "action.q99": fixed.clone(),
-    }
-    save_file(stats, root / "policy_postprocessor_step_0_unnormalizer_processor.safetensors")
-    with pytest.raises(ValueError, match="degenerate constant TCP stats"):
+    raw = np.zeros((2, spec.dim))
+    if space == 'tcp':
+        raw[:, 3:9] = [1, 0, 0, 0, 1, 0]
+    stats = compute_statistics([(raw, raw, np.ones(2, dtype=bool))], spec, SamplingSpec(50), 'fixture')
+    config = json.loads((root/'config.json').read_text())
+    config['action_contract'] = {'version': 1, 'action_spec': spec.to_dict(), 'statistics': stats,
+                                 'state_fields': list(STATE_FIELDS)}
+    config['output_features']['action']['shape'] = [spec.dim]
+    (root/'config.json').write_text(json.dumps(config))
+    assert validate_checkpoint(root).tokenizer == '/cached/tokenizer'
+    config['use_relative_actions'] = True
+    (root/'config.json').write_text(json.dumps(config))
+    with pytest.raises(ValueError, match='project relative processor'):
         validate_checkpoint(root)
 
 
@@ -126,68 +100,10 @@ def test_jsonl_debug_trace_writes_structured_events(tmp_path) -> None:
     assert records[-1]["dropped_records"] == 0
 
 
-def test_deployment_yaml_defaults_and_noninteractive_arm_guard(monkeypatch) -> None:
-    values = _load_yaml(Path("src/vla/configs/deployment/franka_single_left_pi05_rtc.yaml"))
-    config = _build_robot_config(values)
-    assert config.robot_ip == "172.16.0.2"
-    assert config.camera_serials["base"] == "260722303785"
-    assert config.gripper_device_id == 9
-    assert config.realtime_cpu == 6
-    assert _parse_cpu_list(values["deployment"]["housekeeping_cpus"]) == {
-        *range(5), *range(8, 24)
-    }
-    assert config.gripper_action_threshold == pytest.approx(0.75)
-    assert config.gripper_close_trigger == pytest.approx(0.75)
-    assert config.gripper_open_trigger == pytest.approx(0.875)
-    assert config.gripper_post_close_lock_s == pytest.approx(2.0)
-    assert config.gripper_startup_open_fraction == pytest.approx(0.95)
-    assert config.gripper_startup_open_timeout_s == pytest.approx(5.0)
-    assert config.dynamics_factor == pytest.approx(0.10)
-    assert config.max_linear_velocity == pytest.approx(0.05)
-    assert config.max_angular_velocity == pytest.approx(0.20)
-    assert config.target_smoothing_alpha == pytest.approx(0.25)
-    assert config.velocity_smoothing == pytest.approx(0.30)
-    assert config.smooth_angular_velocity is True
-    assert config.velocity_tracking_tau_s == pytest.approx(0.15)
-    assert config.min_command_position_delta == pytest.approx(0.0008)
-    assert config.min_command_rotation_delta == pytest.approx(0.01)
-    assert config.velocity_motion_duration_ms == 100
-    assert config.max_consecutive_motion_failures == 5
-    assert config.motion_cleanup_timeout_s == pytest.approx(1.0)
-    assert config.motion_recovery_timeout_s == pytest.approx(1.0)
-    assert config.motion_recovery_poll_interval_s == pytest.approx(0.02)
-    assert config.camera_max_pair_skew_s == pytest.approx(0.050)
-    assert config.observation_max_image_age_s == pytest.approx(0.100)
-    assert config.workspace_min == (0.1, -0.55, 0.05)
-    assert values["deployment"]["torch_num_threads"] == 1
-    assert values["deployment"]["torch_num_interop_threads"] == 1
-    assert values["deployment"]["control_discontinuity_timeout_ms"] == 100
-    assert values["deployment"]["task"] == "Place the white lid firmly onto the jig."
-    home = _load_home_config(values["deployment"], config)
-    assert home is None
-    assert values["deployment"]["home"]["target_action"] is None
-    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    assert _confirm_execute(False) is False
-    assert _confirm_execute(True) is True
-    assert _confirm_restart(RuntimeError("fault"), 0) is False
 
 
-def test_cpu_list_parser_rejects_invalid_ranges() -> None:
-    assert _parse_cpu_list("0-2,5,8-9") == {0, 1, 2, 5, 8, 9}
-    with pytest.raises(ValueError, match="invalid CPU range"):
-        _parse_cpu_list("7-3")
 
 
-def test_control_timing_requires_matching_rates_and_bounded_timeout() -> None:
-    values = _load_yaml(Path("src/vla/configs/deployment/franka_single_left_pi05_rtc.yaml"))
-    config = _build_robot_config(values)
-    assert _control_timing(values["deployment"], config) == (30.0, 100.0)
-    with pytest.raises(ValueError, match="must equal"):
-        _control_timing({"fps": 20, "control_discontinuity_timeout_ms": 100}, config)
-    with pytest.raises(ValueError, match="greater than one control period"):
-        _control_timing({"fps": 30, "control_discontinuity_timeout_ms": 30}, config)
-    with pytest.raises(ValueError, match="must not exceed"):
-        _control_timing({"fps": 30, "control_discontinuity_timeout_ms": 101}, config)
 
 
 def test_mock_hardware_provides_complete_observation_and_never_executes() -> None:
@@ -203,447 +119,14 @@ def test_mock_hardware_provides_complete_observation_and_never_executes() -> Non
     assert not robot.is_connected
 
 
-def test_control_session_restart_reuses_loaded_policy_and_rtc() -> None:
-    class ResidentPolicy:
-        def __init__(self):
-            self.reset_calls = 0
 
-        def reset(self):
-            self.reset_calls += 1
 
-    class ResidentRTC:
-        def __init__(self):
-            self.stop_calls = 0
-            self.published = []
-            self.infer_calls = 0
 
-        def stop(self):
-            self.stop_calls += 1
 
-        def publish(self, observation):
-            self.published.append(observation)
 
-        def infer(self, *, account_for_latency):
-            assert account_for_latency is False
-            self.infer_calls += 1
 
-    class SessionRobot:
-        def __init__(self):
-            self.connected = False
-            self.disconnect_calls = 0
-            self.prepare_calls = 0
 
-        def connect(self):
-            self.connected = True
 
-        def get_observation(self):
-            return {"connected": self.connected}
-
-        def prepare_for_control(self):
-            self.prepare_calls += 1
-            return 1.0
-
-        def disconnect(self):
-            self.disconnect_calls += 1
-            self.connected = False
-
-    class SessionLoop:
-        instances = []
-
-        def __init__(self, robot, rtc, **kwargs):
-            self.robot = robot
-            self.rtc = rtc
-            self.session_id = kwargs["session_id"]
-            self.fps = kwargs["fps"]
-            self.execute = kwargs["execute"]
-            self.__class__.instances.append(self)
-
-        def preflight(self):
-            return np.zeros(10, dtype=np.float32)
-
-        def request_stop(self, reason):
-            self.stop_reason = reason
-
-        def run(self):
-            assert self.execute
-            if self.session_id == 0:
-                raise RuntimeError("simulated Franka control fault")
-
-    policy = ResidentPolicy()
-    rtc = ResidentRTC()
-    robots = []
-    arm_prompts = []
-    restart_prompts = []
-
-    def robot_factory():
-        robot = SessionRobot()
-        robots.append(robot)
-        return robot
-
-    result = _run_control_sessions(
-        robot_factory=robot_factory,
-        loop_factory=SessionLoop,
-        rtc=rtc,
-        policy=policy,
-        task="task",
-        fps=30.0,
-        execute_requested=True,
-        trace=None,
-        console_log_every=30,
-        discontinuity_timeout_s=0.1,
-        observation_builder=lambda observation, task: {**observation, "task": task},
-        confirm_execute=lambda execute: arm_prompts.append(execute) or True,
-        confirm_restart=lambda error, session_id: restart_prompts.append((error, session_id)) or True,
-    )
-
-    assert result == 0
-    assert arm_prompts == [True]
-    assert len(restart_prompts) == 1
-    assert restart_prompts[0][1] == 0
-    assert [loop.session_id for loop in SessionLoop.instances] == [0, 1]
-    assert all(loop.rtc is rtc for loop in SessionLoop.instances)
-    assert len(robots) == 2
-    assert [robot.disconnect_calls for robot in robots] == [1, 1]
-    assert [robot.prepare_calls for robot in robots] == [1, 1]
-    assert policy.reset_calls == 4
-    assert rtc.infer_calls == 2
-    assert rtc.stop_calls == 6
-
-
-def test_control_session_restart_reloads_session_config() -> None:
-    class PolicyConfig:
-        rtc_config = None
-
-    class Policy:
-        config = PolicyConfig()
-
-        def __init__(self):
-            self.rtc_processor_configs = []
-
-        def reset(self):
-            pass
-
-        def init_rtc_processor(self):
-            self.rtc_processor_configs.append(self.config.rtc_config)
-
-    class RTC:
-        def __init__(self):
-            self.reconfigured = []
-            self.published = []
-
-        def stop(self):
-            pass
-
-        def reconfigure(self, **kwargs):
-            self.reconfigured.append(kwargs)
-
-        def publish(self, observation):
-            self.published.append(observation)
-
-        def infer(self, *, account_for_latency):
-            assert account_for_latency is False
-
-    class Robot:
-        def __init__(self, name):
-            self.name = name
-
-        def connect(self):
-            pass
-
-        def get_observation(self):
-            return {"robot": self.name}
-
-        def prepare_for_control(self):
-            return 1.0
-
-        def disconnect(self):
-            pass
-
-    class Loop:
-        instances = []
-
-        def __init__(self, robot, rtc, **kwargs):
-            self.robot = robot
-            self.fps = kwargs["fps"]
-            self.task = kwargs["task"]
-            self.session_id = kwargs["session_id"]
-            self.execute = kwargs["execute"]
-            self.__class__.instances.append(self)
-
-        def preflight(self):
-            return np.zeros(10, dtype=np.float32)
-
-        def request_stop(self, reason):
-            pass
-
-        def run(self):
-            if self.session_id == 0:
-                raise RuntimeError("reload test")
-
-    rtc_configs = [object(), object()]
-    loaded = []
-
-    def session_config_loader():
-        index = len(loaded)
-        loaded.append(index)
-        return _ControlSessionConfig(
-            robot_factory=lambda index=index: Robot(f"robot-{index}"),
-            task=f"task-{index}",
-            fps=20.0 + index,
-            console_log_every=5 + index,
-            discontinuity_timeout_s=0.1,
-            rtc_config=rtc_configs[index],
-            queue_threshold=10 + index,
-        )
-
-    rtc = RTC()
-    policy = Policy()
-    result = _run_control_sessions(
-        robot_factory=lambda: (_ for _ in ()).throw(AssertionError("static factory used")),
-        loop_factory=Loop,
-        rtc=rtc,
-        policy=policy,
-        task="static task",
-        fps=30.0,
-        execute_requested=True,
-        trace=None,
-        console_log_every=30,
-        discontinuity_timeout_s=0.1,
-        observation_builder=lambda observation, task: {**observation, "task": task},
-        session_config_loader=session_config_loader,
-        confirm_execute=lambda execute: True,
-        confirm_restart=lambda error, session_id: True,
-    )
-
-    assert result == 0
-    assert loaded == [0, 1]
-    assert [loop.robot.name for loop in Loop.instances] == ["robot-0", "robot-1"]
-    assert [loop.task for loop in Loop.instances] == ["task-0", "task-1"]
-    assert [loop.fps for loop in Loop.instances] == [20.0, 21.0]
-    assert [item["fps"] for item in rtc.reconfigured] == [20.0, 21.0]
-    assert [item["queue_threshold"] for item in rtc.reconfigured] == [10, 11]
-    assert [item["task"] for item in rtc.published] == ["task-0", "task-1"]
-    assert policy.config.rtc_config is rtc_configs[1]
-    assert policy.rtc_processor_configs == rtc_configs
-
-
-def test_control_key_stops_only_hardware_session_and_keeps_model_restart_prompt() -> None:
-    class Policy:
-        def reset(self):
-            pass
-
-    class RTC:
-        def stop(self):
-            pass
-
-        def publish(self, observation):
-            pass
-
-        def infer(self, *, account_for_latency):
-            assert account_for_latency is False
-
-    class Robot:
-        def __init__(self):
-            self.disconnect_calls = 0
-
-        def connect(self):
-            pass
-
-        def get_observation(self):
-            return {}
-
-        def disconnect(self):
-            self.disconnect_calls += 1
-
-    class Loop:
-        def __init__(self, robot, rtc, **kwargs):
-            self.fps = kwargs["fps"]
-            self.execute = kwargs["execute"]
-            self.stop_reason = None
-
-        def preflight(self):
-            return np.zeros(10, dtype=np.float32)
-
-        def request_stop(self, reason):
-            self.stop_reason = reason
-
-        def run(self):
-            assert self.execute
-            return self.stop_reason
-
-    class StopKey:
-        def __init__(self, callback, **kwargs):
-            assert kwargs == {"home_enabled": False, "home_key": "h"}
-            self.callback = callback
-            self.closed = False
-
-        def start(self):
-            self.callback("keyboard")
-
-        def close(self):
-            self.closed = True
-
-    robot = Robot()
-    restart_reasons = []
-    result = _run_control_sessions(
-        robot_factory=lambda: robot,
-        loop_factory=Loop,
-        rtc=RTC(),
-        policy=Policy(),
-        task="task",
-        fps=30.0,
-        execute_requested=True,
-        trace=None,
-        console_log_every=30,
-        discontinuity_timeout_s=0.1,
-        observation_builder=lambda observation, task: observation,
-        confirm_execute=lambda execute: True,
-        confirm_restart=lambda error, session_id: restart_reasons.append((error, session_id)) or False,
-        control_key_listener_factory=StopKey,
-    )
-
-    assert result == 0
-    assert restart_reasons == [(None, 0)]
-    assert robot.disconnect_calls == 1
-
-
-def test_home_return_uses_lift_transit_and_settle_route() -> None:
-    values = _load_yaml(Path("src/vla/configs/deployment/franka_single_left_pi05_rtc.yaml"))
-    values["deployment"]["home"].update(enabled=True, target_action=[0.3, -0.3, 0.3, 1, 0, 0, 0, -1, 0, 1])
-    config = _load_home_config(values["deployment"], _build_robot_config(values))
-    assert config is not None
-
-    class Robot:
-        def __init__(self):
-            self.pose = np.eye(4)
-            self.pose[:3, 3] = [0.4, -0.2, 0.2]
-            self.actions = []
-            self.stop_calls = 0
-
-        def measured_pose(self):
-            return self.pose.copy()
-
-        def send_action(self, action):
-            action = np.asarray(action, dtype=np.float64)
-            self.actions.append(action.copy())
-            self.pose[:3, 3] = action[:3]
-            from vla.cli.deploy_franka_pi05_rtc import _rot6d_to_matrix
-
-            self.pose[:3, :3] = _rot6d_to_matrix(action[3:9])
-
-        def stop(self):
-            self.stop_calls += 1
-
-    robot = Robot()
-    one_step = dataclasses.replace(config, settled_steps=1)
-    _move_robot_home(
-        robot,
-        one_step,
-        fps=30.0,
-        trace=None,
-        session_id=0,
-        sleep=lambda _: None,
-    )
-
-    assert len(robot.actions) == 3
-    np.testing.assert_allclose(robot.actions[0][:3], [0.4, -0.2, 0.45])
-    assert robot.actions[0][9] == pytest.approx(0.80)
-    np.testing.assert_allclose(robot.actions[1][:3], [*one_step.target_action[:2], 0.45])
-    np.testing.assert_allclose(robot.actions[2], one_step.target_action)
-    assert robot.stop_calls == 3
-
-
-def test_home_key_stops_policy_runs_home_and_requires_restart() -> None:
-    class Policy:
-        def reset(self):
-            pass
-
-    class RTC:
-        def stop(self):
-            pass
-
-        def publish(self, observation):
-            pass
-
-        def infer(self, *, account_for_latency):
-            assert account_for_latency is False
-
-    class Robot:
-        def connect(self):
-            pass
-
-        def get_observation(self):
-            return {}
-
-        def prepare_for_control(self):
-            return 1.0
-
-        def disconnect(self):
-            pass
-
-    class Loop:
-        def __init__(self, robot, rtc, **kwargs):
-            self.execute = kwargs["execute"]
-            self.fps = kwargs["fps"]
-            self.reason = None
-
-        def preflight(self):
-            return np.zeros(10, dtype=np.float32)
-
-        def request_stop(self, reason):
-            self.reason = reason
-
-        def run(self):
-            return self.reason
-
-    class HomeKey:
-        def __init__(self, callback, **kwargs):
-            assert kwargs == {"home_enabled": True, "home_key": "h"}
-            self.callback = callback
-
-        def start(self):
-            self.callback("home")
-
-        def close(self):
-            pass
-
-    home = _HomeConfig(
-        target_action=(0.3, -0.35, 0.37, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0),
-        clearance_z=0.45,
-        gripper_hold_action=0.80,
-    )
-    moved = []
-    restarts = []
-    result = _run_control_sessions(
-        robot_factory=Robot,
-        loop_factory=Loop,
-        rtc=RTC(),
-        policy=Policy(),
-        task="task",
-        fps=30.0,
-        execute_requested=True,
-        trace=None,
-        console_log_every=30,
-        discontinuity_timeout_s=0.1,
-        observation_builder=lambda observation, task: observation,
-        session_config_loader=lambda: _ControlSessionConfig(
-            robot_factory=Robot,
-            task="task",
-            fps=30.0,
-            console_log_every=30,
-            discontinuity_timeout_s=0.1,
-            home=home,
-        ),
-        confirm_execute=lambda execute: True,
-        confirm_restart=lambda error, session_id: restarts.append((error, session_id)) or False,
-        control_key_listener_factory=HomeKey,
-        home_mover=lambda robot, config, **kwargs: moved.append((robot, config, kwargs)),
-    )
-
-    assert result == 0
-    assert len(moved) == 1
-    assert moved[0][1] is home
-    assert restarts == [(None, 0)]
 
 
 class FakePolicy:

@@ -122,7 +122,7 @@ def _merge_stats(episode_tables: list[pd.DataFrame], info: dict[str, Any], rows:
     return result
 
 
-def merge_franka_datasets(sources: list[Path], output_root: Path) -> Path:
+def merge_franka_datasets(sources: list[Path], output_root: Path, *, allow_derived=False) -> Path:
     sources = [path.expanduser().resolve() for path in sources]
     output_root = output_root.expanduser().resolve()
     if len(sources) < 2:
@@ -134,6 +134,13 @@ def merge_franka_datasets(sources: list[Path], output_root: Path) -> Path:
 
     infos = [_load_info(root) for root in sources]
     base_info = infos[0]
+    provenance = None
+    if any('action_spec' in info for info in infos):
+        from vla.actions.metadata import validate_mixture
+        contracts = [info.get('recording_contract') or info.get('processing', {}).get('source_contract', {}).get('recording_contract') for info in infos]
+        if not all(contracts):
+            raise ValueError('cannot mix contracted ROS actions with unidentified legacy data')
+        provenance = validate_mixture(contracts, allow_derived=allow_derived)
     rows_by_source = [_episode_rows(root) for root in sources]
     for root, info in zip(sources[1:], infos[1:], strict=True):
         _validate_contract(base_info, info, root)
@@ -186,6 +193,8 @@ def merge_franka_datasets(sources: list[Path], output_root: Path) -> Path:
         episodes_path.parent.mkdir(parents=True, exist_ok=True)
         merged_rows.to_parquet(episodes_path, index=False)
         info = dict(base_info)
+        if provenance is not None:
+            info["training_sources"] = provenance
         info["total_episodes"] = int(episode_offset)
         info["total_frames"] = int(frame_offset)
         info["total_tasks"] = int(len(base_tasks))
@@ -208,8 +217,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", action="append", type=Path, required=True, help="Input dataset; repeat in append order")
     parser.add_argument("--output-root", type=Path, required=True)
+    parser.add_argument("--allow-derived", action="store_true")
     args = parser.parse_args()
-    result = merge_franka_datasets(args.source_root, args.output_root)
+    result = merge_franka_datasets(args.source_root, args.output_root, allow_derived=args.allow_derived)
     info = json.loads((result / "meta/info.json").read_text(encoding="utf-8"))
     print(f"Merged dataset: {result}")
     print(f"episodes={info['total_episodes']} frames={info['total_frames']}")

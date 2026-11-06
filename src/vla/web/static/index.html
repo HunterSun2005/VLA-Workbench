@@ -7,6 +7,7 @@
 <details id="sessionConfig" open><summary>配置参数</summary><form id="setup">
 <label>机械臂<select name="arms"><option value="single_left">单左臂</option><option value="dual">双臂 · 左 + 右</option></select></label>
 <label><span id="sourceLabel">遥操作输入源</span><select name="source"><option value="gamepad">Gamepad</option><option value="gello">GELLO</option></select></label>
+<label>控制与记录空间<select name="action_space"><option value="tcp">TCP · XYZ + rot6d + 夹爪</option><option value="joint">关节 · 7 轴 + 夹爪</option></select></label><p class="hint">磁盘数据始终保存绝对目标。部署从 checkpoint 读取动作空间与训练表示。</p>
 <label id="schemaField">采集格式<select name="schema" aria-label="完整采集格式"><option value="full">完整状态 · 50D</option></select></label>
 <details id="cameraSetup" open><summary>采集相机 · 角色与设备</summary>
 <p class="hint">摄像头统一显示 USB 序列号。配置默认值不代表自动检测结果；若提示未检测到，请按实际安装位置从列表选择 Base／左腕。</p>
@@ -45,7 +46,7 @@
 <div id="error" class="error" role="alert" hidden><div class="issue-toolbar"><strong>错误信息</strong><div class="issue-copy"><span id="copyErrorsStatus" role="status" aria-live="polite"></span><button id="copyErrors" type="button" title="复制当前报错栏的全部诊断文本">一键复制</button></div></div><div id="errorItems"></div></div>
 <section id="policy" class="card policy" hidden><div><span class="eyebrow">策略模式</span><div class="segmented"><button data-mode="vla">VLA</button><button data-mode="rlt">RLT</button><button data-mode="auto">分类头自动</button></div></div><div><span class="eyebrow">切换状态</span><strong id="modeState">—</strong></div><div><span class="eyebrow">分类头 P(RLT)</span><strong id="probability">—</strong></div><div><span class="eyebrow">推理 / RTC</span><strong id="latency">—</strong></div></section>
 <section><div class="section-title"><h2>实时相机</h2><span class="muted">共享缓存 · 最新帧</span></div><div id="previewNotice" class="row compact" hidden><span id="previewStatus" class="hint" role="status"></span><button id="previewTake" type="button">在此页显示相机</button></div><div id="cameras" class="cameras"></div></section>
-<section class="card charts"><div class="section-title"><div><h2>机械臂遥测</h2><p class="muted">实测与估计数据 · 选择需要关注的维度</p></div><div class="row compact"><select id="window"><option value="10">近 10 秒</option><option value="60" selected>近 60 秒</option><option value="300">近 300 秒</option></select><button id="freeze">暂停图表</button></div></div><div id="armStatus" class="arm-status"></div><p id="annotationStatus" class="hint" role="status"></p><details id="signalDetails"><summary>显示维度 <span class="muted">位置 / 姿态 / TCP 外力与外力矩 / 关节 / 速度 / 力矩 / 夹爪</span></summary><div class="row compact"><button id="hideAll">全部隐藏</button><button id="defaults">恢复默认</button></div><div id="signals"></div></details><div id="plots"></div><p id="emptyPlots" class="empty">启用会话后显示实时数据。默认只显示 TCP XYZ 与夹爪。</p></section>
+<section class="card charts"><div class="section-title"><div><h2>机械臂遥测</h2><p class="muted">实测与估计数据 · 选择需要关注的维度</p></div><div class="row compact"><select id="window"><option value="10">近 10 秒</option><option value="60" selected>近 60 秒</option><option value="300">近 300 秒</option></select><button id="freeze">暂停图表</button></div></div><p id="actionContract">动作契约：等待会话</p><div id="armStatus" class="arm-status"></div><p id="annotationStatus" class="hint" role="status"></p><details id="signalDetails"><summary>显示维度 <span class="muted">位置 / 姿态 / TCP 外力与外力矩 / 关节 / 速度 / 力矩 / 夹爪</span></summary><div class="row compact"><button id="hideAll">全部隐藏</button><button id="defaults">恢复默认</button></div><div id="signals"></div></details><div id="plots"></div><p id="emptyPlots" class="empty">启用会话后显示实时数据。默认只显示 TCP XYZ 与夹爪。</p></section>
 <details class="card logs"><summary>最近命令与会话事件</summary><pre id="events">等待会话</pre></details>
 </article></main><main id="processingPanel" hidden>
 <aside>
@@ -54,6 +55,11 @@
 <div class="row"><button id="processingOpen" class="primary">打开 / 重新加载</button><button id="processingRefresh">刷新列表</button></div>
 <p id="processingSummary" class="muted">请选择已完成的数据集；原始数据保持不变。</p></section>
 <section class="card"><h2>导出状态字段 · 全局</h2><p class="muted">统一应用于所有保留回合；动作、图像和标注保留。</p>
+<label class="processing-label">导出动作空间<select id="processingActionSpace"><option value="">保留原生</option><option value="joint">关节</option><option value="tcp">TCP</option></select></label>
+<label><input type="checkbox" id="processingDerived">允许派生表示（不保证复现另一控制链）</label>
+<label class="processing-label">训练表示预览<select id="processingRepresentation"><option value="absolute">absolute</option><option value="chunk_relative">chunk_relative</option></select></label>
+<label>预览 chunk 起点帧<input id="processingAnchor" type="number" min="0" value="0"></label>
+<p>Parquet 始终保存绝对目标和绝对实测状态；相对变换由模型配置选择，夹爪始终为绝对开度。</p>
 <label class="processing-label">快捷选择<select id="processingPreset"><option>先打开数据集</option></select></label>
 <div class="row"><button id="processingAllFields">全选</button><button id="processingNoFields">清空</button></div>
 <details id="processingFieldDetails"><summary>按手臂与物理量选择 <span id="processingDimension"></span></summary><div id="processingFields"></div></details>

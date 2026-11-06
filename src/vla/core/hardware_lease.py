@@ -1,4 +1,4 @@
-"""Host-local advisory leases shared by real Franky hardware clients."""
+"""Host-local advisory leases shared by ROS hardware clients."""
 
 from __future__ import annotations
 

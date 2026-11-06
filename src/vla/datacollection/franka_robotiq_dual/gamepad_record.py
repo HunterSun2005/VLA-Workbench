@@ -62,54 +62,9 @@ def validate_dataset_root(root, *, resume):
         raise ValueError("dataset root is not empty; use --resume with the original recording contract")
 
 
-def validate_resume_contract(config):
-    info = json.loads((config.dataset_root / "meta/info.json").read_text())
-    if (info.get("robot_type") != "franka_robotiq_dual"
-            or info.get("recording_contract") != recording_contract(config)):
-        raise ValueError("existing dataset recording_contract differs; use the original settings or a new root")
-
-
-@terminal_session("gamepad-dual-record")
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--execute", action="store_true")
-    mode.add_argument("--check-only", action="store_true")
-    parser.add_argument("--dataset-root", type=Path)
-    parser.add_argument("--task")
-    parser.add_argument("--tasks", nargs="+", help="task prompts available for episode selection")
-    parser.add_argument("--resume", action="store_true")
-    args = parser.parse_args()
-    if args.resume and args.dataset_root is None:
-        parser.error("--resume requires --dataset-root")
-    if args.execute and (args.dataset_root is None or (not args.task and not args.tasks)):
-        parser.error("--execute requires --dataset-root and --task or --tasks")
-    config = load_rollout_config(args.config)
-    if args.dataset_root is not None:
-        config = replace(config, dataset_root=args.dataset_root.expanduser().resolve())
-    if args.task is not None:
-        config = replace(config, task=args.task,
-                         tasks=(args.task, *tuple(t for t in config.tasks if t != args.task)))
-    if args.tasks is not None:
-        prompts = tuple(dict.fromkeys(item.strip() for item in args.tasks if item.strip()))
-        if not prompts:
-            parser.error("--tasks requires at least one nonempty prompt")
-        config = replace(config, task=prompts[0], tasks=prompts)
-    validate_dual_config(config)
-    if args.dataset_root is not None:
-        validate_dataset_root(config.dataset_root, resume=args.resume)
-        if args.resume:
-            validate_resume_contract(config)
-    if not args.execute:
-        print(f"Dual configuration passed: left/right, 100D raw state, 20D action, {len(config.cameras)} RGB cameras; "
-              "no hardware connection, policy server or dataset initialization")
-        return
-    if not sys.stdin.isatty():
-        parser.error("--execute requires an interactive terminal")
-    # The configuration check above also runs in the model environment without ROS imports.
-    from vla.datacollection.franka_robotiq_rollout.collect_ros import run
-    run(config, demonstration=True, resume=args.resume)
+    from vla.cli.ros_session import main as shared_main
+    shared_main(['--arms', 'dual', '--source', 'gamepad', *sys.argv[1:]])
 
 
 if __name__ == "__main__":

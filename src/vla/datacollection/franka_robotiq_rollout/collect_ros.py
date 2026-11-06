@@ -12,7 +12,6 @@ from __future__ import annotations
 from vla.terminal import (console_print as print, console_status, console_debug, terminal_session,
                           TerminalConfirmation, diagnostic_path, current_reporter)
 
-import argparse
 import os
 from dataclasses import asdict
 import sys
@@ -29,7 +28,6 @@ from control_msgs.action import GripperCommand
 from franka_msgs.msg import FrankaRobotState
 from rcl_interfaces.srv import GetParameters
 from rclpy.action import ActionClient
-from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import parameter_value_to_python
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -42,7 +40,6 @@ from vla.control.ros import ControlCoordinator, ArmMeasurement
 from vla.datacollection.franka_robotiq_single_left import schema
 from vla.datacollection.franka_robotiq_single_left.auto_record import (
     AsyncVideoWriter,
-    KeyboardEvents,
     RealSenseCamera,
     prepare_image,
 )
@@ -51,7 +48,7 @@ from vla.datacollection.start_teleop.franka_kinematics import (
     build_kinematic_model,
     joint7_step,
 )
-from .config import ArmConfig, RolloutConfig, load_rollout_config
+from .config import ArmConfig, RolloutConfig
 from .gamepad import decode_gamepad_values, gripper_direction_transition
 from .gamepad import gamepad_is_neutral
 from .policy_client import AsyncPolicyClient, PolicyResult
@@ -326,6 +323,22 @@ class CartesianServo:
 
 class RolloutCollector(Node):
     def __init__(self, config: RolloutConfig, *, demonstration: bool = False) -> None:
+        try:
+            self._initialize(config, demonstration=demonstration)
+        except BaseException:
+            # Construction never enables motion. Release partially opened I/O.
+            for camera in reversed(tuple(getattr(self, '_cameras', {}).values())):
+                try:
+                    camera.close()
+                except Exception:
+                    pass
+            client = getattr(self, 'policy_client', None)
+            if client is not None:
+                client.close()
+            self.destroy_node()
+            raise
+
+    def _initialize(self, config: RolloutConfig, *, demonstration: bool = False) -> None:
         if demonstration:
             from vla.datacollection.franka_robotiq_dual.gamepad_record import validate_dual_config
             validate_dual_config(config)
@@ -371,6 +384,10 @@ class RolloutCollector(Node):
         self._reset_policy_on_request = True
         self._intervention = False
         self._gamepad_targets: dict[str, GamepadTarget] = {}
+        self._high_speed = {a.name: False for a in config.arms}
+        self._speed_scale = {a.name: 1. for a in config.arms}
+        self._previous_buttons = {}
+        self._initial_pose = {}
         self._gamepad_stale_reported = False
         self._last_gamepad_tick = time.monotonic()
         self._last_gamepad_input_log = 0.0
@@ -388,11 +405,30 @@ class RolloutCollector(Node):
         if not demonstration:
             self.policy_client = AsyncPolicyClient(config.socket_path, config.policy_timeout_s)
             self._validate_policy_contract()
+        self.require_online = bool(self.policy_client and self.policy_client.contract.get('online_enabled'))
+        self._full_episode = bool(self.require_online and self.policy_client.contract.get('online_full_episode'))
+        self._processing = False
+        self._pending_online_save = None
+        self._pending_finish = None
+        self._pending_phase = None
+        self._phase_exited = False
+        self._at_boundary = False
+        self._pending_frame = None
+        self._segment_id = 0
+        self._episode_identity = {}
+        if self.require_online:
+            from vla.core.online_contract import TIMING_FEATURES, load_run
+            self._extra_features.update(TIMING_FEATURES)
+            self._annotations = {key: [] for key in self._extra_features}
+            run = load_run(config.dataset_root)
+            if any(run[key] != self.policy_client.contract[key] for key in ('run_uuid', 'dataset_uuid')):
+                raise ValueError('online dataset/server identity mismatch')
         metadata = {
             "action_spec": config.action_spec.to_dict(),
             "actions_stored_as": "absolute",
             "action_recording_point": "accepted_before_tracking",
-            "recording_schema_version": 3,
+            "recording_schema_version": 4 if self.require_online else 3,
+            **({key: run[key] for key in ("run_uuid", "dataset_uuid")} if self.require_online else {}),
             "rlt_episode_metadata_fields": {
                 "rl_intervals": "RL frame intervals with episode outcome.",
                 "human_intervention_intervals": "Human intervention frame intervals.",
@@ -429,18 +465,8 @@ class RolloutCollector(Node):
             command_timeout_s=config.control_discontinuity_timeout_s)
         self._last_gripper_goal = {}
         self._publish_sequence = 0
-        self._start_cameras()
-        deadline = time.monotonic() + 30
-        while any(f'{a.name}.robot_state' not in self._latest for a in config.arms):
-            if time.monotonic() > deadline:
-                raise TimeoutError('robot state required to fingerprint TCP tool')
-            rclpy.spin_once(self, timeout_sec=.1)
         from vla.actions.metadata import RecordingContract
-        tool = {}
-        for arm in config.arms:
-            position, rotation = schema.pose_from_stamped(self._latest[f'{arm.name}.robot_state'][1].f_t_ee)
-            tool[arm.name] = {'position': position.tolist(), 'rotation': rotation.tolist(),
-                              'base': arm.base_link, 'tip': arm.tip_link}
+        tool = self._tool_definition()
         metadata['recording_contract'] = RecordingContract(
             config.action_spec,
             fingerprint({a.name: os.environ.get(f'{a.name.upper()}_ROBOT_IP', a.robot_state_publisher) for a in config.arms}),
@@ -462,6 +488,8 @@ class RolloutCollector(Node):
             strict_metadata=True,
             allow_multiple_tasks=demonstration and len(config.tasks) > 1,
         )
+
+        self._start_cameras()
 
         # Poll fresh base frames frequently; demonstrations must not duplicate
         # one camera exposure just because the 30 Hz timer and camera drift.
@@ -490,19 +518,34 @@ class RolloutCollector(Node):
         )
         print(f"Rollout collector ready; dataset={config.dataset_root}", flush=True)
 
+    def _tool_definition(self):
+        deadline = time.monotonic() + 30
+        while any(f'{a.name}.{field}' not in self._latest for a in self.config.arms
+                  for field in ('robot_state', 'measured_joint', 'gripper_state')):
+            if time.monotonic() > deadline:
+                raise TimeoutError('measured robot, joint and gripper states required before controller initialization')
+            rclpy.spin_once(self, timeout_sec=.1)
+        tool = {}
+        for arm in self.config.arms:
+            position, rotation = schema.pose_from_stamped(self._latest[f'{arm.name}.robot_state'][1].f_t_ee)
+            tool[arm.name] = {'position': position.tolist(), 'rotation': rotation.tolist(),
+                              'base': arm.base_link, 'tip': arm.tip_link}
+        return tool
+
     def _validate_policy_contract(self) -> None:
         contract = self.policy_client.contract
         expected_cameras = [camera.feature_key for camera in self.config.cameras]
         expected_robot_type = (
             "franka_robotiq_dual" if len(self.config.arms) == 2 else "franka_robotiq"
         )
-        expected_state_names = list(_prefixed_fields(self.config.arms, schema.TCP_STATE_FIELDS))
+        available_state_names = set(_prefixed_fields(self.config.arms, schema.STATE_FIELDS))
+        expected_state_names = contract.get('state_names', [])
         expected_action_names = list(self.config.action_spec.action_fields)
         expected_camera_shapes = {
             key: [*self.config.image_size, 3] for key in expected_cameras
         }
         mismatches = []
-        if int(contract["state_dim"]) != self.config.policy_state_dim:
+        if int(contract["state_dim"]) != len(expected_state_names):
             mismatches.append(f"state_dim server={contract['state_dim']} local={self.config.policy_state_dim}")
         if int(contract["action_dim"]) != self.config.action_dim:
             mismatches.append(f"action_dim server={contract['action_dim']} local={self.config.action_dim}")
@@ -513,7 +556,7 @@ class RolloutCollector(Node):
                 f"camera_shapes server={contract.get('camera_shapes_hwc')} "
                 f"local={expected_camera_shapes}"
             )
-        if contract.get("state_names") != expected_state_names:
+        if not expected_state_names or len(set(expected_state_names)) != len(expected_state_names) or not set(expected_state_names).issubset(available_state_names):
             mismatches.append("state feature names/order do not match")
         if contract.get("action_names") != expected_action_names:
             mismatches.append("action feature names/order do not match")
@@ -832,6 +875,8 @@ class RolloutCollector(Node):
                 return
             try:
                 marker, generation, command_id, fault = message.header.frame_id.split(':')
+                if marker != 'vla' or int(generation) != self.coordinator.generation:
+                    return
                 if fault != '0':
                     raise RuntimeError(f'{arm} controller command watchdog fault')
                 if marker != 'vla':
@@ -857,7 +902,7 @@ class RolloutCollector(Node):
         message.name = list(self.servos[name].model.joint_names)
         message.position = joints.tolist()
         self._joint_publishers[name].publish(message)
-        if self._last_gripper_goal.get(name) != gripper:
+        if self.coordinator.owner != 'pose' and self._last_gripper_goal.get(name) != gripper:
             self._send_gripper_goal(arm, gripper)
             self._last_gripper_goal[name] = gripper
         goal = Float32()
@@ -865,10 +910,12 @@ class RolloutCollector(Node):
         self._gripper_publishers[name].publish(goal)
 
     def _control_boundary(self, owner=None, *, fault=False, reason='control boundary'):
-        self._observe_control()
         self.coordinator.transition(owner, fault=fault, reason=reason)
         self._last_command_snapshot = None
+        self._input_action = None
         self._last_gripper_goal.clear()
+        self._pending_frame = None
+        self._segment_id += 1
 
     def _track_control(self, dt):
         command = self.coordinator.tick(dt)
@@ -914,6 +961,12 @@ class RolloutCollector(Node):
         self._annotations['command.identity'].append([
             command.generation, command.command_id, command.accepted_at_ns, command.observed_at_ns])
         self._annotations['command.source'].append([snapshot.source])
+        if self.require_online:
+            for name, value in {'observed_at_ns': now_ns, 'command_at_ns': command.accepted_at_ns,
+                                'command_id': command.command_id, 'segment_id': self._segment_id,
+                                'action_valid': 0, 'segment_terminal': 0}.items():
+                self._annotations['complementary_info.'+name].append([value])
+            self._pending_frame = len(self._states)-1
         diagnostics = [self.coordinator.diagnostics.get(a.name, {}) for a in self.config.arms]
         self._annotations['diagnostic.controller'].append(np.concatenate([
             [d.get('generation', -1), d.get('command_id', -1), d.get('received_at_ns', -1)] for d in diagnostics]))
@@ -933,7 +986,7 @@ class RolloutCollector(Node):
         self.policy_client.set_control_mode(mode)
         self._web_mode = mode
         self._web_switch_pending = True
-        self._control_boundary("policy", reason="policy mode change")
+        self._control_boundary(self.config.input_source if self._intervention else "policy", reason="policy mode change")
         self._latest_policy_result = None
         self._reset_policy_on_request = True
         self._policy_action = None
@@ -982,13 +1035,11 @@ class RolloutCollector(Node):
     def _publish_policy(self, values, dt):
         if self._policy_action is None or self._latest_policy_result is None:
             return False
-        if time.monotonic() - self._latest_policy_result.received_at > self.config.policy_timeout_s:
-            raise RuntimeError("latest policy action exceeded policy_timeout_s")
+        if time.monotonic() - self._latest_policy_result.received_at > self.config.control_discontinuity_timeout_s:
+            raise RuntimeError("latest policy action stream expired")
         if self.coordinator.mode != 'active':
             return False
         accepted = self.coordinator.accept(self._policy_action, source='policy', generation=self.coordinator.generation)
-        if accepted is not None:
-            self._policy_action = None
         return accepted is not None
 
     def _publish_gripper_speed(self, arm: ArmConfig, speed: float) -> None:
@@ -1026,13 +1077,17 @@ class RolloutCollector(Node):
                 )
             )
         except Exception as error:
+            self._latch_fault(error)
             print(f"{arm_name} Robotiq goal failed: {error}", file=sys.stderr, flush=True)
 
     def _gripper_goal_result(self, arm_name: str, future: object) -> None:
         self._gripper_goal_futures.discard(future)
         try:
-            future.result()
+            result = future.result()
+            if getattr(result, "status", 4) not in (4, 5):
+                raise RuntimeError(f"gripper execution status {result.status}")
         except Exception as error:
+            self._latch_fault(error)
             print(f"{arm_name} Robotiq action failed: {error}", file=sys.stderr, flush=True)
 
     def _latest_gripper_fraction(self, arm: ArmConfig) -> float | None:
@@ -1085,38 +1140,31 @@ class RolloutCollector(Node):
             if target is None:
                 return False
             gamepad_message = values[f"{arm.name}.gamepad"]
-            velocity, x_button, b_button, gripper_motion = decode_gamepad_values(
-                gamepad_message.axes,
-                gamepad_message.buttons,
-                arm.gamepad,
-                self.config,
-            )
-            joint7_motion = x_button - b_button
-            if np.linalg.norm(velocity) > 0.0 or joint7_motion != 0.0 or gripper_motion != 0.0:
-                active_inputs.append(
-                    f"{arm.name}:linear={np.round(velocity, 4).tolist()},"
-                    f"j7={joint7_motion:+.0f},gripper={gripper_motion:+.2f}"
-                )
-            target.position = np.clip(
-                target.position + velocity * dt,
-                np.asarray(arm.workspace_min),
-                np.asarray(arm.workspace_max),
-            )
-            joint7_target = joint7_step(
-                target.joints[6],
-                x_button,
-                b_button,
-                self.config.gamepad_joint7_speed,
-                arm.gamepad.joint7_button_sign,
-                dt,
-                self.servos[arm.name].model.lower_limits[6],
-                self.servos[arm.name].model.upper_limits[6],
-            )
-            if x_button != b_button:
-                orient_joints = target.joints.copy()
-                orient_joints[6] = joint7_target
-                _, target.rotation = self.servos[arm.name].forward_tcp(
-                    orient_joints, target.flange_to_tcp_position, target.flange_to_tcp_rotation)
+            from .gamepad import decode_cartesian_gamepad_values
+            from scipy.spatial.transform import Rotation
+            from vla.control.geometry import upright_tcp_rotation
+            decoded = decode_cartesian_gamepad_values(gamepad_message.axes, gamepad_message.buttons, arm.gamepad, self.config)
+            buttons = list(gamepad_message.buttons)
+            old = self._previous_buttons.get(arm.name, [0]*len(buttons))
+            edge = lambda index: len(buttons) > index and buttons[index] and not (len(old) > index and old[index])
+            if edge(4):
+                self._high_speed[arm.name] = not self._high_speed[arm.name]
+            if edge(5) and self._recording:
+                self.toggle_phase()
+            if edge(6):
+                target.rotation = upright_tcp_rotation(target.rotation)
+            if edge(7):
+                target.position, target.rotation = [v.copy() for v in self._initial_pose[arm.name]]
+            self._previous_buttons[arm.name] = buttons
+            scale = self._speed_scale[arm.name]
+            goal = 2. if self._high_speed[arm.name] else 1.
+            scale += np.clip(goal-scale, -dt/.3, dt/.3)
+            self._speed_scale[arm.name] = float(scale)
+            velocity = _clamp_norm(decoded.linear_velocity_base * scale, self.config.max_linear_velocity)
+            angular = _clamp_norm(decoded.angular_velocity_tool * scale, self.config.max_angular_velocity)
+            target.position = np.clip(target.position + velocity*dt, arm.workspace_min, arm.workspace_max)
+            target.rotation = target.rotation @ Rotation.from_rotvec(angular*dt).as_matrix()
+            gripper_motion = decoded.gripper_motion
             target.joints = self.coordinator._measurements[arm.name].joints.copy()
             measured_gripper = _gripper_open_fraction(
                 values[f"{arm.name}.gripper_state"],
@@ -1130,7 +1178,7 @@ class RolloutCollector(Node):
             )
             commands[arm.name] = (target.position, target.rotation, target.gripper)
         action = self.coordinator.gamepad_target(commands, 1.0 / self.config.fps)
-        self.coordinator.accept(action, source='gamepad', generation=self.coordinator.generation)
+        self._input_action = action
         now = time.monotonic()
         if active_inputs and now - self._last_gamepad_input_log >= 0.5:
             console_debug("Gamepad input " + "; ".join(active_inputs))
@@ -1180,6 +1228,9 @@ class RolloutCollector(Node):
             self._last_gamepad_tick = now
             try:
                 self._observe_control()
+                self._online_save_tick()
+                if getattr(self, '_recovery_pending', False) and self.coordinator.mode == 'standby':
+                    self._faulted, self._fault_reason, self._recovery_pending = False, None, False
                 if self.coordinator.mode == 'resetting':
                     self.coordinator.tick(dt)
                     return
@@ -1209,7 +1260,7 @@ class RolloutCollector(Node):
             joints[arm.name] = self._measured_joints(arm, q[1])
             grippers[arm.name] = schema.gripper_action(g[1])
         action = self.coordinator.gello_target(joints, grippers)
-        self.coordinator.accept(action, source='gello', generation=self.coordinator.generation)
+        self._input_action = action
 
     def _republish_arm_hold(self):
         # Tracking and controller heartbeat run independently at 100 Hz.
@@ -1274,7 +1325,6 @@ class RolloutCollector(Node):
                     problems.append(f"{arm.name} {label} has no publisher: {topic}")
             for label, topic in (
                 ("arm command", arm.command_joint_topic),
-                ("gripper command", arm.gripper_drive_topic),
                 ("gripper speed", arm.gripper_speed_topic),
             ):
                 if self.count_subscribers(topic) < 1:
@@ -1304,7 +1354,11 @@ class RolloutCollector(Node):
             self._control_boundary(fault=True, reason=self._fault_reason)
         except Exception as stop_error:
             self._fault_reason += f"; stop failed: {stop_error}"
-        self._stop_grippers_at_measured_position()
+        try:
+            self._stop_grippers_at_measured_position()
+        except Exception as stop_error:
+            self._fault_reason += f'; gripper stop failed: {stop_error}'
+        self._pending_finish = None
         self._recording = False
         self._intervention = False
         self._gamepad_targets = {}
@@ -1368,21 +1422,82 @@ class RolloutCollector(Node):
                     self._last_demo_images = stamps
                     now_ns = base_ns
                 raw_state = self._raw_state(values, now_ns)
-                if not self._recording:
+                if not (self._recording or self._teleop_enabled):
                     return
-                self._record_frame(raw_state, values, images, now_ns)
+                self._complete_interval(now_ns)
+                if self._pending_phase is not None:
+                    self._record_frame(raw_state, values, images, now_ns)
+                    if self._states:
+                        self._annotations['complementary_info.segment_terminal'][-1] = [1]
+                    self._phase = self._pending_phase
+                    self._pending_phase = None
+                    self._phase_exited = True
+                    self._invalidate_policy()
+                    self._policy_action = self._latest_policy_result = None
+                    self._reset_policy_on_request = True
+                    self._control_boundary('policy', reason='critical phase ended')
+                    return
+                if self._pending_finish is not None:
+                    outcome = self._pending_finish
+                    self._pending_finish = None
+                    self._record_frame(raw_state, values, images, now_ns)
+                    if self.require_online and self._states:
+                        self._annotations['complementary_info.segment_terminal'][-1] = [int(self._phase == 'rl')]
+                    self._at_boundary = True
+                    try:
+                        self.finish_episode(outcome)
+                    finally:
+                        self._at_boundary = False
+                    return
                 self._consume_policy_result()
-                if not self._intervention:
-                    dt = 1.0 / self.config.fps
-                    self._publish_policy(values, dt)
+                previous = self.coordinator.command_id
+                if self._intervention:
+                    if self.coordinator.mode == 'active' and getattr(self, '_input_action', None) is not None:
+                        self.coordinator.accept(self._input_action, source=self.config.input_source,
+                                                generation=self.coordinator.generation)
+                else:
+                    self._publish_policy(values, 1/self.config.fps)
                     self._submit_policy(raw_state, images)
+                if self.coordinator.command_id != previous:
+                    self._track_control(1/self.config.gamepad_control_rate)
+                    self._record_frame(raw_state, values, images, now_ns)
             except (KeyError, ValueError, RuntimeError, np.linalg.LinAlgError) as error:
                 self._skip_reasons[f"control error: {error}"] += 1
                 self._latch_fault(error)
 
+    def _complete_interval(self, now_ns):
+        if not self.require_online or self._pending_frame is None:
+            return
+        index = self._pending_frame
+        observed = self._annotations['complementary_info.observed_at_ns'][index][0]
+        command = self._annotations['complementary_info.command_at_ns'][index][0]
+        elapsed = (now_ns-observed)/1e9
+        if .5/self.config.fps <= elapsed <= 1.5/self.config.fps and observed <= command < now_ns:
+            self._annotations['complementary_info.action_valid'][index] = [1]
+        else:
+            self._segment_id += 1
+        self._pending_frame = None
+
+    def _online_save_tick(self):
+        if self._pending_online_save is None or self.coordinator.mode != 'standby':
+            return
+        episode, outcome = self._pending_online_save
+        self._pending_online_save = None
+        def process():
+            try:
+                self.policy_client.process_saved_episode(dataset_root=self.config.dataset_root,
+                                                         episode_id=episode, outcome=outcome)
+            except Exception as error:
+                with self._lock:
+                    self._faulted, self._fault_reason = True, f'online training failed: {error}'
+            finally:
+                self._processing = False
+        self._online_worker = threading.Thread(target=process, name='ros-online-save', daemon=True)
+        self._online_worker.start()
+
     def start_episode(self) -> None:
         with self._lock:
-            if self._recording:
+            if self._recording or self._processing:
                 return
             if self._faulted:
                 print(
@@ -1401,6 +1516,8 @@ class RolloutCollector(Node):
             if snapshot is None:
                 print("Rollout start blocked: synchronized robot state is unavailable", flush=True)
                 return
+            if self.require_online:
+                self._episode_identity = self.policy_client.begin_episode()
             episode_index = self.writer.next_episode_index()
             self.writer.discard_uncommitted_files(episode_index)
             self._video_writers = {
@@ -1425,8 +1542,11 @@ class RolloutCollector(Node):
             self._log_next_policy_request = True
             self._reset_servo_tracking()
             self._invalidate_policy()
-            self._phase = "vla"
+            self._phase = "rl" if self._full_episode else "vla"
             self._subtask_index = 0
+            self._phase_exited = False
+            self._pending_phase = None
+            self._pending_finish = None
             self._reset_policy_on_request = True
             if not self.demonstration:
                 self._restore_policy_gripper_speed()
@@ -1457,6 +1577,9 @@ class RolloutCollector(Node):
 
     def finish_episode(self, outcome: str | None, *, discard: bool = False) -> None:
         with self._lock:
+            if self.require_online and self._recording and not discard and not self._at_boundary:
+                self._pending_finish = outcome
+                return
             if not self._recording:
                 return
             if self.demonstration and outcome != "success":
@@ -1524,6 +1647,7 @@ class RolloutCollector(Node):
                     for interval in rl_intervals:
                         interval["outcome"] = outcome
                     metadata = {
+                        **self._episode_identity,
                         "episode_success": outcome,
                         "rl_intervals": rl_intervals,
                         "human_intervention_intervals": self._intervals(
@@ -1558,6 +1682,9 @@ class RolloutCollector(Node):
                         extra_episode_metadata=metadata,
                         task=self.config.tasks[self._episode_task_index],
                     )
+                    if self.require_online:
+                        self._processing = True
+                        self._pending_online_save = (saved, outcome)
                     print(
                         f"Saved rollout episode {saved}: outcome={outcome}, "
                         f"frames={len(self._states)}",
@@ -1615,6 +1742,7 @@ class RolloutCollector(Node):
                         self._latest[f"{arm.name}.gripper_state"][1],
                         arm.gripper_joint_name,
                     )
+                    self._initial_pose.setdefault(arm.name, (position.copy(), rotation.copy()))
                     targets[arm.name] = GamepadTarget(
                         position=position,
                         rotation=rotation,
@@ -1651,8 +1779,26 @@ class RolloutCollector(Node):
                 flush=True,
             )
 
+    def recover_fault(self):
+        with self._lock:
+            if self._recording or self._video_writers:
+                raise RuntimeError('finish storage cleanup before recovery')
+            if self.require_online:
+                self.policy_client.recover_online()
+            self._observe_control()
+            self.coordinator._fresh()
+            values = {key: value[1] for key, value in self._latest.items()}
+            self._validate_robot_health(values)
+            if self._camera_failures():
+                raise RuntimeError('camera fault remains')
+            self._control_boundary(reason='explicit fault recovery')
+            self._recovery_pending = True
+            return True
+
     def toggle_phase(self) -> None:
         with self._lock:
+            if self._full_episode:
+                return
             if self.demonstration and not self._recording:
                 return
             if self.demonstration:
@@ -1662,7 +1808,15 @@ class RolloutCollector(Node):
             if self._intervention and not self.demonstration:
                 print("Ignoring phase toggle while gamepad intervention is active")
                 return
+            if self.require_online:
+                if self._phase == 'rl':
+                    self._pending_phase = 'vla'
+                    return
+                if self._phase_exited:
+                    raise RuntimeError('online critical phase may occur only once per episode')
             self._phase = "vla" if self._phase == "rl" else "rl"
+            self._control_boundary('policy', reason='policy phase changed')
+            self._reset_policy_on_request = True
             self._invalidate_policy()
             self._policy_action = None
             self._latest_policy_result = None
@@ -1690,6 +1844,7 @@ class RolloutCollector(Node):
                 self.finish_episode(None, discard=True)
             else:
                 self._stop_grippers_at_measured_position()
+                self._control_boundary(reason="session close")
             self._teleop_enabled = False
             self._closed = True
         if self.policy_client is not None:
@@ -1698,109 +1853,11 @@ class RolloutCollector(Node):
             camera.close()
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", required=True)
-    return parser.parse_args()
+
+def main():
+    from vla.cli.ros_session import main as shared_main
+    shared_main(['--workflow', 'deploy', *sys.argv[1:]])
 
 
-@terminal_session("ros-rollout")
-def main() -> None:
-    config = load_rollout_config(parse_args().config)
-    run(config)
-
-
-def run(config: RolloutConfig, *, demonstration: bool = False, resume: bool = False) -> None:
-    from vla.core.writer_lock import WriterLease
-
-    with WriterLease(config.dataset_root):
-        if demonstration:
-            from vla.datacollection.franka_robotiq_dual.gamepad_record import validate_dataset_root, validate_resume_contract
-            validate_dataset_root(config.dataset_root, resume=resume)
-            if resume:
-                validate_resume_contract(config)
-        _run(config, demonstration=demonstration)
-
-
-def _run(config: RolloutConfig, *, demonstration: bool = False) -> None:
-    rclpy.init()
-    try:
-        collector = RolloutCollector(config, demonstration=demonstration)
-    except BaseException:
-        rclpy.try_shutdown()
-        raise
-    executor = MultiThreadedExecutor(num_threads=max(4, len(config.arms) * 3))
-    executor.add_node(collector)
-    spin_thread = threading.Thread(target=executor.spin, daemon=True)
-    spin_thread.start()
-    keymap = {b"\t": "subtask", b"t": "task"}
-    if demonstration:
-        keymap.update({b"s": "enable", b"n": "right", b"y": "success",
-                       b"x": "discard", b"d": "pause", b"c": "quit"})
-        print("STANDBY: s=enable both gamepads, n=record, y=success/save, x=discard, "
-              "d=pause+discard immediately, r=critical ON/OFF, Tab=next subtask, c/Esc=exit. "
-              "ROS control faults require a restart.", flush=True)
-    else:
-        print("Rollout task selection: press t between episodes to cycle configured prompts.", flush=True)
-    confirmation = TerminalConfirmation()
-    keyboard = KeyboardEvents(keymap=keymap, confirmation=confirmation)
-    try:
-        stop = False
-        next_status = 0.0
-        while not stop:
-            confirmation.expire()
-            if time.monotonic() >= next_status:
-                console_status(f"{'FAULT' if collector._faulted else 'RECORDING' if collector._recording else 'STANDBY'} episode={collector.writer.next_episode_index()} frames={len(collector._states)} source={'GAMEPAD' if collector.demonstration or collector._intervention else collector._phase.upper()}")
-                next_status = time.monotonic() + 1.0
-            for event in confirmation.prioritize(keyboard.consume()):
-                if event == "force_quit":
-                    stop = True
-                    break
-                recording, index = collector._recording, collector.writer.next_episode_index()
-                destructive = (event in ("discard", "left") and (recording or not demonstration and index > 0)
-                               or event == "quit" and recording)
-                event = confirmation.route(event, destructive=destructive,
-                    valid=lambda active=recording, episode=index: collector._recording == active and collector.writer.next_episode_index() == episode and not collector._faulted,
-                    label="退出并丢弃当前未保存回合" if event == "quit" else "丢弃当前或最近已保存回合")
-                if event is None:
-                    continue
-                if event == "enable":
-                    collector.enable_teleop()
-                elif event == "pause":
-                    collector.pause_teleop()
-                elif event == "discard":
-                    collector.finish_episode(None, discard=True)
-                elif event == "subtask":
-                    collector.next_subtask()
-                elif event == "task":
-                    collector.next_task()
-                elif event == "right":
-                    collector.start_episode()
-                elif event == "left":
-                    if demonstration:
-                        collector.finish_episode(None, discard=True)
-                    else:
-                        collector.discard_latest()
-                elif event == "intervention":
-                    collector.toggle_intervention()
-                elif event == "phase":
-                    collector.toggle_phase()
-                elif event == "success":
-                    collector.finish_episode("success")
-                elif event == "failure":
-                    collector.finish_episode("failure")
-                elif event == "quit":
-                    stop = True
-                    break
-            time.sleep(0.03)
-    finally:
-        collector.close()
-        keyboard.close()
-        executor.shutdown()
-        spin_thread.join(timeout=5.0)
-        collector.destroy_node()
-        rclpy.try_shutdown()
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

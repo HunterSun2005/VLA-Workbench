@@ -1,4 +1,4 @@
-/* Franky collection owns its cameras independently of the ROS hardware profile. */
+/* RealSense SDK camera selection for collection. */
 'use strict';
 (() => {
  const panel=$('cameraSetup'),fields=$('cameraFields'),status=$('cameraStatus');

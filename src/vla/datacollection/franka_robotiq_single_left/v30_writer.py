@@ -190,6 +190,7 @@ def make_info(
 def _fixed_array(values: np.ndarray, dtype: str) -> pa.Array:
     numpy_dtype, arrow_dtype = {
         "float32": (np.float32, pa.float32()),
+        "float64": (np.float64, pa.float64()),
         "int64": (np.int64, pa.int64()),
     }.get(dtype, (None, None))
     if numpy_dtype is None:

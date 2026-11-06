@@ -94,37 +94,15 @@ def test_extractor_selects_state_and_official_lerobot_loads_video(
     assert "stats/observation.state/q99" in episodes
 
 
-def test_relative_stats_are_chunk_based_and_keep_parquet_absolute(tmp_path: Path) -> None:
-    source = tmp_path / "source"
+def test_legacy_relative_stats_refused_without_command_contract(tmp_path):
+    source = tmp_path/'source'
     _make_dataset(source)
-    output = tmp_path / "relative"
-    extraction.extract_dataset_features(
-        source,
-        extraction.FEATURE_CONFIG_DIR / "franka_single_left_tcp_rot6d_10d.yaml",
-        output,
-        action_stats="relative",
-        action_chunk_size=50,
-        validate=False,
-    )
-    data = pd.concat(pd.read_parquet(path) for path in sorted((output / "data").glob("*/*.parquet")))
-    states = np.stack(data["observation.state"].to_numpy())
-    actions = np.stack(data["action"].to_numpy())
-    np.testing.assert_allclose(actions[:, :9] - states[:, :9], 0.2, atol=2e-6)
-    stats = json.loads((output / "meta/stats.json").read_text())["action"]
-    info = json.loads((output / "meta/info.json").read_text())
-    assert info["evo_rlt"]["action_stats"] == "relative"
-    episode_indices = data["episode_index"].to_numpy()
-    relative_chunks = []
-    for episode_index in np.unique(episode_indices):
-        mask = episode_indices == episode_index
-        episode_states = states[mask]
-        episode_actions = actions[mask]
-        for start in range(len(episode_actions) - 50 + 1):
-            chunk = episode_actions[start : start + 50].copy()
-            chunk[:, :9] -= episode_states[start, :9]
-            relative_chunks.append(chunk)
-    expected = np.concatenate(relative_chunks)
-    np.testing.assert_allclose(stats["mean"], expected.mean(axis=0), atol=2e-6)
+    before = [path.read_bytes() for path in sorted((source/'data').glob('*/*.parquet'))]
+    with pytest.raises(ValueError, match='explicit VLA action contract'):
+        extraction.extract_dataset_features(source,
+            extraction.FEATURE_CONFIG_DIR/'franka_single_left_tcp_rot6d_10d.yaml', tmp_path/'relative',
+            action_stats='relative', action_chunk_size=50, validate=False)
+    assert before == [path.read_bytes() for path in sorted((source/'data').glob('*/*.parquet'))]
 
 
 def test_extractor_replaces_prompt_everywhere(tmp_path: Path) -> None:

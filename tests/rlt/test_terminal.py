@@ -125,52 +125,22 @@ def test_cli_context_logs_survive_and_managed_imports_do_not_activate(tmp_path, 
     assert terminal.current_reporter() is None
 
 
-@pytest.mark.parametrize('keys,expected', [
-    ([b'xy', b'n', b'x', b'y', b'c'], ['x']),
-    ([b'c', b'n', b'c', b'y'], []),
-    ([b'x', b'\x04'], []),
-    ([b'x', b'd', b'c'], ['d']),
-    ([b'xd', b'c'], ['d']),
+@pytest.mark.parametrize('events,expected', [
+    (['discard','cancel','discard','confirm'], ['discard']),
+    (['quit','cancel'], []),
+    (['discard','pause'], ['pause']),
+    (['quit','confirm'], ['discard','stop']),
+    (['force_quit'], ['discard','stop']),
 ])
-def test_gamepad_cli_routes_only_confirmed_destructive_keys(tmp_path, monkeypatch, keys, expected):
-    from contextlib import nullcontext
-    from dataclasses import replace
+def test_ros_terminal_confirmations_continue_polling(events,expected):
     from types import SimpleNamespace
-    from unittest.mock import Mock
-    from vla.datacollection.start_teleop import gamepad_record as entry
-    control, recording = entry.load_recording_config(entry.DEFAULT_CONFIG)
-    control = replace(control, robot=replace(control.robot, realtime_cpu=None))
-    accepted, ticks = [], []
-    class Session:
-        worker = object()
-        saving = False
-        controller = SimpleNamespace(mode='active')
-        def __init__(self, *_a, **_k): pass
-        def tick(self): ticks.append(True)
-        def key(self, event):
-            accepted.append(event)
-            if event in ('x', 'd'):
-                self.worker = None
-        def finish(self, *_a): pass
-    robot = Mock(is_connected=False)
-    receiver = SimpleNamespace(path=tmp_path / 'joy.sock', close=lambda: None)
-    viewer = Mock()
-    monkeypatch.setattr(entry, 'JoyReceiver', lambda *_: receiver)
-    monkeypatch.setattr(entry, 'JoySidecars', lambda *_: nullcontext(SimpleNamespace(check=lambda: None)))
-    monkeypatch.setattr(entry, 'FrankaRobotiqRobot', lambda *_: robot)
-    monkeypatch.setattr(entry, 'RecordingSession', Session)
-    monkeypatch.setattr(entry, 'RecordingStore', lambda *_a, **_k: SimpleNamespace(root=tmp_path, close=lambda: None))
-    monkeypatch.setattr(entry, 'CameraPreview', lambda *_a, **_k: viewer)
-    monkeypatch.setattr(entry, 'keyboard', lambda: nullcontext(0))
-    monkeypatch.setattr(entry.sys.stdin, 'isatty', lambda: True)
-    monkeypatch.setattr(entry.select, 'select', lambda *_: ([0], [], []))
-    inputs = iter(keys)
-    monkeypatch.setattr(entry.os, 'read', lambda *_: next(inputs))
-    entry.run(control, recording, tmp_path, 'mock', False, preview=False)
-    assert accepted == expected
-    assert len(ticks) == len(keys)  # The loop keeps polling while confirmation is pending.
-    robot.connect.assert_called_once()
-    robot.disconnect.assert_called_once()
+    from vla.cli.ros_session import terminal_command
+    accepted=[]
+    backend=SimpleNamespace(sample=lambda:{'recording':True,'episode':2}, command=lambda op,args:accepted.append(op))
+    confirmation=TerminalConfirmation(lambda *_:None)
+    for event in events:
+        terminal_command(backend,confirmation,event)
+    assert accepted==expected
 
 
 def test_raw_keyboard_confirmation_and_eof_do_not_replay_keys(monkeypatch):

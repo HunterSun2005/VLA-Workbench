@@ -9,7 +9,7 @@ import pytest
 from vla.web.config import SessionConfig
 from vla.web.demo import DemoBackend
 from vla.web.runtime import Runtime
-from vla.robots.franka_robotiq.camera import RealSenseCapture
+from vla.sensors.realsense import RealSenseCapture
 
 
 @pytest.mark.parametrize('workflow,expected', [('collect', 30), ('deploy', 10)])

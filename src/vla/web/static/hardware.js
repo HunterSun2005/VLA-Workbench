@@ -5,7 +5,7 @@
  const side=$('sideCamera');
  let profiles=null,inventory={serials:[],cameras:[],warnings:[]},drafts={},shown=null,saving=false,sessionProfile=null,profileSession=null,profileSequence=0,wasRunning=false,restoredMode=null;
  const labels={LEFT_ROBOT_IP:'左臂 IP',RIGHT_ROBOT_IP:'右臂 IP',LEFT_ROBOTIQ_PORT:'左夹爪串口',RIGHT_ROBOTIQ_PORT:'右夹爪串口',LEFT_GELLO_SERIAL_ID:'左 GELLO 串口',RIGHT_GELLO_SERIAL_ID:'右 GELLO 串口',BASE_CAMERA_SERIAL:'Base 全局相机',LEFT_WRIST_CAMERA_SERIAL:'左腕相机',RIGHT_WRIST_CAMERA_SERIAL:'右腕相机',GELLO_CONFIG:'GELLO 校准 YAML',ROBOT_CONFIG:'机械臂 YAML',GRIPPER_CONFIG:'夹爪 YAML'};
- const usesROS=()=>config().arms==='dual'||config().source==='gello';
+ const usesROS=()=>true;
  const running=configLocked;
  const generated=path=>/^runtime\/web\/hardware\/(single_left|dual)-[a-f0-9]{64}\.json$/.test(path);
  const displayedValues=()=>sessionRunning()?(sessionProfile?.session_id===(current?.session_id||active?.session_id)&&sessionProfile.arms===shown?sessionProfile.values:null):drafts[shown];

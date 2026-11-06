@@ -1,4 +1,4 @@
-"""Forward one ROS2 sensor_msgs/Joy topic to the Franky rollout process."""
+"""Forward one ROS2 sensor_msgs/Joy topic to the rollout input process."""
 
 from __future__ import annotations
 

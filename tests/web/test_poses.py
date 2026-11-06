@@ -13,10 +13,8 @@ from vla.web.app import create_app
 from vla.web.config import SessionConfig
 from vla.web.demo import DemoBackend
 from vla.web.poses import PoseStore, validate_pose
-from vla.web.pose_control import (PoseActions, FrankyPoseDriver, ROSPoseDriver,
-                                  pose_value, compatible, check_bounds)
+from vla.web.pose_control import PoseActions, ROSPoseDriver, pose_value, compatible, check_bounds
 from vla.web.runtime import Runtime
-from tests.rlt.test_gamepad_teleop import rig
 
 
 def sample(arm='left'):
@@ -106,45 +104,6 @@ def test_identity_tool_workspace_rejection():
         check_bounds(current, [0,0,0], [.2,.2,.2])
 
 
-def test_franky_restores_exact_rotation_no_gripper_and_cancels_before_input(rig, tmp_path):
-    from scipy.spatial.transform import Rotation
-    rig.arm.state.F_T_EE = np.eye(4)
-    rig.advance()
-    config = SessionConfig()
-    backend = NS(config=config, arms=['left'], session=NS(controller=rig.app))
-    backend.sample = lambda: {'state':rig.app.mode,'enabled':rig.app.mode=='active'}
-    actions = PoseActions(backend,tmp_path)
-    actions.command('pose_capture',{'arm':'left','note':'初始位置'})
-    saved = actions.store.list()[0]
-    rig.arm.state.O_T_EE[:3,3] += [.04,0,0]
-    rig.arm.state.O_T_EE[:3,:3] = Rotation.from_euler('z',30,degrees=True).as_matrix()
-    rig.advance()
-    actions.command('pose_restore',{'pose_id':saved['id']})
-    np.testing.assert_allclose(rig.app._pose_return.rotation, saved['pose']['rotation'])
-    actions.tick()
-    rig.advance()
-    debug = rig.robot.command_debug_snapshot()
-    assert np.linalg.norm(debug['commanded_linear_velocity']) <= .030001
-    assert np.linalg.norm(debug['commanded_angular_velocity']) <= .150001
-    assert rig.gripper.target is None  # No gripper motion was requested during the return.
-    rig.receiver.packet = replace(rig.receiver.packet, axes=(0,0,-1,0,0,1))
-    actions.tick()
-    assert actions.status['state'] == 'cancelled' and rig.app.mode == 'standby'
-    assert rig.gripper.target == .75
-    rig.receiver.packet = replace(rig.receiver.packet, axes=(0,0,1,0,0,1))
-    rig.advance()
-    actions.command('pose_restore',{'pose_id':saved['id']})
-    rig.arm.state.O_T_EE[:3,3] = saved['pose']['position']
-    rig.arm.state.O_T_EE[:3,:3] = saved['pose']['rotation']
-    actions.tick()
-    assert actions.status['state'] == 'completed' and rig.app.mode == 'standby'
-    rig.advance()
-    actions.command('pose_restore',{'pose_id':saved['id']})
-    rig.receiver.error = TimeoutError('stale Joy')
-    actions.tick()
-    assert actions.status['state'] == 'failed' and rig.app.mode == 'standby'
-
-
 def ros_backend(source, arm='left'):
     from vla.datacollection.franka_robotiq_rollout.safety import FrankaHealthMonitor
     config = SessionConfig(arms='dual',source=source)
@@ -163,19 +122,31 @@ def ros_backend(source, arm='left'):
     node = NS(_lock=threading.Lock(), _latest=latest)
     model = NS(joint_names=[f'q{i}' for i in range(7)],lower_limits=np.full(7,-3),upper_limits=np.full(7,3))
     messages = []
-    if source == 'gamepad':
-        node.config = rollout
-        node._measured_joints = lambda a,m:np.array(m.position)
-        node._faulted = False
-        node._neutral_gamepads = lambda:True
-        node.servos = {arm:NS(model=model)}
-        node._publish_arm_command = lambda a,q,g,**kw:messages.append((a.name,q.copy(),kw))
-        b.collector = node
-    else:
-        b.recorder = node
-        arbiter = NS(managed_fault=None, measured_joints=np.zeros(7), measured_joint_time=now,source_timeout=.5,
-                     model=model,joint_publisher=NS(publish=messages.append),get_clock=lambda:NS(now=lambda:NS(to_msg=lambda:None)))
-        b.arbiters = [arbiter,arbiter]
+    from vla.control.ros.coordinator import ControlCoordinator, ArmMeasurement
+    node.config = rollout
+    node._measured_joints = lambda a,m:np.array(m.position)
+    node._faulted = False
+    node._neutral_gamepads = lambda:True
+    node.servos = {name:NS(model=model, reset_tracking=lambda:None,
+        step=lambda q,p,r,tp,tr,dt:q+dt*.05, forward_tcp=lambda *args:(np.array([.4,0,.3]),np.eye(3))) for name in ('left','right')}
+    node.coordinator = ControlCoordinator(rollout.action_spec, node.servos,
+        {a.name:(a.workspace_min,a.workspace_max) for a in rollout.arms},
+        lambda name,q,g,generation,command:messages.append((name,q.copy())), lambda generation:None)
+    def observe():
+        for name in ('left','right'):
+            node.coordinator.observe(name,ArmMeasurement(np.zeros(7),.5,np.zeros(3),np.eye(3),time.monotonic_ns()))
+    node._observe_control = observe
+    def boundary(owner=None, **kwargs):
+        observe()
+        generation=node.coordinator.transition(owner,**kwargs)
+        for name in ('left','right'):
+            node.coordinator.acknowledge(name,generation,0,np.zeros(7),time.monotonic_ns())
+    node._control_boundary = boundary
+    node._track_control = node.coordinator.tick
+    for name in ('left','right'):
+        latest[f'{name}.robot_state']=(int(now*1e9),state)
+        latest[f'{name}.measured_joint']=(int(now*1e9),NS(position=np.zeros(7)))
+    b.collector=node
     return b, latest, messages
 
 
@@ -183,29 +154,16 @@ def ros_backend(source, arm='left'):
 def test_ros_real_adapter_freshness_solver_joint_only_and_hold(monkeypatch, source, arm):
     import sys
     b, latest, messages = ros_backend(source,arm)
-    class Servo:
-        def __init__(self,model,config):
-            self.model,self.config = model,config
-        def step(self,q,p,r,tp,tr,dt):
-            assert self.config.max_joint_speed <= .15 and self.config.max_linear_velocity <= .03
-            return q + dt*.05
-        def forward_tcp(self,q,tp,tr):
-            return np.array([.4,0,.3]),np.eye(3)
-    monkeypatch.setitem(sys.modules,'vla.datacollection.franka_robotiq_rollout.collect_ros',NS(CartesianServo=Servo))
-    monkeypatch.setitem(sys.modules,'sensor_msgs.msg',NS(JointState=lambda:NS(header=NS())))
     driver = ROSPoseDriver(b)
     pose = driver.read(arm)
     target = {**pose,'position':[.45,0,.3]}
     driver.start(target)
     driver.last -= .015
     driver.tick(target)
-    assert len(messages) == 1
-    if source == 'gamepad':
-        assert messages[0][0] == arm and messages[0][2] == {'publish_gripper':False}
-    else:
-        assert len(messages[0].position) == 7
+    assert len(messages) == 2  # one coordinated command per arm, no direct gripper call
+    assert b.collector.coordinator.owner == 'pose'
     driver.stop()
-    assert len(messages) == 2
+    assert b.collector.coordinator.mode == 'standby'
     stale = latest[f'{arm}.robot_state']
     latest[f'{arm}.robot_state'] = (stale[0]-int(1e9),stale[1])
     with pytest.raises(RuntimeError,match='过期'):
@@ -218,19 +176,20 @@ def test_ros_reflex_and_timeout_rejected(monkeypatch):
     latest['left.robot_state'][1].robot_mode = 4
     with pytest.raises(RuntimeError,match='IDLE/MOVE'):
         driver.read('left')
+    latest['left.robot_state'][1].robot_mode = 1
+    driver.arm='left'
+    b.collector._control_boundary('pose')
     driver.last = time.monotonic()-1
     with pytest.raises(RuntimeError,match='超时'):
-        driver.tick(sample())
+        driver.tick({**driver.read('left'), 'position':[.5,0,.3]})
 
 
-def test_saved_return_cancels_on_packet_arriving_after_adapter_check(rig):
-    from vla.datacollection.start_teleop.gamepad_teleop import PoseReturn
-    rig.advance()
-    rig.app.enable()
-    rig.app._pose_return = PoseReturn('saved pose', np.array([.5,-.2,.3]), np.eye(3), rig.clock[0]+60)
-    moves = len(rig.arm.moves)
-    rig.receiver.packet = replace(rig.receiver.packet, axes=(0,0,-1,0,0,1))
-    rig.advance()  # No adapter precheck: a newly arrived trigger must still cancel.
-    assert rig.app.mode == 'standby' and rig.app._pose_return is None
-    assert len(rig.arm.moves) == moves
-    assert rig.gripper.target == .75
+def test_saved_return_cancels_on_new_input():
+    b, _, messages = ros_backend('gamepad')
+    driver=ROSPoseDriver(b)
+    target={**driver.read('left'), 'position':[.5,0,.3]}
+    driver.start(target)
+    b.collector._neutral_gamepads=lambda:False
+    assert driver.tick(target) == 'cancelled'
+    driver.stop()
+    assert not messages and b.collector.coordinator.mode == 'standby'

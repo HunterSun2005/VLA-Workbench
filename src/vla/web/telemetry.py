@@ -30,21 +30,6 @@ def wrench_values(values, arm, wrench):
     vector(values, arm, 'tcp_torque', ('x', 'y', 'z'), wrench[3:])
 
 
-def franky_values(state, width=None):
-    from vla.robots.franka_robotiq.robot import pose_matrix
-    values = {}
-    if state is None:
-        return values
-    vector(values, 'left', 'health', ['success_rate'], getattr(state,'control_command_success_rate',None))
-    pose = pose_matrix(state.O_T_EE)
-    pose_values(values, 'left', pose[:3,3], pose[:3,:3])
-    wrench_values(values, 'left', getattr(state, 'O_F_ext_hat_K', None))
-    for attr, group, prefix in [('q','joint','q'),('dq','velocity','dq'),('tau_J','torque','tau')]:
-        vector(values, 'left', group, [f'{prefix}{i}' for i in range(1,8)], getattr(state, attr, None))
-    vector(values, 'left','gripper', ['width'], [width] if width is not None else None)
-    return values
-
-
 def ros_values(latest, arms):
     from vla.datacollection.franka_robotiq_single_left import schema
     values = {}

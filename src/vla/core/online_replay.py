@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import json
 import random
 import sqlite3
@@ -256,7 +258,13 @@ class PersistentReplayBuffer:
                     or length > record.transition["exec_chunk"].shape[0]
                     or record.anchor_frame < 0):
                 raise ValueError("invalid replay actual_steps")
-            covered.update(range(record.anchor_frame, record.anchor_frame + length))
+            duration = record.transition.get('elapsed_steps', steps).item()
+            if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration != int(duration):
+                raise ValueError('invalid elapsed control steps')
+            elapsed = int(duration)
+            if elapsed < length:
+                raise ValueError('elapsed control steps cannot be shorter than action count')
+            covered.update(range(record.anchor_frame, record.anchor_frame + elapsed))
 
         connection = self._connection
         connection.execute("BEGIN IMMEDIATE")

@@ -137,7 +137,7 @@ def test_session_profile_uses_frozen_values_not_latest_editor_save(tmp_path):
         assert result.json()['session_id']=='session'
         assert result.json()['values']['BASE_CAMERA_SERIAL']==values['BASE_CAMERA_SERIAL']
     (directory/'config.json').write_text(json.dumps(asdict(replace(config,arms='single_left',source='gamepad'))))
-    assert session_profile(tmp_path,record) is None
+    assert session_profile(tmp_path,record)['values'] == values
 
 
 def test_unresolved_usb_is_not_submitted_as_sdk_serial(tmp_path, monkeypatch):

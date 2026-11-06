@@ -200,53 +200,75 @@ def validate_rl_token_inputs(
     if (tokenizer_path is not None or Path(saved_tokenizer).is_absolute()) and not tokenizer_candidate.exists():
         raise FileNotFoundError(f"tokenizer path does not exist: {tokenizer_candidate}")
 
-    processor_relative = _relative_from_processor(preprocessor)
-    config_relative = config.get("use_relative_actions")
-    use_relative_actions = bool(config_relative) if config_relative is not None else bool(processor_relative)
-    if processor_relative is not None and processor_relative != use_relative_actions:
-        raise ValueError(
-            "SFT config and preprocessor disagree on use_relative_actions: "
-            f"config={use_relative_actions}, processor={processor_relative}"
-        )
-    vla_metadata = info.get("evo_rlt", {})
-    if not isinstance(vla_metadata, dict):
-        raise ValueError("dataset vla metadata must be a mapping")
-    action_stats = vla_metadata.get("action_stats")
-    expected_stats = "relative" if use_relative_actions else "absolute"
-    if action_stats is not None and action_stats != expected_stats:
-        raise ValueError(
-            f"dataset action_stats={action_stats!r} does not match SFT use_relative_actions="
-            f"{use_relative_actions}; expected {expected_stats!r}"
-        )
-    if action_stats is None:
-        logger.warning(
-            "dataset has no evo_rlt.action_stats marker; cannot prove %s stats match the SFT processor",
-            expected_stats,
-        )
-
-    action_chunk_size = vla_metadata.get("action_chunk_size")
-    if action_chunk_size is not None:
-        if not isinstance(action_chunk_size, int) or action_chunk_size != chunk_size:
-            raise ValueError(
-                f"dataset action_chunk_size={action_chunk_size!r} does not match "
-                f"SFT chunk_size={chunk_size}"
-            )
+    action_contract = config.get('action_contract')
+    if action_contract:
+        from vla.actions import ActionSpec
+        from vla.actions.metadata import checkpoint_contract, validate_mixture
+        contract = checkpoint_contract(sft_path)
+        spec = ActionSpec.from_dict(contract['action_spec'])
+        spec.require_compatible(ActionSpec.from_dict(info['action_spec']), training=False)
+        if 'observation.anchor' not in dataset_features:
+            raise ValueError('RLT training requires independent raw observation.anchor')
+        if info.get('actions_stored_as', info.get('evo_rlt', {}).get('actions_stored_as')) != 'absolute':
+            raise ValueError('RLT training requires absolute disk actions')
+        sampling = contract['statistics']['contract']['sampling']
+        if sampling['chunk_length'] != chunk_size:
+            raise ValueError('RLT checkpoint chunk sampler mismatch')
+        recording = info.get('recording_contract') or info.get('processing', {}).get('source_contract', {}).get('recording_contract')
+        if recording:
+            validate_mixture([recording], allow_derived=bool(contract.get('sources', {}).get('allow_derived', False)))
+        use_relative_actions = spec.representation == 'chunk_relative'
+        actions_stored_as = 'absolute'
+        expected_stats = 'relative' if use_relative_actions else 'absolute'
     else:
-        logger.warning(
-            "dataset has no evo_rlt.action_chunk_size marker; cannot prove its action stats "
-            "use the SFT chunk size"
-        )
+        processor_relative = _relative_from_processor(preprocessor)
+        config_relative = config.get("use_relative_actions")
+        use_relative_actions = bool(config_relative) if config_relative is not None else bool(processor_relative)
+        if processor_relative is not None and processor_relative != use_relative_actions:
+            raise ValueError(
+                "SFT config and preprocessor disagree on use_relative_actions: "
+                f"config={use_relative_actions}, processor={processor_relative}"
+            )
+        vla_metadata = info.get("evo_rlt", {})
+        if not isinstance(vla_metadata, dict):
+            raise ValueError("dataset vla metadata must be a mapping")
+        action_stats = vla_metadata.get("action_stats")
+        expected_stats = "relative" if use_relative_actions else "absolute"
+        if action_stats is not None and action_stats != expected_stats:
+            raise ValueError(
+                f"dataset action_stats={action_stats!r} does not match SFT use_relative_actions="
+                f"{use_relative_actions}; expected {expected_stats!r}"
+            )
+        if action_stats is None:
+            logger.warning(
+                "dataset has no evo_rlt.action_stats marker; cannot prove %s stats match the SFT processor",
+                expected_stats,
+            )
 
-    actions_stored_as = vla_metadata.get("actions_stored_as")
-    if actions_stored_as is not None and actions_stored_as != "absolute":
-        raise ValueError(
-            f"dataset actions_stored_as={actions_stored_as!r}; RL Token expects absolute "
-            "actions in parquet and applies relative conversion in the SFT processor"
-        )
-    if actions_stored_as is None:
-        logger.warning(
-            "dataset has no evo_rlt.actions_stored_as marker; cannot prove parquet actions are absolute"
-        )
+        action_chunk_size = vla_metadata.get("action_chunk_size")
+        if action_chunk_size is not None:
+            if not isinstance(action_chunk_size, int) or action_chunk_size != chunk_size:
+                raise ValueError(
+                    f"dataset action_chunk_size={action_chunk_size!r} does not match "
+                    f"SFT chunk_size={chunk_size}"
+                )
+        else:
+            logger.warning(
+                "dataset has no evo_rlt.action_chunk_size marker; cannot prove its action stats "
+                "use the SFT chunk size"
+            )
+
+        actions_stored_as = vla_metadata.get("actions_stored_as")
+        if actions_stored_as is not None and actions_stored_as != "absolute":
+            raise ValueError(
+                f"dataset actions_stored_as={actions_stored_as!r}; RL Token expects absolute "
+                "actions in parquet and applies relative conversion in the SFT processor"
+            )
+        if actions_stored_as is None:
+            logger.warning(
+                "dataset has no evo_rlt.actions_stored_as marker; cannot prove parquet actions are absolute"
+            )
+
 
     stats = _load_json(dataset_root / "meta/stats.json")
     _validate_stats(stats, "observation.state", state_dim)

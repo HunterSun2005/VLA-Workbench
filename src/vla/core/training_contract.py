@@ -34,7 +34,7 @@ def validate_cache_upgrade(previous, current):
         raise ValueError("cache upgrade changes data/model contract, not only supervision semantics")
 
 
-def supervision_reference(exec_chunk, ref_chunk, annotations, start_frame, actual_steps=None):
+def supervision_reference(exec_chunk, ref_chunk, annotations, start_frame, actual_steps=None, action_stride=1):
     if exec_chunk.shape != ref_chunk.shape or ref_chunk.ndim != 2:
         raise ValueError("executed/reference chunk dimensions do not match")
     length = ref_chunk.shape[0] if actual_steps is None else actual_steps
@@ -42,7 +42,7 @@ def supervision_reference(exec_chunk, ref_chunk, annotations, start_frame, actua
         raise ValueError("invalid supervision chunk length")
     result = ref_chunk.clone()
     for offset in range(length):
-        row = (annotations or {}).get(start_frame + offset, {})
+        row = (annotations or {}).get(start_frame + offset * action_stride, {})
         if float(row.get("is_intervention", 0)) > 0.5 or int(row.get("collector_policy_id", 1)) == 0:
             result[offset].copy_(exec_chunk[offset])
     result[length:].zero_()

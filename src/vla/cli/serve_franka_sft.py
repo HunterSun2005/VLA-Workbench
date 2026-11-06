@@ -34,12 +34,15 @@ class Server:
         from vla.actions import ActionSpec
         self.action_contract = checkpoint_contract(self.path)
         self.spec = ActionSpec.from_dict(self.action_contract['action_spec'])
+        self.frame_stride = self.action_contract['statistics']['contract']['sampling']['frame_stride']
+        self._hold_remaining = 0
         cfg.action_contract = self.action_contract
         self.policy=PI05Policy.from_pretrained(self.path,config=cfg).to(self.device).eval()
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, local_files_only=True)
         self.pre,self.post=make_pre_post_processors(policy_cfg=cfg,pretrained_path=str(self.path),preprocessor_overrides={"device_processor":{"device":args.device}, "tokenizer_processor": {"tokenizer_name": args.tokenizer_path, "tokenizer": tokenizer}},postprocessor_overrides={})
         self.fingerprint=digest(self.path); self.task=args.task
+        self.tasks = tuple(getattr(args, "tasks", None) or [self.task])
         self.action_dim = self.spec.dim
         dual = self.spec.arms == ('left', 'right')
         if dual != (getattr(args, 'arms', 'single_left') == 'dual'):
@@ -52,7 +55,7 @@ class Server:
             raise ValueError('checkpoint feature dimensions disagree with action contract')
         self.contract = {
             'checkpoint_fingerprint': self.fingerprint, 'state_dim': self.state_dim, 'action_dim': self.action_dim,
-            'camera_keys': self.camera_keys, 'robot_type': self.robot_type, 'task': self.task, 'tasks': [self.task],
+            'camera_keys': self.camera_keys, 'robot_type': self.robot_type, 'task': self.task, 'tasks': list(self.tasks),
             'fps': 30, 'state_names': self.state_names, 'action_names': list(self.spec.action_fields),
             'action_spec': self.spec.to_dict(), 'wire_action_representation': 'absolute',
             'actions_stored_as': 'absolute', 'use_relative_actions': self.spec.representation == 'chunk_relative',
@@ -63,25 +66,33 @@ class Server:
             'rtc_queue_threshold': min(28, cfg.chunk_size-1), 'online_enabled': False}
         from vla.deployment.franka_pi05_rtc import Pi05RTC
         self.rtc = Pi05RTC(self.policy, self.pre, self.post, rtc_config=cfg.rtc_config,
-                           queue_threshold=self.contract['rtc_queue_threshold'])
+                           queue_threshold=self.contract['rtc_queue_threshold'], fps=30/self.frame_stride)
         self.mode_version = -1
 
     def handle(self,h,a):
         kind=h.get("kind"); rid=int(h.get("request_id",-1))
         if kind=="health": return {"kind":"health","request_id":rid,**self.contract},{}
         if kind!="infer": raise ValueError(f"unsupported request kind: {kind!r}")
-        if h.get("task",self.task)!=self.task: raise ValueError("task mismatch")
+        if h.get("task",self.task) not in getattr(self, "tasks", (self.task,)): raise ValueError("task mismatch")
         if h.get("phase", "vla") != "vla": raise ValueError("SFT server only supports vla phase")
+        task = h.get('task', self.task)
+        if task != getattr(self, '_active_task', task):
+            self._hold_remaining = 0
+            self.rtc.reset()
+            self.policy.reset()
+        self._active_task = task
         managed = h.get("control_mode")
         if managed is not None:
             version = int(h.get("mode_version", -1))
             if managed != "vla" or version < 0 or version < self.mode_version:
                 raise ValueError("invalid or stale SFT control mode")
             if version != self.mode_version:
+                self._hold_remaining = 0
                 self.rtc.reset()
                 self.policy.reset()
             self.mode_version = version
         if h.get("reset_episode", False):
+            self._hold_remaining = 0
             self.rtc.reset()
             self.policy.reset()
         obs={"observation.state":np.asarray(a["observation.state"],dtype=np.float32),
@@ -92,11 +103,15 @@ class Server:
         for key in self.camera_keys:
             if list(obs[key].shape) != self.contract["camera_shapes_hwc"][key] or obs[key].dtype != np.uint8:
                 raise ValueError("invalid SFT image shape/type")
-        x = self.prepare(obs, self.device, self.task, self.robot_type)
+        x = self.prepare(obs, self.device, task, self.robot_type)
         self.rtc.publish(x)
         if self.rtc.queue.empty():
             self.rtc.infer(account_for_latency=False)
-        y = self.rtc.get()
+        if getattr(self, '_hold_remaining', 0) <= 0:
+            self._held_action = self.rtc.get()
+            self._hold_remaining = getattr(self, 'frame_stride', 1)
+        y = self._held_action
+        self._hold_remaining -= 1
         self.rtc.maybe_start()
         if y is None:
             raise RuntimeError('RTC queue empty')
@@ -105,7 +120,7 @@ class Server:
                 **({"control_mode":"vla","mode_version":self.mode_version} if managed else {})},{"action":y}
 
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("--checkpoint",required=True,type=pathlib.Path); p.add_argument("--socket-path",required=True,type=pathlib.Path); p.add_argument("--task",default=TASK); p.add_argument("--device",default="cuda"); p.add_argument("--tokenizer-path", required=True); a=p.parse_args(); s=Server(a); stop=False
+    p=argparse.ArgumentParser(); p.add_argument("--arms",choices=["single_left","dual"],default="single_left"); p.add_argument("--checkpoint",required=True,type=pathlib.Path); p.add_argument("--socket-path",required=True,type=pathlib.Path); p.add_argument("--task",default=TASK); p.add_argument("--device",default="cuda"); p.add_argument("--tokenizer-path", required=True); a=p.parse_args(); s=Server(a); stop=False
     def sig(*_):
         nonlocal stop; stop=True
     signal.signal(signal.SIGINT,sig); signal.signal(signal.SIGTERM,sig); a.socket_path.parent.mkdir(parents=True,exist_ok=True)

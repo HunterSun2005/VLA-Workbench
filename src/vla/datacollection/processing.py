@@ -257,7 +257,7 @@ def export_selection(source, output, chosen, *, progress=None, cancelled=None, v
                 from vla.actions.dataset import export_actions, anchors_from_state
                 from dataclasses import replace
                 native_spec = ActionSpec.from_dict(info['action_spec'])
-                export_spec = replace(native_spec, space=chosen.get('action_space', native_spec.space))
+                export_spec = replace(native_spec, space=chosen.get('action_space') or native_spec.space)
                 info['action_spec'] = export_spec.to_dict()
                 info['features']['action'].update(shape=[export_spec.dim], names=list(export_spec.action_fields))
                 info['features']['observation.anchor'] = {'dtype': 'float64', 'shape': [export_spec.dim],

@@ -176,7 +176,9 @@ class RLTokenPolicy(PreTrainedPolicy):
         pi05_cfg = _load_pi05_config_from_dir(self.config.vla_pretrained_path)
         pi05_cfg.dtype = self.config.vla_dtype
         pi05_cfg.device = self.config.device
-        pi05 = PI05Policy.from_pretrained(
+        from .modeling_vla_pi05 import VLAPI05Policy
+        policy_class = VLAPI05Policy if getattr(pi05_cfg, 'action_contract', None) else PI05Policy
+        pi05 = policy_class.from_pretrained(
             self.config.vla_pretrained_path,
             config=pi05_cfg,
             revision=self.config.vla_revision,

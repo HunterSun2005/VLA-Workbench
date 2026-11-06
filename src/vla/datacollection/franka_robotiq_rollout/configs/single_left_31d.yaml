@@ -1,56 +1,76 @@
-version: 1
-backend: franky
-
-dataset:
-  root: datasets/raw/rollout_dataset_franky_full
-  task: Place the white lid firmly onto the jig.
-  fps: 30
-  image_size: [224, 224]
-
-transport:
-  socket_path: /tmp/vla_franka_single_left_31d.sock
-  joy_socket_path: /tmp/vla_franka_single_left_31d_joy.sock
-
+action_space: tcp
+arms:
+- base_link: left_fr3_link0
+  command_gripper_topic: /left/teleop/gripper_action_width_percent
+  command_joint_topic: /left/teleop/joint_states
+  gamepad:
+    joint7_button_sign: -1.0
+    joy_topic: /left/gamepad/joy
+    left_stick_x_sign: 1.0
+    left_stick_y_sign: 1.0
+  gripper_action_topic: /left/gripper/robotiq_gripper_controller/gripper_cmd
+  gripper_closed_position: 0.8
+  gripper_joint_name: robotiq_85_left_knuckle_joint
+  gripper_max_effort: 50.0
+  gripper_open_position: 0.0
+  gripper_speed_topic: /left/gripper/left_gripper_speed_controller/commands
+  gripper_state_topic: /left/gripper/joint_state_broadcaster_robotiq/joint_states
+  measured_joint_topic: /left/franka_robot_state_broadcaster/measured_joint_states
+  name: left
+  robot_state_publisher: /left/robot_state_publisher
+  robot_state_topic: /left/franka_robot_state_broadcaster/robot_state
+  tip_link: left_fr3_link8
+  workspace_max:
+  - 0.75
+  - 0.45
+  - 0.75
+  workspace_min:
+  - 0.2
+  - -0.45
+  - 0.05
+backend: ros2
+cameras:
+- name: base
+  serial: '260722303785'
+- name: left_wrist
+  serial: '346222073620'
 control:
-  gamepad_profile: sft_record
-  sync_tolerance_ms: 100
-  policy_timeout_s: 30.0
-  rtc_deployment_config: ../../../configs/deployment/franka_single_left_pi05_rtc.yaml
   damping: 0.05
-  max_joint_speed: 0.30
-  joint_limit_margin: 0.05
   gamepad_control_rate: 100
-  gamepad_joy_timeout_s: 0.20
-  gamepad_state_timeout_s: 0.50
   gamepad_deadzone: 0.08
+  gamepad_gripper_speed: 0.4
+  gamepad_gripper_trigger_deadzone: 0.05
+  gamepad_joint7_speed: 0.3
+  gamepad_joy_timeout_s: 0.2
+  gamepad_max_angular_speed: 0.3
+  gamepad_orientation_gain: 3.0
+  gamepad_position_gain: 8.0
+  gamepad_state_timeout_s: 0.5
   gamepad_xy_speed: 0.02
   gamepad_z_speed: 0.01
-  gamepad_tilt_speed: 0.15
-  gamepad_roll_speed: 0.30
-  gamepad_gripper_speed: 0.40
-  policy_gripper_speed: 1.0
-  gamepad_gripper_trigger_deadzone: 0.05
-  gamepad_position_gain: 8.0
-  gamepad_orientation_gain: 3.0
-  gamepad_max_angular_speed: 0.30
-  min_control_command_success_rate: 0.90
+  joint_limit_margin: 0.05
   low_success_rate_samples: 3
-
-robot:
-  address: 192.168.1.11
-  arm_id: left
-
-cameras:
-  - name: base
-    serial: "260722303785"
-  - name: left_wrist
-    serial: "346222073620"
-
-force_observation:
-  format: full50
-  source: Franky/libfranka RobotState
-  fields:
-    - state_29d
-    - tau_J
-    - tau_ext_hat_filtered
-    - dq
+  max_angular_velocity: 0.3
+  max_joint_speed: 0.3
+  max_linear_velocity: 0.04
+  min_control_command_success_rate: 0.9
+  policy_gripper_speed: 1.0
+  policy_timeout_s: 30.0
+  smooth_angular_velocity: true
+  sync_tolerance_ms: 100
+  target_smoothing_alpha: 0.25
+  velocity_smoothing: 0.3
+  velocity_tracking_tau_s: 0.15
+dataset:
+  fps: 30
+  image_size:
+  - 224
+  - 224
+  root: datasets/raw/franka_single_left
+  subtasks: []
+  task: Place the white lid firmly onto the jig.
+  tasks: []
+input_source: gamepad
+transport:
+  socket_path: /tmp/vla_franka_single_left.sock
+version: 1

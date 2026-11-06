@@ -75,6 +75,12 @@ def critic_loss(
     done = batch["done"]
     actual_steps = batch.get("actual_steps")
 
+    physical_timing = 'reward_offsets' in batch or 'elapsed_steps' in batch
+    if physical_timing and (actual_steps is None or not {'reward_offsets', 'elapsed_steps'} <= batch.keys()):
+        raise ValueError('physical timing requires reward_offsets, elapsed_steps and actual_steps')
+    if reward_seq.ndim != 2 or reward_seq.shape[1] != C:
+        raise ValueError('reward chunk dimensions do not match chunk length')
+
     with torch.no_grad():
         # Use deterministic mean for target action (TD3-style), clamped to [-1,1]
         mu_next, _ = actor.forward(x_next, ref_next)
@@ -82,11 +88,26 @@ def critic_loss(
         q_next = target_critic.min_q(x_next, mu_next)
         if target_q_clip is not None and target_q_clip > 0:
             q_next = q_next.clamp(-target_q_clip, target_q_clip)
-        r = discounted_chunk_return(reward_seq, gamma, actual_steps)
+        if physical_timing:
+            offsets = batch['reward_offsets'].to(reward_seq.device)
+            elapsed = batch['elapsed_steps'].to(reward_seq.device)
+            actual_steps = actual_steps.to(reward_seq.device)
+            mask = _valid_steps(actual_steps.to(reward_seq.device), reward_seq.shape[0], C)
+            if (offsets.shape != reward_seq.shape or elapsed.shape != actual_steps.shape
+                    or offsets.dtype == torch.bool or elapsed.dtype == torch.bool
+                    or offsets.is_complex() or elapsed.is_complex()):
+                raise ValueError('invalid physical reward timing dimensions')
+            if not torch.isfinite(offsets).all() or not torch.isfinite(elapsed).all() or (elapsed < actual_steps).any() or (elapsed != elapsed.floor()).any():
+                raise ValueError('invalid elapsed control steps')
+            if ((offsets < 0) | (offsets != offsets.floor()) | ((offsets >= elapsed[:, None]) & mask)).any():
+                raise ValueError('invalid reward control-frame offset')
+            r = (reward_seq.masked_fill(~mask, 0) * gamma ** offsets).sum(1, keepdim=True)
+        else:
+            r = discounted_chunk_return(reward_seq, gamma, actual_steps)
 
         # Bootstrap with gamma^k where k = actual steps executed
         if actual_steps is not None:
-            bootstrap_exp = actual_steps.unsqueeze(-1).float()
+            bootstrap_exp = batch.get("elapsed_steps", actual_steps).to(q_next.device).unsqueeze(-1).float()
         else:
             bootstrap_exp = torch.full_like(done.unsqueeze(-1), C, dtype=torch.float32)
         bootstrap = (gamma ** bootstrap_exp) * (1.0 - done.unsqueeze(-1)) * q_next

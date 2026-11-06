@@ -97,12 +97,14 @@ controller_interface::return_type JointImpedanceController::update(const rclcpp:
     }
     gello_position_values_valid_ = false;
   }
+  diagnostic_sequence_.fetch_add(1);  // Odd while updating the atomic snapshot.
   diagnostic_fault_.store(command_watchdog_fault_);
   for (int i = 0; i < num_joints; ++i) {
     diagnostic_positions_[i].store(gello_position_values_[i]);
   }
   diagnostic_command_id_.store(received_command_id_);
   diagnostic_generation_.store(active_generation_);
+  diagnostic_sequence_.fetch_add(1);
   Vector7d q_goal;
   Vector7d tau_d_calculated;
   const double period_seconds = std::max(period.seconds(), 0.001);
@@ -284,6 +286,8 @@ CallbackReturn JointImpedanceController::on_configure(
       "teleop/controller_state", 10);
   diagnostic_timer_ = get_node()->create_wall_timer(std::chrono::milliseconds(10), [this]() {
     sensor_msgs::msg::JointState message;
+    const auto sequence = diagnostic_sequence_.load();
+    if (sequence % 2 != 0) return;
     const auto generation = diagnostic_generation_.load();
     message.header.stamp = get_node()->now();
     message.header.frame_id = "vla:" + std::to_string(generation) + ":" +
@@ -292,7 +296,7 @@ CallbackReturn JointImpedanceController::on_configure(
     for (int i = 0; i < num_joints; ++i) {
       message.position.push_back(diagnostic_positions_[i].load());
     }
-    if (generation == diagnostic_generation_.load()) {
+    if (sequence == diagnostic_sequence_.load()) {
       diagnostic_publisher_->publish(message);
     }
   });

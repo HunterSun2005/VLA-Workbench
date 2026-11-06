@@ -13,7 +13,7 @@ from typing import Any, Callable
 import numpy as np
 import torch
 
-from vla.robots.franka_robotiq.robot import (
+from vla.control.geometry import (
     ACTION_FIELDS,
     STATE_FIELDS,
     _rotation_angle,
@@ -134,29 +134,28 @@ def validate_checkpoint(checkpoint: str | Path, tokenizer_path: str | None = Non
         if not (root / name).is_file():
             raise FileNotFoundError(f"checkpoint is missing {name}: {root}")
     config = json.loads((root / "config.json").read_text(encoding="utf-8"))
-    expected_cameras = tuple(PHYSICAL_CAMERAS)
-    visual_features = tuple(
-        key for key, feature in config.get("input_features", {}).items()
-        if feature.get("type") == "VISUAL"
-    )
+    from vla.actions import ActionSpec
+    from vla.actions.metadata import checkpoint_contract
+    contract = checkpoint_contract(root)
+    spec = ActionSpec.from_dict(contract['action_spec'])
+    sampling = contract['statistics']['contract']['sampling']
+    expected_cameras = ('observation.images.base', 'observation.images.left_wrist') + (
+        ('observation.images.right_wrist',) if len(spec.arms) == 2 else ())
+    visual_features = tuple(key for key, feature in config.get('input_features', {}).items()
+                            if feature.get('type') == 'VISUAL')
     checks = {
-        "type": config.get("type") == "pi05",
-        "10D observation.state": _feature_shape(config, "input_features", "observation.state") == (10,),
-        "10D action": _feature_shape(config, "output_features", "action") == (10,),
-        "absolute actions": config.get("use_relative_actions") is False,
-        "chunk_size=50": config.get("chunk_size") == 50,
-        "ordered action features": tuple(config.get("action_feature_names", ())) == ACTION_FIELDS,
-        "exact two physical cameras": visual_features == expected_cameras,
-        "no empty cameras": config.get("empty_cameras", 0) == 0,
-        "camera shapes": all(
-            _feature_shape(config, "input_features", key) == (3, 224, 224)
-            for key in expected_cameras
-        ),
+        'PI05 policy': config.get('type') in ('pi05', 'vla_pi05'),
+        'state fields': _feature_shape(config, 'input_features', 'observation.state') == (len(contract['state_fields']),),
+        'action dimensions': _feature_shape(config, 'output_features', 'action') == (spec.dim,),
+        'project relative processor': config.get('use_relative_actions') is False,
+        'chunk sampling': config.get('chunk_size') == sampling['chunk_length'],
+        'physical cameras': visual_features == expected_cameras,
+        'no empty cameras': config.get('empty_cameras', 0) == 0,
+        'camera shapes': all(_feature_shape(config, 'input_features', key) == (3, 224, 224)
+                             for key in expected_cameras),
     }
-    failed = [name for name, valid in checks.items() if not valid]
-    if failed:
-        raise ValueError(f"checkpoint is incompatible with single-left absolute deployment: {failed}")
-    _validate_action_unnormalizer(root)
+    if failed := [name for name, valid in checks.items() if not valid]:
+        raise ValueError(f'checkpoint is incompatible with ROS deployment: {failed}')
     tokenizer = tokenizer_path or _tokenizer_name(root)
     tokenizer_root = Path(tokenizer).expanduser()
     if tokenizer_root.is_dir():

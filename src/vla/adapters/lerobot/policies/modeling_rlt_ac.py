@@ -66,6 +66,8 @@ class ChunkACPolicy(PreTrainedPolicy):
         **kwargs,
     ) -> None:
         super().__init__(config, *args, **kwargs)
+        from vla.adapters.lerobot.action_runtime import ActionRuntime
+        self.action_runtime = ActionRuntime(config.action_contract) if config.action_contract else None
         config.validate_features()
         self.config: ChunkACConfig = config
 
@@ -250,6 +252,11 @@ class ChunkACPolicy(PreTrainedPolicy):
             if not isinstance(v, Tensor):
                 v = torch.as_tensor(v)
             out[k] = v
+        if 'reward_offsets' in batch or 'elapsed_steps' in batch:
+            for key in ('reward_offsets', 'elapsed_steps'):
+                if key not in batch:
+                    raise ValueError('incomplete physical action timing')
+                out[key] = torch.as_tensor(batch[key])
         out["exec_chunk_flat"] = out["exec_chunk"].flatten(start_dim=-2)
         out["ref_chunk_flat"] = out["ref_chunk"].flatten(start_dim=-2)
         out["next_ref_flat"] = out["next_ref_chunk"].flatten(start_dim=-2)

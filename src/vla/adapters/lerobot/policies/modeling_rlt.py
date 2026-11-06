@@ -53,6 +53,9 @@ def _load_pi05_config(config_cls, pretrained_path: str):
 
     try:
         with draccus.config_type("json"):
+            if raw.get("action_contract"):
+                from .configuration_vla_pi05 import VLAPI05Config
+                config_cls = VLAPI05Config
             return draccus.parse(config_cls, tmp_path, args=[])
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -89,6 +92,8 @@ class RLTPretrainedPolicy(PreTrainedPolicy):
 
     def __init__(self, config: RLTPretrainedConfig, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
+        from vla.adapters.lerobot.action_runtime import ActionRuntime
+        self.action_runtime = ActionRuntime(config.action_contract) if config.action_contract else None
         self.config: RLTPretrainedConfig = config
 
         if config.rl_token_ckpt_path:
@@ -385,6 +390,8 @@ class RLTPretrainedPolicy(PreTrainedPolicy):
         """
         if self.modifier.needs_new_chunk:
             chunk = self.predict_action_chunk(batch, **kwargs)
+            if self.action_runtime is not None:
+                chunk = self.action_runtime.decode(chunk, batch)
             self.modifier.enqueue(chunk)
 
         return self.modifier.pop_action()

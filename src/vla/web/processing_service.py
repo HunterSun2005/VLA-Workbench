@@ -180,7 +180,7 @@ class ProcessingService:
     def _summary(self,index,draft,changed=False):
         return {'draft':draft, 'source_changed':changed, 'total_episodes':len(index.rows),
                 'total_frames':index.info['total_frames'], 'fps':index.fps,
-                'robot_type':index.info.get('robot_type'), 'cameras':index.cameras,
+                'action_spec':index.info.get('action_spec'), 'robot_type':index.info.get('robot_type'), 'cameras':index.cameras,
                 'fields':[field_descriptor(n) for n in index.names],
                 'action_names':index.features['action'].get('names') or [],
                 'action_units':[('0–1' if n.endswith('gripper') else 'm' if 'tcp_position_' in n
@@ -216,7 +216,7 @@ class ProcessingService:
         from vla.datacollection.processing import selection
         with self.lock:
             index,draft = self._index(dataset_id)
-            if not isinstance(value,dict) or set(value)-{'revision','state_fields','episodes','output_root'}:
+            if not isinstance(value,dict) or set(value)-{'revision','state_fields','episodes','output_root','action_space','allow_derived','preview_representation','preview_anchor_frame'}:
                 raise ValueError('无效处理草稿')
             if type(value.get('revision')) is not int or value['revision'] != draft['revision']:
                 raise RuntimeError('另一页面已修改草稿，请重新加载')
@@ -226,6 +226,14 @@ class ProcessingService:
             selection(index,{**candidate,'state_fields':fields or [index.names[0]],'episodes':eps or [0]})
             if not isinstance(fields,list) or not isinstance(eps,list):
                 raise ValueError('选择必须为列表')
+            if candidate.get('action_space') not in (None, 'joint', 'tcp'):
+                raise ValueError('invalid export action space')
+            if type(candidate.get('allow_derived', False)) is not bool:
+                raise ValueError('derived data consent must be explicit')
+            if candidate.get('preview_representation', 'absolute') not in ('absolute', 'chunk_relative'):
+                raise ValueError('invalid preview representation')
+            if type(candidate.get('preview_anchor_frame', 0)) is not int or candidate.get('preview_anchor_frame', 0) < 0:
+                raise ValueError('invalid preview chunk start')
             self.path(candidate['output_root'])
             candidate.update(state_fields=[n for n in index.names if n in fields],episodes=sorted(eps),revision=draft['revision']+1)
             save_json(self._draft_path(dataset_id),candidate)
@@ -257,9 +265,23 @@ class ProcessingService:
     def frame(self,dataset_id,episode,frame):
         from vla.datacollection.processing import read_lease
         with self.preview_slot(), self.lock:
-            index,_ = self._index(dataset_id)
+            index,draft = self._index(dataset_id)
             with read_lease(index.root):
-                return index.frame(episode,frame)
+                row = index.frame(episode,frame)
+                if draft.get('preview_representation') == 'chunk_relative':
+                    import numpy as np
+                    from dataclasses import replace
+                    from vla.actions import ActionSpec, DeltaActions
+                    spec = replace(ActionSpec.from_dict(index.info['action_spec']), representation='chunk_relative')
+                    anchor_frame = draft.get('preview_anchor_frame', 0)
+                    if frame < anchor_frame:
+                        raise ValueError('预览帧不能早于 chunk 起点')
+                    anchor = index.frame(episode,anchor_frame).get('observation.anchor')
+                    if anchor is None:
+                        raise ValueError('缺少独立实测锚点，无法预览相对动作')
+                    row['preview.chunk_relative_action'] = DeltaActions(spec)(np.asarray(row['action']), np.asarray(anchor)).tolist()
+                    row['preview.anchor_frame'] = anchor_frame
+                return row
 
     def window(self,dataset_id,episode,frame,seconds=10):
         from vla.datacollection.processing import read_lease

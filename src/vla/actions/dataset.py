@@ -10,7 +10,7 @@ from .statistics import compute_statistics
 def dataset_fingerprint(root):
     digest = hashlib.sha256()
     root = Path(root)
-    paths = [root/'meta/info.json', *sorted((root/'data').rglob('*.parquet'))]
+    paths = [root/'meta/info.json', *([root/'meta/vla_metadata.json'] if (root/'meta/vla_metadata.json').is_file() else []), *sorted((root/'data').rglob('*.parquet'))]
     for path in paths:
         digest.update(str(path.relative_to(root)).encode())
         with path.open('rb') as stream:
@@ -56,14 +56,24 @@ def dataset_statistics(root, spec, sampling):
     recorded = ActionSpec.from_dict(info['action_spec'])
     spec.require_compatible(recorded, training=False)
     def episodes():
-        for path in sorted((Path(root)/'data').rglob('*.parquet')):
-            table = pq.read_table(path).to_pandas()
-            for _, group in table.groupby('episode_index', sort=False):
-                actions = np.stack(group['action'])
-                if 'observation.anchor' not in group:
-                    raise ValueError('dataset lacks independent raw observation.anchor; re-export from full measured state')
-                anchors = np.stack(group['observation.anchor'])
-                valid = (np.stack(group['complementary_info.action_valid']).reshape(-1).astype(bool)
-                         if 'complementary_info.action_valid' in group else np.ones(len(group), bool))
-                yield actions, anchors, valid
+        import pandas as pd
+        paths = sorted((Path(root)/'data').rglob('*.parquet'))
+        if not paths:
+            raise ValueError('dataset has no action rows')
+        # Parquet shard boundaries do not delimit an episode or a chunk.
+        table = pd.concat([pq.read_table(path).to_pandas() for path in paths], ignore_index=True)
+        order = ['episode_index'] + (['frame_index'] if 'frame_index' in table else ['index'] if 'index' in table else [])
+        table = table.sort_values(order, kind='stable')
+        if 'complementary_info.segment_id' in table:
+            table['_segment'] = np.stack(table['complementary_info.segment_id']).reshape(-1)
+        else:
+            table['_segment'] = 0
+        for _, group in table.groupby(['episode_index', '_segment'], sort=False):
+            actions = np.stack(group['action'])
+            if 'observation.anchor' not in group:
+                raise ValueError('dataset lacks independent raw observation.anchor; re-export from full measured state')
+            anchors = np.stack(group['observation.anchor'])
+            valid = (np.stack(group['complementary_info.action_valid']).reshape(-1).astype(bool)
+                     if 'complementary_info.action_valid' in group else np.ones(len(group), bool))
+            yield actions, anchors, valid
     return compute_statistics(episodes(), spec, sampling, dataset_fingerprint(root))

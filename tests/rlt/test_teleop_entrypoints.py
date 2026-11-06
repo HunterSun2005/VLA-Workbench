@@ -134,10 +134,10 @@ def test_explicit_teleop_entrypoints_are_executable_and_syntax_valid() -> None:
         assert os.access(script, os.X_OK)
     for path in TELEOP_DIR.rglob("*.sh"):
         subprocess.run(["bash", "-n", str(path)], check=True)
-    assert "TELEOP_MODE=duo" in scripts[1].read_text()
-    assert "TELEOP_MODE=single_left" in scripts[2].read_text()
-    assert "CONTROL_OWNER=rollout" in scripts[3].read_text()
-    assert "CONTROL_OWNER=rollout" in scripts[4].read_text()
+    assert "--arms dual" in scripts[1].read_text()
+    assert "--arms single_left" in scripts[2].read_text()
+    assert "--workflow deploy" in scripts[3].read_text()
+    assert "--workflow deploy" in scripts[4].read_text()
 
 
 def test_rollout_hardware_has_one_command_owner_and_per_arm_gamepads() -> None:
@@ -156,17 +156,11 @@ def test_rollout_hardware_has_one_command_owner_and_per_arm_gamepads() -> None:
     assert 'dst="/right/teleop/gripper_drive_width_percent"' in gripper_launch
 
 
-def test_single_franky_rollout_entrypoint_only_starts_joy_bridge() -> None:
-    entrypoint = (TELEOP_DIR / "start_rollout_single_left.sh").read_text(
-        encoding="utf-8"
-    )
-    assert "franka_hardware" not in entrypoint
-    assert "robotiq_driver" not in entrypoint
-    assert "joy joy_node" in entrypoint
-    assert "franka_robotiq_rollout.joy_bridge" in entrypoint
-    source_setup = 'source "$ROS_SETUP"'
-    assert entrypoint.index("set +u") < entrypoint.index(source_setup)
-    assert entrypoint.index(source_setup) < entrypoint.index("set -u", entrypoint.index(source_setup))
+def test_single_rollout_entrypoint_uses_shared_ros_session():
+    entrypoint=(TELEOP_DIR/'start_rollout_single_left.sh').read_text()
+    assert 'vla.cli.ros_session' in entrypoint
+    assert '--workflow deploy' in entrypoint
+
 
 
 def test_teleop_uses_orderly_keyboard_exit_without_forcing_hardware_inactive() -> None:
@@ -238,7 +232,7 @@ def test_gripper_controller_state_uses_structured_name_and_state() -> None:
 
 
 @pytest.mark.parametrize("mode", ["single_left", "duo"])
-@pytest.mark.parametrize("owner", ["teleop", "rollout"])
+@pytest.mark.parametrize("owner", ["rollout"])
 @pytest.mark.parametrize("check_only", ["0", "1"])
 def test_launcher_orchestration_without_hardware(tmp_path, mode, owner, check_only):
     # Execute the real main/shutdown flow, substituting only hardware, process,
@@ -309,7 +303,7 @@ trap - EXIT INT TERM
     ("teleop", True, "0", False),
     ("teleop", False, "0", False),
     ("rollout", False, "1", True),
-    ("teleop", False, "1", True),
+    ("teleop", False, "1", False),
 ])
 def test_launcher_terminal_validation_for_managed_web(tmp_path, owner, managed, check_only, accepted):
     # Exercise real validation with /dev/null stdin, as used by Children.start.
@@ -330,7 +324,7 @@ validate_environment
                             capture_output=True, text=True, timeout=5)
     assert (result.returncode == 0) == accepted, result.stderr
     if not accepted:
-        assert "An interactive terminal is required" in result.stderr
+        assert ("direct teleop ownership was removed" if owner == "teleop" else "An interactive terminal is required") in result.stderr
 
 
 @pytest.mark.parametrize("failure", [False, True])

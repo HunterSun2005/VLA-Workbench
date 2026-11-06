@@ -2,8 +2,7 @@
 set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="${VLA_ROOT:-$PWD}"
-source "$REPOSITORY_ROOT/scripts/ros_env.sh"
-set -u
-# Load the same ROS2 workspaces as start_rollout_duo.sh before executing.
-exec env PYTHONPATH="$(cd "$SCRIPT_DIR/../../.." && pwd):${PYTHONPATH:-}" \
-  /usr/bin/python3 -m vla.datacollection.franka_robotiq_dual.gamepad_record "$@"
+MODEL_PYTHON="${VLA_PYTHON:-${CONDA_PREFIX:-/data0/miniconda3/envs/vla}/bin/python}"
+extra=()
+[[ "${CHECK_ONLY:-0}" == 1 ]] && extra+=(--check-only)
+exec env PYTHONPATH="$REPOSITORY_ROOT/src" "$MODEL_PYTHON" -m vla.cli.ros_session --arms dual "${extra[@]}" "$@"

@@ -1,3 +1,4 @@
+from tests.rlt.test_dual_gamepad_record import ros_module
 """Focused lifecycle, transport and mode regressions; never opens robot devices."""
 from dataclasses import replace
 import json
@@ -157,7 +158,7 @@ def test_managed_server_accepts_actual_auto_phase_and_rejects_old_version():
     server.policy.set_control_mode=modes.append
     server.policy._ensure_modifier=lambda:SimpleNamespace(phase_ctrl=SimpleNamespace(last_probability=.9))
     server.policy.pop_step_metadata=lambda:SimpleNamespace(phase=1.,source_type=1.)
-    arrays={'observation.state':np.zeros(10,dtype=np.float32),
+    arrays={'observation.anchor':np.array([.4,0,.3,1,0,0,0,1,0,.5]),'observation.state':np.zeros(10,dtype=np.float32),
             **{key:np.zeros((224,224,3),dtype=np.uint8) for key in server.camera_keys}}
     header={'kind':'infer','request_id':1,'task':server.task,'phase':'vla','control_mode':'auto','mode_version':1}
     result,_=server.handle(header,arrays)
@@ -169,23 +170,30 @@ def test_managed_server_accepts_actual_auto_phase_and_rejects_old_version():
         server.handle({**header,'mode_version':2,'control_mode':'vla'},arrays)
 
 
-def test_real_franky_collector_drops_old_mode_and_preserves_human_control():
-    from vla.datacollection.franka_robotiq_rollout.collect_franky import FrankyRolloutCollector
+def test_ros_collector_drops_old_mode_and_preserves_human_control(ros_module):
+    cls = ros_module.RolloutCollector
     from vla.datacollection.franka_robotiq_rollout.policy_client import PolicyResult
     from unittest.mock import Mock
-    c=object.__new__(FrankyRolloutCollector)
+    c=object.__new__(cls)
     c.policy_client=Mock(mode_version=2)
-    c._intervention=True;c._episode_active=True;c.robot=Mock()
+    import threading
+    c._lock=threading.RLock()
+    c._intervention=True;c._recording=True;c.robot=Mock()
+    from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
+    c.config=load_rollout_config(SessionConfig().default_config())
+    c._control_boundary=Mock();c._reset_servo_tracking=Mock()
     c.set_control_mode('auto')
     c.robot.stop.assert_not_called()
     assert c._intervention and c._web_switch_pending
     action=np.array([.4,0,.3,1,0,0,0,1,0,.5],dtype=np.float32)
     result=PolicyResult(1,action,'vla',False,1.,1.,'x',.01,time.monotonic(),'auto',1,.9)
     c.policy_client.poll_latest.return_value=result
-    assert c._consume_policy_result() is False
+    c._consume_policy_result()
+    assert c._latest_policy_result is None
     c._intervention=False;c._phase='vla'
     c.policy_client.poll_latest.return_value=replace(result,mode_version=2)
-    assert c._consume_policy_result() is True
+    c._consume_policy_result()
+    assert c._latest_policy_result.mode_version == 2
     assert not c._web_switch_pending
 
 
@@ -253,14 +261,14 @@ def test_startup_cancel_and_slow_monitor_do_not_block_commands(tmp_path):
 
 
 @pytest.mark.parametrize('path_kind', ['relative', 'absolute', 'default'])
-def test_dataset_path_preflight_and_resume_use_workspace(tmp_path, monkeypatch, path_kind):
+def test_dataset_path_preflight_and_resume_use_workspace(tmp_path, monkeypatch, path_kind, ros_ready):
     workspace=tmp_path/'workspace'
     workspace.mkdir()
     elsewhere=tmp_path/'elsewhere'
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
     value={'relative':'datasets/raw/custom', 'absolute':str(tmp_path/'external'), 'default':''}[path_kind]
-    cfg=SessionConfig(task='test',dataset_root=value)
+    cfg=ros_ready(workspace,SessionConfig(task='test',dataset_root=value))
     expected=(tmp_path/'external' if path_kind=='absolute' else
               workspace/('datasets/raw/custom' if path_kind=='relative' else 'datasets/raw/franka_single_left_gamepad_full'))
     result=preflight(cfg,root=workspace)
@@ -270,7 +278,7 @@ def test_dataset_path_preflight_and_resume_use_workspace(tmp_path, monkeypatch, 
     expected.mkdir(parents=True)
     (expected/'meta').mkdir()
     from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
-    (expected/'meta/info.json').write_text(json.dumps({'features': {
+    (expected/'meta/info.json').write_text(json.dumps({'gripper_recording_version': 2, 'features': {
         'observation.state': {'shape': [50], 'names': STATE_FIELDS},
         **{f'observation.images.{r}': {'dtype':'video'} for r in cfg.cameras}}}))
     result=preflight(cfg,root=workspace)
@@ -285,7 +293,7 @@ def test_preflight_refuses_legacy_raw_format(tmp_path, arms, width):
     cfg = SessionConfig(task='test', arms=arms, resume=True)
     target = cfg.dataset_path(tmp_path)
     (target/'meta').mkdir(parents=True)
-    (target/'meta/info.json').write_text(json.dumps({'features': {
+    (target/'meta/info.json').write_text(json.dumps({'gripper_recording_version': 2, 'features': {
         'observation.state': {'shape': [width], 'names': ['old'] * width}}}))
     result = preflight(cfg, root=tmp_path)
     assert not result['ok']

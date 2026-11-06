@@ -14,7 +14,7 @@ def test_collection_reports_annotation_and_only_configured_stage_controls(subtas
     backend.enabled,backend.mode,backend.record_started = True,'vla',None
     backend.collector = NS(episode_active=True,_latest_policy_result=None,_intervention=True,
         writer=NS(episode_count=3),_states=[1],_faulted=False,_fault_reason=None,
-        policy_client=None,config=NS(subtasks=subtasks),_subtask_index=0,_phase='rl')
+        policy_client=None,config=NS(input_source='gamepad',subtasks=subtasks),_subtask_index=0,_phase='rl')
     status = backend.collector_status()
     assert status['critical'] is True
     assert ('next_subtask' in status['available_commands']) == bool(subtasks)

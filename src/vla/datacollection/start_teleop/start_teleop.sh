@@ -10,7 +10,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TELEOP_MODE="${TELEOP_MODE:-duo}"
-CONTROL_OWNER="${CONTROL_OWNER:-teleop}"
+CONTROL_OWNER="${CONTROL_OWNER:-rollout}"
 VLA_RUN_MODE="${VLA_RUN_MODE:-terminal}"
 case "$VLA_RUN_MODE" in
   terminal|managed) ;;
@@ -21,6 +21,7 @@ if [[ "$VLA_RUN_MODE" == managed && "$CONTROL_OWNER" != rollout ]]; then
   exit 2
 fi
 
+[[ "$CONTROL_OWNER" == rollout ]] || { printf "Use the ROS session launcher; direct teleop ownership was removed\n" >&2; exit 2; }
 case "$CONTROL_OWNER" in
   teleop|rollout) ;;
   *)

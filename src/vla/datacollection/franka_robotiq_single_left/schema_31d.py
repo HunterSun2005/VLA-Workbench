@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from vla.robots.franka_robotiq.robot import state_vector
+from vla.control.geometry import state_vector
 
 
 FORCE_STATE_FIELDS = tuple(

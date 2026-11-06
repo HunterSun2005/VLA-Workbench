@@ -1,5 +1,6 @@
-"""Compatibility import: collection now always records the full 50D state."""
-from vla.datacollection.start_teleop.gamepad_record import *  # noqa: F401,F403
+"""ROS session entry point; legacy configurations require explicit migration."""
+import sys
+from vla.cli.ros_session import main
 
 if __name__ == "__main__":
     main()

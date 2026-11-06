@@ -69,8 +69,8 @@ def create_app(root=None, *, demo=False):
         from .config import collection_camera_serials
         try:
             config = SessionConfig.parse(await request.json())
-            if config.workflow != 'collect' or config.ros:
-                raise ValueError('此接口用于单臂 gamepad 采集；ROS 相机由硬件配置指定')
+            if config.workflow != 'collect':
+                raise ValueError('此接口用于采集相机默认配置')
             config = replace(config, camera_serials=None, side_camera_serial='')
             return {'serials': await asyncio.to_thread(collection_camera_serials, config)}
         except (ValueError, OSError, KeyError, TypeError) as error:

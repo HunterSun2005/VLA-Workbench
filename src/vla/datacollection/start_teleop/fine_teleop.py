@@ -818,6 +818,9 @@ def _self_test() -> None:
 
 
 def main() -> None:
+    raise RuntimeError("Direct fine teleop ownership removed; use vla.cli.ros_session --source gello")
+
+def _retired_main() -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--self-test", action="store_true")
     known, remaining = parser.parse_known_args()

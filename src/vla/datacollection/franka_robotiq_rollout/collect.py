@@ -14,8 +14,8 @@ def configured_backend(path: str | Path) -> str:
     if not isinstance(value, dict):
         raise ValueError(f"rollout config must be a YAML mapping: {config_path}")
     backend = str(value.get("backend", "ros2"))
-    if backend not in {"franky", "ros2"}:
-        raise ValueError("rollout backend must be 'franky' or 'ros2'")
+    if backend != "ros2":
+        raise ValueError("Legacy Franky backend removed; use an explicit ROS2 rollout configuration")
     return backend
 
 
@@ -23,11 +23,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--config", required=True)
     args, _ = parser.parse_known_args()
-    if configured_backend(args.config) == "franky":
-        from .collect_franky import main as backend_main
-    else:
-        from .collect_ros import main as backend_main
-    backend_main()
+    configured_backend(args.config)
+    from vla.cli.ros_session import main as backend_main
+    import sys
+    backend_main(["--workflow", "deploy", *sys.argv[1:]])
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ def predict_action(observation, policy, device, preprocessor, postprocessor, use
     # Keep the caller's ndarray dictionary intact and preserve the batch dimension.
     device = torch.device(device)
     precision = torch.autocast(device_type="cuda") if use_amp and device.type == "cuda" else nullcontext()
-    with torch.inference_mode(), precision:
+    with torch.no_grad(), precision:
         batch = prepare_observation_for_inference(dict(observation), device, task, robot_type)
         action = policy.select_action(preprocessor(batch))
         return action if getattr(policy, "action_runtime", None) else postprocessor(action)
