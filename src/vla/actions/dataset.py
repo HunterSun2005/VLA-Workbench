@@ -49,7 +49,7 @@ def export_actions(table, source_spec, target_space, *, allow_derived=False):
     return actions, target_spec, derivation
 
 
-def dataset_statistics(root, spec, sampling):
+def dataset_statistics(root, spec, sampling, *, temporary_directory=None):
     import pyarrow.parquet as pq
     from vla.dataset_metadata import load_info
     info = load_info(root)
@@ -60,20 +60,40 @@ def dataset_statistics(root, spec, sampling):
         paths = sorted((Path(root)/'data').rglob('*.parquet'))
         if not paths:
             raise ValueError('dataset has no action rows')
-        # Parquet shard boundaries do not delimit an episode or a chunk.
-        table = pd.concat([pq.read_table(path).to_pandas() for path in paths], ignore_index=True)
-        order = ['episode_index'] + (['frame_index'] if 'frame_index' in table else ['index'] if 'index' in table else [])
-        table = table.sort_values(order, kind='stable')
-        if 'complementary_info.segment_id' in table:
-            table['_segment'] = np.stack(table['complementary_info.segment_id']).reshape(-1)
-        else:
-            table['_segment'] = 0
-        for _, group in table.groupby(['episode_index', '_segment'], sort=False):
-            actions = np.stack(group['action'])
-            if 'observation.anchor' not in group:
-                raise ValueError('dataset lacks independent raw observation.anchor; re-export from full measured state')
-            anchors = np.stack(group['observation.anchor'])
-            valid = (np.stack(group['complementary_info.action_valid']).reshape(-1).astype(bool)
-                     if 'complementary_info.action_valid' in group else np.ones(len(group), bool))
-            yield actions, anchors, valid
-    return compute_statistics(episodes(), spec, sampling, dataset_fingerprint(root))
+        # Index only episode IDs, then load one episode's required columns.
+        # Shard boundaries must not become chunk/segment boundaries.
+        by_episode, schemas = {}, {}
+        for path in paths:
+            with pq.ParquetFile(path) as parquet:
+                schemas[path] = set(parquet.schema_arrow.names)
+                if 'observation.anchor' not in schemas[path]:
+                    raise ValueError('dataset lacks independent raw observation.anchor; re-export from full measured state')
+                episode_ids = set()
+                for batch in parquet.iter_batches(columns=['episode_index'], batch_size=65536):
+                    episode_ids.update(batch.column(0).unique().to_pylist())
+                for episode in episode_ids:
+                    by_episode.setdefault(episode, []).append(path)
+        available = set().union(*schemas.values())
+        order = 'frame_index' if 'frame_index' in available else 'index' if 'index' in available else None
+        columns = ['episode_index', 'action', 'observation.anchor',
+                   'complementary_info.segment_id', 'complementary_info.action_valid']
+        if order:
+            columns.append(order)
+        for episode in sorted(by_episode):
+            table = pd.concat([pq.read_table(path, columns=[c for c in columns if c in schemas[path]],
+                                            filters=[('episode_index', '=', episode)]).to_pandas()
+                               for path in by_episode[episode]], ignore_index=True)
+            if order and order in table:
+                table = table.sort_values(order, kind='stable')
+            if 'complementary_info.segment_id' in table:
+                table['_segment'] = np.stack(table['complementary_info.segment_id']).reshape(-1)
+            else:
+                table['_segment'] = 0
+            for _, group in table.groupby('_segment', sort=False):
+                actions = np.stack(group['action'])
+                anchors = np.stack(group['observation.anchor'])
+                valid = (np.stack(group['complementary_info.action_valid']).reshape(-1).astype(bool)
+                         if 'complementary_info.action_valid' in group else np.ones(len(group), bool))
+                yield actions, anchors, valid
+    return compute_statistics(episodes(), spec, sampling, dataset_fingerprint(root),
+                              temporary_directory=temporary_directory)

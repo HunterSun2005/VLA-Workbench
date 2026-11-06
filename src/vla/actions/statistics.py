@@ -1,5 +1,7 @@
 """Statistics over exactly the valid samples seen by chunk training."""
 from dataclasses import asdict, dataclass
+from contextlib import ExitStack
+from tempfile import TemporaryFile
 import numpy as np
 from .spec import ActionSpec, fingerprint
 from .transforms import DeltaActions
@@ -23,13 +25,11 @@ def statistics_contract(spec: ActionSpec, sampling: SamplingSpec, data_fingerpri
             'data_fingerprint': data_fingerprint, 'padding': 'exclude', 'quantiles': [0.01, 0.99]}
 
 
-def compute_statistics(episodes, spec, sampling, data_fingerprint):
-    """Episodes yield (absolute targets [T,D], raw measured anchors [T,D], valid [T]).
+_TRANSFORM_ROWS = 8192
 
-    Iterate each episode independently; never use replicated padding in quantiles.
-    A valid target contributes once for every training chunk in which it occurs.
-    """
-    samples = []
+
+def _training_samples(episodes, spec, sampling):
+    transform = DeltaActions(spec)
     for targets, anchors, valid in episodes:
         targets, anchors, valid = np.asarray(targets), np.asarray(anchors), np.asarray(valid, dtype=bool)
         if targets.ndim != 2 or targets.shape != anchors.shape or valid.shape != (len(targets),):
@@ -37,20 +37,53 @@ def compute_statistics(episodes, spec, sampling, data_fingerprint):
         for start in range(0, len(targets), sampling.start_stride):
             if not valid[start]:
                 continue
-            indices = start + np.arange(sampling.chunk_length) * sampling.frame_stride
-            indices = indices[indices < len(targets)]
-            indices = indices[valid[indices]]
-            if len(indices):
-                samples.append(DeltaActions(spec)(targets[indices], anchors[start]))
-    if not samples:
-        raise ValueError('no valid training actions')
-    values = np.concatenate(samples)
+            # Bound even a very long requested horizon; do not construct padding.
+            length = min(sampling.chunk_length, (len(targets)-1-start)//sampling.frame_stride+1)
+            for offset in range(0, length, _TRANSFORM_ROWS):
+                indices = start + np.arange(offset, min(offset+_TRANSFORM_ROWS, length)) * sampling.frame_stride
+                indices = indices[valid[indices]]
+                if len(indices):
+                    yield transform(targets[indices], anchors[start])
+
+
+def compute_statistics(episodes, spec, sampling, data_fingerprint, *, temporary_directory=None):
+    """Episodes yield (absolute targets [T,D], raw measured anchors [T,D], valid [T]).
+
+    Iterate each episode independently; never use replicated padding in quantiles.
+    A valid target contributes once for every training chunk in which it occurs.
+
+    Spool float64 samples by dimension, then reduce one dimension at a time.
+    Quantiles remain exact NumPy linear quantiles, with no reservoir/sketch.
+    For M expanded samples, working RAM is O(M), not O(M*D); std may allocate
+    one extra column. Temporary disk is 8*M*D bytes. Files close on all exits.
+    temporary_directory defaults to tempfile's directory (including TMPDIR).
+    """
     contract = statistics_contract(spec, sampling, data_fingerprint)
-    return {'contract': contract, 'digest': fingerprint(contract), 'count': len(values),
-            **{name: value.tolist() for name, value in {
-                'min': values.min(0), 'max': values.max(0), 'mean': values.mean(0),
-                'std': values.std(0), 'q01': np.quantile(values, .01, axis=0),
-                'q99': np.quantile(values, .99, axis=0)}.items()}}
+    result = {name: [] for name in ('min', 'max', 'mean', 'std', 'q01', 'q99')}
+    count = 0
+    with ExitStack() as stack:
+        columns = [stack.enter_context(TemporaryFile(dir=temporary_directory, buffering=65536))
+                   for _ in range(spec.dim)]
+        for chunk in _training_samples(episodes, spec, sampling):
+            for column, stream in enumerate(columns):
+                stream.write(chunk[:, column].tobytes())
+            count += len(chunk)
+        if not count:
+            raise ValueError('no valid training actions')
+        for stream in columns:
+            stream.flush()
+            stream.seek(0)
+            values = np.fromfile(stream, dtype=np.float64, count=count)
+            if len(values) != count:
+                raise OSError('incomplete temporary action statistics column')
+            for name, value in (('min', values.min()), ('max', values.max()),
+                                ('mean', values.mean()), ('std', values.std())):
+                result[name].append(float(value))
+            low, high = np.quantile(values, [.01, .99], overwrite_input=True)
+            result['q01'].append(float(low))
+            result['q99'].append(float(high))
+            del values
+    return {'contract': contract, 'digest': fingerprint(contract), 'count': count, **result}
 
 
 def validate_statistics(stats, spec, sampling, data_fingerprint):
