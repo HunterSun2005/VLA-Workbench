@@ -1,0 +1,877 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" type="device" compressed="false" pages="3">
+  <diagram id="Overview" name="Overview">
+    <mxGraphModel dx="1600" dy="1368" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1368" background="#FFFFFF" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="operation_bar" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F1F5F9;strokeColor=#D8E1ED;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="134" width="1504" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="collection_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F2FAF8;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="204" width="464" height="630" as="geometry" />
+        </mxCell>
+        <mxCell id="training_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F7F5FC;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="568" y="204" width="464" height="630" as="geometry" />
+        </mxCell>
+        <mxCell id="deployment_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F2F7FC;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1088" y="204" width="464" height="630" as="geometry" />
+        </mxCell>
+        <mxCell id="ros_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F2F7FC;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="890" width="1504" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="contract_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F1F5F9;strokeColor=#D8E1ED;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="1282" width="1504" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="human_target" parent="1" source="human" target="demo_target" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="276" y="376" as="sourcePoint" />
+            <mxPoint x="276" y="415" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="record_dataset" parent="1" source="record" target="dataset" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="276" y="580" as="sourcePoint" />
+            <mxPoint x="276" y="644" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="dataset_process" parent="1" source="dataset" target="process" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="440" y="675" as="sourcePoint" />
+            <mxPoint x="632" y="337" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="586" y="675" />
+              <mxPoint x="586" y="337" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="process_sft" parent="1" source="process" target="sft" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="796" y="368" as="sourcePoint" />
+            <mxPoint x="796" y="414" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="sft_token" parent="1" source="sft" target="token" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="796" y="476" as="sourcePoint" />
+            <mxPoint x="688" y="520" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="796" y="494" />
+              <mxPoint x="688" y="494" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="token_ac" parent="1" source="token" target="ac" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="776" y="551" as="sourcePoint" />
+            <mxPoint x="824" y="551" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="sft_checkpoint" parent="1" source="sft" target="checkpoint" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.8658536585365854;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="960" y="445" as="sourcePoint" />
+            <mxPoint x="916" y="644" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1012" y="445" />
+              <mxPoint x="1012" y="620" />
+              <mxPoint x="916" y="620" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ac_checkpoint" parent="1" source="ac" target="checkpoint" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.3902439024390244;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="912" y="582" as="sourcePoint" />
+            <mxPoint x="760" y="644" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="912" y="606" />
+              <mxPoint x="760" y="606" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="replay_online" parent="1" source="replay" target="online" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.0;exitY=0.5;exitPerimeter=0;entryX=1.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="824" y="788" as="sourcePoint" />
+            <mxPoint x="776" y="788" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="online_checkpoint" parent="1" source="online" target="checkpoint" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;dashed=1;dashPattern=5 4;exitX=0.5;exitY=0.0;exitPerimeter=0;entryX=0.17073170731707318;entryY=1.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="688" y="760" as="sourcePoint" />
+            <mxPoint x="688" y="706" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="checkpoint_inference" parent="1" source="checkpoint" target="inference" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="960" y="675" as="sourcePoint" />
+            <mxPoint x="1152" y="445" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1060" y="675" />
+              <mxPoint x="1060" y="445" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="observation_inference" parent="1" source="observation" target="inference" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1316" y="376" as="sourcePoint" />
+            <mxPoint x="1316" y="414" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="inference_rtc" parent="1" source="inference" target="rtc" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1316" y="476" as="sourcePoint" />
+            <mxPoint x="1316" y="520" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rtc_absolute" parent="1" source="rtc" target="absolute" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1316" y="582" as="sourcePoint" />
+            <mxPoint x="1316" y="644" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="record_rollout" parent="1" target="rollout" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=1.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1528" y="788" as="sourcePoint" />
+            <mxPoint x="1480" y="788" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rollout_replay" parent="1" source="rollout" target="replay" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;dashed=1;dashPattern=5 4;exitX=0.0;exitY=0.5;exitPerimeter=0;entryX=1.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1152" y="788" as="sourcePoint" />
+            <mxPoint x="1000" y="788" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="demo_ros" parent="1" source="demo_target" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=none;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="440" y="446" as="sourcePoint" />
+            <mxPoint x="480" y="850" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="480" y="446" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="policy_ros" parent="1" source="absolute" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=none;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1316" y="706" as="sourcePoint" />
+            <mxPoint x="1120" y="850" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1316" y="732" />
+              <mxPoint x="1120" y="732" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="shared_command" parent="1" target="owner" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1120" y="850" as="sourcePoint" />
+            <mxPoint x="112" y="1003" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="96" y="850" />
+              <mxPoint x="96" y="1003" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="owner_entry" parent="1" source="owner" target="entry" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="316" y="1003" as="sourcePoint" />
+            <mxPoint x="354" y="1003" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="entry_tracker" parent="1" source="entry" target="tracker" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="558" y="1003" as="sourcePoint" />
+            <mxPoint x="596" y="1003" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tracker_impedance" parent="1" source="tracker" target="impedance" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="800" y="1003" as="sourcePoint" />
+            <mxPoint x="838" y="1003" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arm_execution" parent="1" source="impedance" target="robot" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=1.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1042" y="1003" as="sourcePoint" />
+            <mxPoint x="1480" y="1192" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1510" y="1003" />
+              <mxPoint x="1510" y="1192" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="gripper_target" parent="1" source="entry" target="gripper" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="456" y="1036" as="sourcePoint" />
+            <mxPoint x="1160" y="1078" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="456" y="1078" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="gripper_execution" parent="1" source="gripper" target="robot" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.4875;exitY=1.0;exitPerimeter=0;entryX=0.4875;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1316" y="1106" as="sourcePoint" />
+            <mxPoint x="1316" y="1160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="sensor_bus" parent="1" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=none;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="74" y="1250" as="sourcePoint" />
+            <mxPoint x="1528" y="1250" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="camera_bus" parent="1" source="camera" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=none;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="272" y="1224" as="sourcePoint" />
+            <mxPoint x="272" y="1250" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="robot_bus" parent="1" source="robot" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=none;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.4875;exitY=1.0;exitPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1316" y="1224" as="sourcePoint" />
+            <mxPoint x="1316" y="1250" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bus_collection" parent="1" target="record" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="74" y="1250" as="sourcePoint" />
+            <mxPoint x="112" y="545" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="74" y="545" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bus_deployment" parent="1" target="observation" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=1.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1528" y="1250" as="sourcePoint" />
+            <mxPoint x="1480" y="341" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1528" y="341" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bus_tracker" parent="1" target="tracker" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=0.5;entryY=1.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1316" y="1238" as="sourcePoint" />
+            <mxPoint x="698" y="1036" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="698" y="1238" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="accepted_label" parent="1" source="entry" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=none;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.12745098039215685;exitY=1.0;exitPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="380" y="1036" as="sourcePoint" />
+            <mxPoint x="74" y="1124" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="380" y="1124" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="human" parent="1" value="&lt;b&gt;GELLO / Gamepad&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="112" y="306" width="328" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="demo_target" parent="1" value="&lt;b&gt;示教目标&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="112" y="415" width="328" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="record" parent="1" value="&lt;b&gt;回合记录&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;绝对动作 · 实测状态 · 图像&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="112" y="510" width="328" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="dataset" parent="1" value="&lt;b&gt;数据集&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;Parquet / Video&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="112" y="644" width="328" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="process" parent="1" value="&lt;b&gt;数据处理&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;筛选 · 划分 · 统计&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="632" y="306" width="328" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="sft" parent="1" value="&lt;b&gt;SFT&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;PyTorch / LeRobot&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="632" y="414" width="328" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="token" parent="1" value="&lt;b&gt;RLToken&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=22;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="600" y="520" width="176" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="ac" parent="1" value="&lt;b&gt;Actor-Critic&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=21;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="824" y="520" width="176" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="checkpoint" parent="1" value="&lt;b&gt;Checkpoint&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;权重 · 契约 · 统计量&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="632" y="644" width="328" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="replay" parent="1" value="&lt;b&gt;持久回放&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=21;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="824" y="760" width="176" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="online" parent="1" value="&lt;b&gt;在线 RLT&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=21;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="600" y="760" width="176" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="observation" parent="1" value="&lt;b&gt;观测输入&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;图像 · 状态 · 请求锚点&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1152" y="306" width="328" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="inference" parent="1" value="&lt;b&gt;PI05 / RLT&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;加载 Checkpoint&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1152" y="414" width="328" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="rtc" parent="1" value="&lt;b&gt;RTC&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;异步 chunk 衔接 · 局部图 A&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1152" y="520" width="328" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="absolute" parent="1" value="&lt;b&gt;绝对目标&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;Joint / TCP&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1152" y="644" width="328" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="rollout" parent="1" value="&lt;b&gt;部署回合&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=21;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1152" y="760" width="328" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="owner" parent="1" value="&lt;b&gt;控制权与安全&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=22;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="112" y="970" width="204" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="entry" parent="1" value="&lt;b&gt;Joint / TCP&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;30 Hz 接受目标&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=22;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="354" y="970" width="204" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="tracker" parent="1" value="&lt;b&gt;目标跟踪&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;100 Hz · TCP 经 IK&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=22;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="596" y="970" width="204" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="impedance" parent="1" value="&lt;b&gt;关节阻抗&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;1000 Hz · C++&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=22;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="838" y="970" width="204" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="gripper" parent="1" value="&lt;b&gt;ROS 夹爪驱动&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=21;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1160" y="1050" width="320" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="camera" parent="1" value="&lt;b&gt;RealSense&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;直接 SDK&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="112" y="1160" width="320" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="robot" parent="1" value="&lt;b&gt;Franka + 夹爪&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;单左臂 / 双臂&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1160" y="1160" width="320" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="rollout_join" parent="1" value="" style="ellipse;fillColor=#168679;strokeColor=#168679;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1524" y="784" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="command_join" parent="1" value="" style="ellipse;fillColor=#3268D5;strokeColor=#3268D5;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="476" y="846" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="camera_join" parent="1" value="" style="ellipse;fillColor=#168679;strokeColor=#168679;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="268" y="1246" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="robot_join" parent="1" value="" style="ellipse;fillColor=#168679;strokeColor=#168679;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1312" y="1246" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="tracker_join" parent="1" value="" style="ellipse;fillColor=#168679;strokeColor=#168679;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1312" y="1234" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="label_join" parent="1" value="" style="ellipse;fillColor=#168679;strokeColor=#168679;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="70" y="1120" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="title" parent="1" value="VLA Workbench" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=34;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="28" width="1100" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" value="数据采集 → 模型训练 → 部署推理，共用一套 ROS 控制系统" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=19;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="84" width="1150" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_scope" parent="1" value="Web / CLI：采集、部署与会话管理" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="140" width="650" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="cli_scope" parent="1" value="CLI：离线训练与在线 RLT 管理" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="880" y="140" width="640" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="collection_title" parent="1" value="01  数据采集" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=26;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="222" width="400" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="collection_tech" parent="1" value="ROS · RealSense SDK" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="263" width="400" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="training_title" parent="1" value="02  模型训练" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=26;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="600" y="222" width="400" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="training_tech" parent="1" value="PyTorch / LeRobot · Python 3.12" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#8252BD;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="600" y="263" width="400" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="deployment_title" parent="1" value="03  部署推理" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=26;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1120" y="222" width="400" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="deployment_tech" parent="1" value="PyTorch · Python 3.12" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1120" y="263" width="400" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="ros_title" parent="1" value="共享 ROS 控制底座 · 局部图 B" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=25;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="112" y="905" width="650" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="ros_tech" parent="1" value="ROS 2 Humble · Python 3.10 / C++" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1020" y="911" width="500" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="contract_name" parent="1" value="动作契约" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=22;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="1295" width="180" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="contract_detail" parent="1" value="Joint / TCP   ·   Absolute / Chunk-relative   ·   原始实测锚点   ·   统计与来源校验" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=19;fontColor=#172B4D;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="270" y="1297" width="1230" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="record_note" parent="1" value="动作标签取自 ROS 接受入口" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="112" y="722" width="328" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="cache_label" parent="1" value="缓存" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=14;fontColor=#8252BD;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="773" y="519" width="54" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="optional_note" parent="1" value="RLT / Handover 按需启用" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontColor=#8252BD;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="780" y="713" width="240" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="update_gate" parent="1" value="保存＋停止确认" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=15;fontColor=#8252BD;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="972" y="746" width="136" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="command_bus_label" parent="1" value="采集 / 部署：互斥控制权，统一绝对目标" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="660" y="850" width="500" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="gripper_units" parent="1" value="夹爪：绝对开度 0～1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="820" y="1040" width="270" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="tracking_state" parent="1" value="关节状态 → 跟踪" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="714" y="1128" width="250" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="accepted_caption" parent="1" value="接受动作标签" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="188" y="1088" width="180" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="feedback_caption" parent="1" value="状态 / 图像 / 接受动作：按字段分流" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="560" y="1251" width="650" height="28" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="RTC" name="RTC">
+    <mxGraphModel dx="1600" dy="968" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="968" background="#FFFFFF" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="async_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F7F5FC;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="176" width="1504" height="370" as="geometry" />
+        </mxCell>
+        <mxCell id="execution_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F2F7FC;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="624" width="1504" height="176" as="geometry" />
+        </mxCell>
+        <mxCell id="safety_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F1F5F9;strokeColor=#D8E1ED;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="844" width="1504" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="snapshot_preprocess" parent="1" source="snapshot" target="preprocess" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="300" y="343" as="sourcePoint" />
+            <mxPoint x="338" y="343" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="preprocess_model" parent="1" source="preprocess" target="model" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="538" y="343" as="sourcePoint" />
+            <mxPoint x="576" y="343" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="model_decode" parent="1" source="model" target="decode" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="836" y="343" as="sourcePoint" />
+            <mxPoint x="874" y="343" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="decode_merge" parent="1" source="decode" target="merge" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1124" y="343" as="sourcePoint" />
+            <mxPoint x="1162" y="343" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="queue_consume" parent="1" source="queue" target="consume" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="940" y="696" as="sourcePoint" />
+            <mxPoint x="1010" y="696" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="consume_ros" parent="1" source="consume" target="ros" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1250" y="696" as="sourcePoint" />
+            <mxPoint x="1320" y="696" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="merge_queue" parent="1" source="merge" target="queue" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1332" y="386" as="sourcePoint" />
+            <mxPoint x="790" y="656" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1332" y="568" />
+              <mxPoint x="790" y="568" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="queue_prefix" parent="1" source="queue" target="prefix" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.0;exitY=0.3;exitPerimeter=0;entryX=0.5;entryY=1.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="640" y="680" as="sourcePoint" />
+            <mxPoint x="410" y="520" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="610" y="680" />
+              <mxPoint x="610" y="560" />
+              <mxPoint x="410" y="560" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="prefix_model" parent="1" source="prefix" target="model" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#8252BD;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=0.0;exitPerimeter=0;entryX=0.5;entryY=1.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="440" as="sourcePoint" />
+            <mxPoint x="706" y="386" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="410" y="414" />
+              <mxPoint x="706" y="414" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="snapshot_anchor" parent="1" source="snapshot" target="decode" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5909090909090909;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=1.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="210" y="386" as="sourcePoint" />
+            <mxPoint x="999" y="386" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="210" y="592" />
+              <mxPoint x="999" y="592" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="anchor_prefix" parent="1" target="prefix" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="210" y="480" as="sourcePoint" />
+            <mxPoint x="280" y="480" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="latest_observation" parent="1" source="ros" target="snapshot" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1504" y="696" as="sourcePoint" />
+            <mxPoint x="190" y="300" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1530" y="696" />
+              <mxPoint x="1530" y="260" />
+              <mxPoint x="190" y="260" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="snapshot" parent="1" value="&lt;b&gt;观测快照&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;锁存请求锚点&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="300" width="220" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="preprocess" parent="1" value="&lt;b&gt;输入处理&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;状态归一化&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="338" y="300" width="200" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="model" parent="1" value="&lt;b&gt;PI05 / RLT&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;异步生成 chunk&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="576" y="300" width="260" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="decode" parent="1" value="&lt;b&gt;绝对还原&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;反归一化 · 请求锚点&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="874" y="300" width="250" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="merge" parent="1" value="&lt;b&gt;延迟对齐 / 合并&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;有效代际 · 剔除过时前缀&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1162" y="300" width="340" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="prefix" parent="1" value="&lt;b&gt;前缀重编码&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;新锚点 · 归一化&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="280" y="440" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="queue" parent="1" value="&lt;b&gt;绝对动作队列&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;保留每个 chunk 的绝对目标&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="640" y="656" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="consume" parent="1" value="&lt;b&gt;逐步消费&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;ROS 接受 30 Hz&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1010" y="656" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ros" parent="1" value="&lt;b&gt;ROS 入口&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;见局部图 B&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1320" y="656" width="184" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="anchor_split" parent="1" value="" style="ellipse;fillColor=#168679;strokeColor=#168679;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="206" y="476" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="title" parent="1" value="A / RTC：推理与执行并行" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=34;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="28" width="1100" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" value="Real-Time Chunking · 衔接动作块与补偿推理延迟 · Python 3.12 / PyTorch" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=19;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="84" width="1150" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="async_title" parent="1" value="异步推理：生成下一段动作" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=25;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="194" width="650" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="async_rate" parent="1" value="模型推理速率不固定" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#8252BD;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1120" y="199" width="400" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="execution_title" parent="1" value="执行当前 chunk" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=25;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="646" width="490" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="concurrent_note" parent="1" value="推理进行时，已有目标继续执行。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=19;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="697" width="490" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="stride_note" parent="1" value="稀疏目标按采样间隔保持。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="746" width="490" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="consumed_caption" parent="1" value="按推理期间实际消费步数对齐" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1038" y="516" width="290" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leftover_caption" parent="1" value="未执行的绝对前缀" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#8252BD;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="435" y="529" width="300" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="anchor_caption" parent="1" value="同一请求锚点" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="440" y="592" width="300" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="observation_caption" parent="1" value="实测状态（图像由 SDK 补充）" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="890" y="230" width="430" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="boundary_title" parent="1" value="接管 / 暂停 / 故障" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=22;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="854" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="boundary_action" parent="1" value="换代际 → 清队列 → 丢弃旧请求结果" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=21;fontColor=#172B4D;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="420" y="854" width="1080" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="absolute_note" parent="1" value="旧 chunk 的绝对目标不会因新锚点改变；RTC 不承担底层力矩控制。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="420" y="887" width="1080" height="25" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="ROS Control" name="ROS Control">
+    <mxGraphModel dx="1600" dy="1136" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1136" background="#FFFFFF" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="tracking_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F2F7FC;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="356" width="1504" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="rt_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F2F7FC;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="592" width="1504" height="226" as="geometry" />
+        </mxCell>
+        <mxCell id="reset_panel" parent="1" value="" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#F1F5F9;strokeColor=#D8E1ED;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="1030" width="1504" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="human_bus" parent="1" source="human" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=none;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="201" as="sourcePoint" />
+            <mxPoint x="380" y="249" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="380" y="201" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="policy_bus" parent="1" source="policy" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=none;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="297" as="sourcePoint" />
+            <mxPoint x="380" y="249" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="380" y="297" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="owner_input" parent="1" target="owner" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="380" y="249" as="sourcePoint" />
+            <mxPoint x="430" y="249" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="owner_entry" parent="1" source="owner" target="entry" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="682" y="249" as="sourcePoint" />
+            <mxPoint x="730" y="249" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="accepted_record" parent="1" source="entry" target="action_record" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=0.0;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="210" as="sourcePoint" />
+            <mxPoint x="1240" y="178" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="855" y="178" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="representation_bus" parent="1" source="entry" target="joint" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="288" as="sourcePoint" />
+            <mxPoint x="525" y="414" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="855" y="336" />
+              <mxPoint x="525" y="336" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tcp_branch" parent="1" target="tcp" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="855" y="336" as="sourcePoint" />
+            <mxPoint x="885" y="414" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="885" y="336" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tcp_to_joint" parent="1" source="tcp" target="joint_stream" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1010" y="449" as="sourcePoint" />
+            <mxPoint x="1160" y="449" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="joint_bypass" parent="1" source="joint" target="joint_stream" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.375;entryY=1.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="650" y="449" as="sourcePoint" />
+            <mxPoint x="1280" y="484" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="680" y="449" />
+              <mxPoint x="680" y="522" />
+              <mxPoint x="1280" y="522" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="joint_to_filter" parent="1" source="joint_stream" target="filter" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.625;exitY=1.0;exitPerimeter=0;entryX=0.0;entryY=0.325;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1360" y="484" as="sourcePoint" />
+            <mxPoint x="80" y="700" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1360" y="568" />
+              <mxPoint x="64" y="568" />
+              <mxPoint x="64" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="filter_impedance" parent="1" source="filter" target="impedance" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="320" y="714" as="sourcePoint" />
+            <mxPoint x="400" y="714" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="impedance_rate" parent="1" source="impedance" target="torque_limit" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="700" y="714" as="sourcePoint" />
+            <mxPoint x="780" y="714" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rate_franka" parent="1" source="torque_limit" target="franka" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1060" y="714" as="sourcePoint" />
+            <mxPoint x="1140" y="714" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="robot_feedback" parent="1" source="franka" target="impedance" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=0.5;exitY=1.0;exitPerimeter=0;entryX=0.5;entryY=1.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1310" y="754" as="sourcePoint" />
+            <mxPoint x="550" y="754" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1310" y="790" />
+              <mxPoint x="550" y="790" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tracking_feedback" parent="1" target="tcp" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;entryX=1.0;entryY=0.7571428571428571;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1090" y="790" as="sourcePoint" />
+            <mxPoint x="1010" y="467" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1090" y="467" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="diagnostic_output" parent="1" source="filter" target="diagnostic" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#168679;strokeWidth=2.5;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;dashed=1;dashPattern=5 4;exitX=0.0;exitY=0.75;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="80" y="734" as="sourcePoint" />
+            <mxPoint x="80" y="935" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="60" y="734" />
+              <mxPoint x="60" y="935" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="gripper_input" parent="1" source="entry" target="gripper_driver" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.5;entryY=0.0;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="980" y="249" as="sourcePoint" />
+            <mxPoint x="1130" y="900" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1540" y="249" />
+              <mxPoint x="1540" y="880" />
+              <mxPoint x="1130" y="880" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="gripper_output" parent="1" source="gripper_driver" target="gripper" edge="1" style="edgeStyle=none;rounded=1;arcSize=12;html=1;strokeColor=#3268D5;strokeWidth=3;endArrow=block;endFill=1;endSize=7;jumpStyle=gap;jumpSize=6;exitX=1.0;exitY=0.5;exitPerimeter=0;entryX=0.0;entryY=0.5;entryPerimeter=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1240" y="935" as="sourcePoint" />
+            <mxPoint x="1300" y="935" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="human" parent="1" value="&lt;b&gt;示教目标&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="170" width="250" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="policy" parent="1" value="&lt;b&gt;策略目标&lt;/b&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="266" width="250" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="owner" parent="1" value="&lt;b&gt;控制权与安全&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;来源 · 代际 · 命令 ID&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="430" y="210" width="252" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="entry" parent="1" value="&lt;b&gt;公共目标入口&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;Joint / TCP · 30 Hz&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="730" y="210" width="250" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="action_record" parent="1" value="&lt;b&gt;action 记录点&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;接受后 · 跟踪与滤波前&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1240" y="140" width="280" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="joint" parent="1" value="&lt;b&gt;Joint 目标&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;直接关节目标&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="400" y="414" width="250" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tcp" parent="1" value="&lt;b&gt;TCP 目标&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;目标跟踪 + IK&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="760" y="414" width="250" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="joint_stream" parent="1" value="&lt;b&gt;关节目标流&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;100 Hz&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1160" y="414" width="320" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="filter" parent="1" value="&lt;b&gt;目标整形&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;滤波 · 关节限速&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="674" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="impedance" parent="1" value="&lt;b&gt;关节阻抗&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;τ = K(q_ref − q) − D·dq_f&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="400" y="674" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="torque_limit" parent="1" value="&lt;b&gt;力矩变化率限制&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;限制相邻周期力矩变化&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="780" y="674" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="franka" parent="1" value="&lt;b&gt;Franka 关节&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;力矩执行 · 实测 q / dq&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1140" y="674" width="340" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="diagnostic" parent="1" value="&lt;b&gt;控制器诊断&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;接收确认 · 可用的滤波后目标&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B7D8D2;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="900" width="420" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="gripper_driver" parent="1" value="&lt;b&gt;ROS 夹爪驱动&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;绝对开度 0～1&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=22;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1020" y="900" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="gripper" parent="1" value="&lt;b&gt;夹爪&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;松手保持&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=22;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1300" y="900" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="owner_join" parent="1" value="" style="ellipse;fillColor=#3268D5;strokeColor=#3268D5;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="376" y="245" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="representation_split" parent="1" value="" style="ellipse;fillColor=#3268D5;strokeColor=#3268D5;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="851" y="332" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="feedback_split" parent="1" value="" style="ellipse;fillColor=#168679;strokeColor=#168679;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1086" y="786" width="8" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="title" parent="1" value="B / ROS 控制：从目标到力矩" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=34;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="28" width="1100" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" value="采集与部署共用控制链 · 30 Hz 目标接受 / 100 Hz 跟踪 / 1000 Hz 关节阻抗" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=19;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="48" y="84" width="1150" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="adapter_note" parent="1" value="输入适配后的绝对目标；示教与策略互斥拥有控制权。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="128" width="640" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="tracking_title" parent="1" value="上层跟踪 · Python 3.10" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=21;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="365" width="285" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="representation_note" parent="1" value="按 ActionSpec 选择 Joint 或 TCP 路径" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1025" y="302" width="470" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="bypass_label" parent="1" value="Joint 路径不再经过 IK" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="716" y="495" width="300" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="rt_title" parent="1" value="关节阻抗闭环 · ROS 2 Humble / C++ · 1000 Hz" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=25;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="606" width="1000" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="qref_label" parent="1" value="q_ref" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="323" y="679" width="74" height="23" as="geometry" />
+        </mxCell>
+        <mxCell id="tau_label" parent="1" value="τ_cmd" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="1063" y="679" width="74" height="23" as="geometry" />
+        </mxCell>
+        <mxCell id="q_feedback_label" parent="1" value="实测位置 q / 速度 dq" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="756" y="759" width="260" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="formula_note" parent="1" value="位置误差形成恢复力矩，速度反馈提供阻尼；dq_f 为滤波后的实测速度。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontColor=#172B4D;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="838" width="1000" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="diagnostic_note" parent="1" value="诊断独立保存，不替代训练 action。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="532" y="913" width="450" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="reset_title" parent="1" value="接管 / 暂停 / 故障" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=22;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="80" y="1042" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="reset_sequence" parent="1" value="清理旧命令 → 换代际 → 实时循环重置 → 等待确认" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=21;fontColor=#172B4D;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="410" y="1042" width="1110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="reset_note" parent="1" value="停止与恢复不等待下一录制帧；重置未确认时不恢复命令发布。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+          <mxGeometry x="410" y="1076" width="1110" height="24" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
