@@ -1,6 +1,6 @@
 # ROS 统一控制离线验收（2026-11-06）
 
-开发位置：`/data0/sht/VLA-Workbench`，本地 `main`，无 Git remote。此报告只记录离线验证，不代表机器人现场验收通过。
+开发位置：`/data0/sht/VLA-Workbench`。初次验收使用本地 `main`，后续工作使用 `ros-dev`；未配置或发布远程。此报告只记录离线验证，不代表机器人现场验收通过。
 
 ## 已交付
 
@@ -54,3 +54,13 @@ ROS 编译使用 `ros_ws/dependencies.repos` 声明的精确上游版本。依�
 7. 四种动作空间／训练表示组合的真实训练收敛、模型效果与任务成功率。
 
 操作命令见 [WORKFLOWS.md](WORKFLOWS.md)，数据与数学约定见 [ROS_ACTION_CONTRACT.md](ROS_ACTION_CONTRACT.md)。
+
+## 后续补充：真实运动学与 ROS 模拟硬件通信
+
+本节是上述初次基线的追加验收，不将离线模拟结果替代现场验收。
+
+- 原生动作重放：系统 Python 3.10 下 **10 passed**，真实 FR3 URDF／PyKDL、生产 CartesianServo、单／双臂、joint／TCP、GELLO／gamepad、float32 Parquet 往返与策略侧 absolute／chunk_relative 恢复；详见 [原生重放报告](ROS_NATIVE_REPLAY_VALIDATION.md)。
+- 模型 Python 完整回归：**678 passed，7 skipped，37 warnings**，28.88 秒。新增跳过项是 ROS 专用测试模块，已在系统 Python 单独验证；其余 6 项仍需真实模型资源。
+- ROS 通信：专用 `/tmp` overlay 构建生产控制器及固定状态 mock plugin；使用真实 DDS、controller_manager 验证控制边界与故障。执行方式、指标定义和 10 分钟结果见 [通信验收报告](ROS_COMMUNICATION_VALIDATION.md)。
+
+没有连接硬件或改变现有环境、原仓库和运行任务；未修改 action chunk 的统计计算。

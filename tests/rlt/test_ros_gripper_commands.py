@@ -43,6 +43,7 @@ def ros_transport(ros_module, monkeypatch):
     monkeypatch.setattr(ros_module, 'Float32', NS)
     monkeypatch.setattr(ros_module, 'Float64MultiArray', NS)
     monkeypatch.setattr(ros_module, 'JointState', joint_message)
+    monkeypatch.setattr(sys.modules['vla.control.ros.transport'], 'JointState', joint_message)
     return ros_module
 
 

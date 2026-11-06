@@ -15,6 +15,9 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <std_msgs/msg/u_int64.hpp>
+#include <mutex>
+#include <condition_variable>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include "franka_fr3_arm_controllers/joint_impedance_controller.hpp"
@@ -46,6 +49,13 @@ class JointImpedanceControllerTest : public ::testing::Test {
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn startController();
   void setRobotPosition(const std::vector<double>& positions);
   void setValidControllerParameters();
+  void pump(int milliseconds);
+  void resetGeneration(uint64_t generation);
+  sensor_msgs::msg::JointState diagnostic();
+  rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr reset_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr diagnostics_sub_;
+  sensor_msgs::msg::JointState diagnostic_;
+  std::mutex diagnostic_mutex_;
 
   std::shared_ptr<franka_fr3_arm_controllers::JointImpedanceController> controller_;
   std::shared_ptr<MockRobotParameterServer> mock_parameter_server_;

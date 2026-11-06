@@ -1,0 +1,5 @@
+<library path="vla_timing_mock">
+  <class name="vla_control_validation/TimingMockSystem" type="vla_control_validation::TimingMockSystem" base_class_type="hardware_interface::SystemInterface">
+    <description>GenericSystem with fixed measured states; bounded in-memory timing, dumped after shutdown.</description>
+  </class>
+</library>

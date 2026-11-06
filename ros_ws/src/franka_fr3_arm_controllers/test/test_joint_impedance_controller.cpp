@@ -51,6 +51,11 @@ void JointImpedanceControllerTest::SetUp() {
   controller_->assign_interfaces(std::move(loaned_command_interfaces),
                                  std::move(loaned_state_interfaces));
 
+  reset_pub_ = mock_joint_state_publisher_->create_publisher<std_msgs::msg::UInt64>("/teleop/reset", 10);
+  diagnostics_sub_ = mock_joint_state_publisher_->create_subscription<sensor_msgs::msg::JointState>(
+    "/teleop/controller_state", 10, [this](const sensor_msgs::msg::JointState& msg) {
+      std::lock_guard<std::mutex> guard(diagnostic_mutex_); diagnostic_ = msg;
+    });
   setValidControllerParameters();
 
   startExecutorThread();
@@ -105,4 +110,18 @@ void JointImpedanceControllerTest::setRobotPosition(const std::vector<double>& p
 void JointImpedanceControllerTest::setValidControllerParameters() {
   controller_->get_node()->set_parameters(
       {{"arm_id", kArmId_}, {"k_gains", kKGains_}, {"d_gains", kDGains_}, {"k_alpha", kKAlpha_}});
+}
+
+void JointImpedanceControllerTest::pump(int milliseconds) {
+  for (int i=0; i<milliseconds; ++i) {
+    ASSERT_EQ(controller_->update(controller_->get_node()->now(), rclcpp::Duration::from_seconds(.001)),
+              controller_interface::return_type::OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+}
+void JointImpedanceControllerTest::resetGeneration(uint64_t generation) {
+  std_msgs::msg::UInt64 msg; msg.data = generation; reset_pub_->publish(msg); pump(40);
+}
+sensor_msgs::msg::JointState JointImpedanceControllerTest::diagnostic() {
+  std::lock_guard<std::mutex> guard(diagnostic_mutex_); return diagnostic_;
 }

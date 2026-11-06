@@ -1,0 +1,125 @@
+{
+  "date": "2026-11-06",
+  "base_commit": "039a80469964b34849ff0645bbcdc136a0e27239",
+  "duration_s": 600.001078248,
+  "hardware": "fixed-state GenericSystem subclass; no dynamics",
+  "ros_domain_id": 170,
+  "kernel": "5.15.0-1113-realtime",
+  "manager_fifo_priority": 50,
+  "controller_manager_version": "2.54.3-1jammy.20261005.213325",
+  "hardware_interface_version": "2.54.3-1jammy.20261005.211947",
+  "raw_artifacts": "/tmp/vla-ros-control-4l7o_lkb",
+  "source_sha256": {
+    "src/vla/control/ros/coordinator.py": "516a7af64cedb6a6180563fcc986171e2a30a237c756460c803ad8bdd7a8443a",
+    "src/vla/control/ros/cartesian_servo.py": "98cf14fc1b05b54512f705fffeda2aaf7a0a39494c9f3a78fb2fa68aad09db13",
+    "src/vla/control/ros/transport.py": "0d6493f44eb179079bf00473dcd74f5968f6838bbc3c612e11404809bba2443c",
+    "ros_ws/src/franka_fr3_arm_controllers/src/joint_impedance_controller.cpp": "2dab7e485b65437a151c3a6e73d53507c969c46ba7bf83c815e4982f8676d5a6",
+    "ros_ws/src/franka_fr3_arm_controllers/config/controllers.yaml": "b466dd41a1b13b184de3a6634c9649595a9a2623747032547c9e35e08ab4bead",
+    "ros_ws/src/vla_control_validation/timing_mock.cpp": "b510b9ebb0b9276436ac77d4280e0ed8d11ed0c6fd8073272b063c9f0b33a646"
+  },
+  "upstream_revisions": {
+    "franka_description": "2c4610f4df7e736b44882483598856819cd6b6f6",
+    "franka_ros2": "7ed045886cdfaf60810e5bf7450f1d56ccb6c8f4"
+  },
+  "resource_summary": {
+    "bridge": {
+      "cpu_percent_one_core": 16.446643069872934,
+      "rss_start_mib": 97.96484375,
+      "rss_end_mib": 113.2734375,
+      "rss_peak_mib": 113.2734375
+    },
+    "left": {
+      "cpu_percent_one_core": 2.4483298205962036,
+      "rss_start_mib": 397.8359375,
+      "rss_end_mib": 396.9140625,
+      "rss_peak_mib": 397.8359375
+    },
+    "right": {
+      "cpu_percent_one_core": 2.4799964418292384,
+      "rss_start_mib": 398.51171875,
+      "rss_end_mib": 397.58984375,
+      "rss_peak_mib": 398.51171875
+    }
+  },
+  "measurement_notes": [
+    "Fixed state, no physical dynamics, cameras, models or gripper action server.",
+    "Python retains finite-duration measurement samples; RSS growth is not a service leak measurement.",
+    "600s run predates the empty-domain preflight and Python assertion-mode guard; final launcher is separately smoke-tested. Timed loop and production controller unchanged."
+  ],
+  "checks": [
+    "tcp production bridge",
+    "delayed right reset blocks both arms",
+    "revoked stale future and out-of-order commands rejected",
+    "duplicate sequence cannot change target",
+    "missing reset acknowledgement latches fault",
+    "stale observation resets all arms",
+    "lost command source triggers watchdog",
+    "partial publish revokes both arms",
+    "controller process exit faults remaining arm"
+  ],
+  "accept": {
+    "hz": 29.999935843456274,
+    "period_ms": {
+      "count": 17999,
+      "p50": 30.013067,
+      "p95": 40.0370759,
+      "p99": 40.2738569,
+      "max": 45.356365
+    }
+  },
+  "tracking": {
+    "hz": 99.99537039668465,
+    "period_ms": {
+      "count": 59997,
+      "p50": 10.002401,
+      "p95": 10.3284132,
+      "p99": 11.42743332,
+      "max": 23.033136
+    }
+  },
+  "first_diagnostic_delay_ms": {
+    "count": 36000,
+    "p50": 5.51053,
+    "p95": 10.44130175,
+    "p99": 11.527110200000001,
+    "max": 36.079661
+  },
+  "first_diagnostic_observation_skew_ms": {
+    "count": 18000,
+    "p50": 3.063452,
+    "p95": 7.18011125,
+    "p99": 7.993288339999999,
+    "max": 32.307683
+  },
+  "left_controller": {
+    "hz": 1000.0000101300001,
+    "period_ms": {
+      "count": 600000,
+      "p50": 0.999938,
+      "p95": 1.008154,
+      "p99": 1.012629,
+      "max": 1.073805
+    }
+  },
+  "right_controller": {
+    "hz": 999.9999894783334,
+    "period_ms": {
+      "count": 600000,
+      "p50": 0.999946,
+      "p95": 1.008254,
+      "p99": 1.0128360200000002,
+      "max": 1.075219
+    }
+  },
+  "left_mock": {
+    "samples": 604813,
+    "dropped": 0,
+    "max_torque_step": 0.997152
+  },
+  "right_mock": {
+    "samples": 604231,
+    "dropped": 0,
+    "max_torque_step": 0.728342
+  },
+  "frequency_target_passed": true
+}

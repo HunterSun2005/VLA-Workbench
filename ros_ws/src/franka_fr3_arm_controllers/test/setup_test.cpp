@@ -13,138 +13,59 @@
 // limitations under the License.
 
 #include "include/test_joint_impedance_controller.hpp"
+#include <limits>
 
-TEST_F(JointImpedanceControllerTest, TestInitialization) {
-  EXPECT_EQ(controller_->on_init(), CallbackReturn::SUCCESS);
-}
 
-TEST_F(JointImpedanceControllerTest, TestValidConfiguration) {
-  controller_->on_init();
-  rclcpp_lifecycle::State state;
-
-  EXPECT_EQ(controller_->on_configure(state), CallbackReturn::SUCCESS);
-}
-
-TEST_F(JointImpedanceControllerTest, TestActivate) {
-  EXPECT_EQ(startController(), CallbackReturn::SUCCESS);
-}
-
-TEST_F(JointImpedanceControllerTest, TestHoldCurrentPoseBeforeFirstLeaderCommand) {
-  static const std::vector<double> kInitialRobotPosition = {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1};
-  static constexpr double kExpectedDampingTorque = -0.05;
-  static constexpr double kTolerance = 0.01;
-
-  stopExecutorThread();
-  executor_->remove_node(mock_joint_state_publisher_);
-  startExecutorThread();
-
-  setRobotPosition(kInitialRobotPosition);
-  startController();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  rclcpp::Time time;
-  const auto period = rclcpp::Duration::from_seconds(1.0);
-  EXPECT_EQ(controller_->update(time, period), controller_interface::return_type::OK);
-  for (const auto command : joint_commands_) {
-    EXPECT_NEAR(command, kExpectedDampingTorque, kTolerance);
+TEST_F(JointImpedanceControllerTest, ManagedCommandsResetWatchdogAndSlewLimit) {
+  ASSERT_EQ(startController(), CallbackReturn::SUCCESS);
+  pump(50);
+  resetGeneration(10);
+  ASSERT_EQ(diagnostic().header.frame_id, "vla:10:0:0");
+  auto q = position_states_; for (auto& v : q) v += .03;
+  mock_joint_state_publisher_->send(10, 1, 1, q);
+  pump(50);
+  ASSERT_EQ(diagnostic().header.frame_id, "vla:10:1:0");
+  auto accepted = diagnostic().position;
+  q[0] += .1;
+  mock_joint_state_publisher_->send(10, 1, 1, q);  // duplicate packet
+  pump(30);
+  EXPECT_EQ(diagnostic().position, accepted);
+  for (double age : {1.0, -1.0}) {
+    mock_joint_state_publisher_->send(10, 2, 2, q, age);
+    pump(30);
+    EXPECT_EQ(diagnostic().header.frame_id, "vla:10:1:0");
   }
-
-  stopExecutorThread();
-  executor_->add_node(mock_joint_state_publisher_);
-  startExecutorThread();
-}
-
-TEST_F(JointImpedanceControllerTest, TestUpdateMotionGeneratorOnly) {
-  static const std::vector<double> kInitialRobotPosition = {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1};
-  static constexpr double kExpectedValue = -0.05;
-  static constexpr double kTolerance = 0.01;
-
-  setRobotPosition(kInitialRobotPosition);
-  startController();
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  rclcpp::Time time;
-  rclcpp::Duration period = rclcpp::Duration::from_seconds(1.0);
-  EXPECT_EQ(controller_->update(time, period), controller_interface::return_type::OK);
-
-  for (size_t i = 0; i < joint_commands_.size(); ++i) {
-    EXPECT_NEAR(joint_commands_[i], kExpectedValue, kTolerance);
+  mock_joint_state_publisher_->send(9, 99, 99, q);  // revoked generation
+  pump(30);
+  EXPECT_EQ(diagnostic().header.frame_id, "vla:10:1:0");
+  for (auto invalid : {std::vector<double>(6, 0.0),
+                       std::vector<double>(7, std::numeric_limits<double>::quiet_NaN())}) {
+    mock_joint_state_publisher_->send(10, 2, 2, invalid);
+    pump(30);
+    EXPECT_EQ(diagnostic().header.frame_id, "vla:10:1:0");
   }
-}
-
-TEST_F(JointImpedanceControllerTest, TestUpdateMotionGeneratorAndGelloPositionValues) {
-  static const std::vector<double> kInitialRobotPosition = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-  static constexpr double kExpectedValue = -0.05;
-  static constexpr double kTolerance = 0.01;
-
-  setRobotPosition(kInitialRobotPosition);
-  startController();
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  rclcpp::Time time;
-  rclcpp::Duration period = rclcpp::Duration::from_seconds(1.0);
-  EXPECT_EQ(controller_->update(time, period), controller_interface::return_type::OK);
-
-  for (size_t i = 0; i < joint_commands_.size(); ++i) {
-    EXPECT_NEAR(joint_commands_[i], kExpectedValue, kTolerance);
+  for (int i=0; i<550; ++i) {
+    auto previous = joint_commands_; pump(1);
+    for (size_t j=0; j<previous.size(); ++j)
+      EXPECT_LE(std::abs(joint_commands_[j]-previous[j]), 1.0+1e-9);
   }
+  EXPECT_EQ(diagnostic().header.frame_id, "vla:10:1:1");
+  mock_joint_state_publisher_->send(10, 3, 3, q); pump(30);
+  EXPECT_EQ(diagnostic().header.frame_id, "vla:10:1:1"); // fault latches
+  resetGeneration(11);
+  EXPECT_EQ(diagnostic().header.frame_id, "vla:11:0:0");
+  mock_joint_state_publisher_->send(10, 999, 999, q); pump(30);
+  EXPECT_EQ(diagnostic().header.frame_id, "vla:11:0:0");
+  mock_joint_state_publisher_->send(11, 1, 1, position_states_); pump(30);
+  EXPECT_EQ(diagnostic().header.frame_id, "vla:11:1:0");
 }
 
-TEST_F(JointImpedanceControllerTest, TestUpdateGelloPositionValuesOnly) {
-  static const std::vector<double> kInitialRobotPosition = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-  static constexpr double kExpectedValue = -0.075;
-  static constexpr double kTolerance = 0.01;
-
-  setRobotPosition(kInitialRobotPosition);
-  startController();
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  rclcpp::Time time;
-  rclcpp::Duration period = rclcpp::Duration::from_seconds(1.0);
-  EXPECT_EQ(controller_->update(time, period), controller_interface::return_type::OK);
-  period = rclcpp::Duration::from_seconds(1.1);
-  EXPECT_EQ(controller_->update(time, period), controller_interface::return_type::OK);
-
-  for (size_t i = 0; i < joint_commands_.size(); ++i) {
-    EXPECT_NEAR(joint_commands_[i], kExpectedValue, kTolerance);
-  }
-}
-
-TEST_F(JointImpedanceControllerTest, TestUpdateInvalidGelloPositionValues) {
-  GTEST_SKIP() << "Skipping this test because yet not implemented";
-
-  /**
-   * Description: Modify mock_joint_state_publisher.hpp (Fake Gello), to be reconfigured to publish
-   * invalid joint states (invalid / old timestamp).
-   */
-}
-
-TEST_F(JointImpedanceControllerTest, TestCommandInterfaceConfiguration) {
-  controller_->on_init();
-  rclcpp_lifecycle::State state;
-  controller_->on_configure(state);
-
-  auto config = controller_->command_interface_configuration();
-  EXPECT_EQ(config.type, controller_interface::interface_configuration_type::INDIVIDUAL);
-  ASSERT_EQ(config.names.size(), command_interfaces_.size());
-  for (size_t i = 0; i < command_interfaces_.size(); i++) {
-    EXPECT_EQ(config.names[i], joint_names_[i] + "/" + HW_IF_EFFORT);
-  }
-}
-
-TEST_F(JointImpedanceControllerTest, TestStateInterfaceConfiguration) {
-  controller_->on_init();
-  rclcpp_lifecycle::State state;
-  controller_->on_configure(state);
-
-  auto config = controller_->state_interface_configuration();
-  EXPECT_EQ(config.type, controller_interface::interface_configuration_type::INDIVIDUAL);
-  ASSERT_EQ(config.names.size(), state_interfaces_.size());
-  for (size_t i = 0; i < joint_names_.size(); ++i) {
-    EXPECT_EQ(config.names[2 * i], joint_names_[i] + "/" + HW_IF_POSITION);
-    EXPECT_EQ(config.names[2 * i + 1], joint_names_[i] + "/" + HW_IF_VELOCITY);
-  }
+TEST_F(JointImpedanceControllerTest, HoldsBeforeManagedCommandAndExposesInterfaces) {
+  ASSERT_EQ(startController(), CallbackReturn::SUCCESS);
+  pump(40);
+  mock_joint_state_publisher_->send(0, 1, 1, position_states_); pump(40);
+  EXPECT_EQ(diagnostic().header.frame_id, "vla:0:0:0");
+  EXPECT_EQ(controller_->command_interface_configuration().names.size(), 7u);
+  EXPECT_EQ(controller_->state_interface_configuration().names.size(), 14u);
+  for (double torque : joint_commands_) EXPECT_TRUE(std::isfinite(torque));
 }

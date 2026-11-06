@@ -17,32 +17,21 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 
-/**
- * @class MockGelloJointStatePublisher
- * @brief A mock joint state publisher node replacing the gello publisher for testing purposes.
- *
- */
+// Manual transport fixture: valid managed commands, no periodic hidden publisher.
 class MockGelloJointStatePublisher : public rclcpp::Node {
  public:
   MockGelloJointStatePublisher() : Node("joint_state_publisher_node") {
-    publisher_ = this->create_publisher<sensor_msgs::msg::JointState>("/gello/joint_states", 3);
-    timer_ =
-        this->create_wall_timer(std::chrono::milliseconds(100),
-                                std::bind(&MockGelloJointStatePublisher::publishJointState_, this));
+    publisher_ = create_publisher<sensor_msgs::msg::JointState>("/gello/joint_states", 3);
   }
-
+  void send(uint64_t generation, uint64_t id, uint64_t sequence,
+            const std::vector<double>& q, double age = 0.0) {
+    sensor_msgs::msg::JointState msg;
+    msg.header.stamp = now() - rclcpp::Duration::from_seconds(age);
+    msg.header.frame_id = "vla:"+std::to_string(generation)+":"+std::to_string(id)+":"+std::to_string(sequence);
+    for (int i=1; i<=7; ++i) msg.name.push_back("fr3_joint"+std::to_string(i));
+    msg.position = q;
+    publisher_->publish(msg);
+  }
  private:
-  void publishJointState_() {
-    auto message = sensor_msgs::msg::JointState();
-    message.header.stamp = this->now();
-    message.name = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7", "joint8"};
-    message.position = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-    message.velocity = {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1};
-    message.effort = {0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01};
-
-    publisher_->publish(message);
-  }
-
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr publisher_;
-  rclcpp::TimerBase::SharedPtr timer_;
 };

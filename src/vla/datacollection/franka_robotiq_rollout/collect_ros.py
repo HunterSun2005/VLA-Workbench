@@ -35,6 +35,7 @@ from std_msgs.msg import Float32, Float64MultiArray, UInt64
 from vla.actions import ActionSpec, matrix_to_rot6d
 from vla.actions.spec import fingerprint, validate_array
 from vla.control.ros import ControlCoordinator, ArmMeasurement
+from vla.control.ros.transport import joint_command, controller_identity
 
 from vla.datacollection.franka_robotiq_single_left import schema
 from vla.datacollection.franka_robotiq_single_left.auto_record import (
@@ -721,13 +722,11 @@ class RolloutCollector(Node):
             if not hasattr(self, 'coordinator'):
                 return
             try:
-                marker, generation, command_id, fault = message.header.frame_id.split(':')
-                if marker != 'vla' or int(generation) != self.coordinator.generation:
+                generation, command_id, fault = controller_identity(message)
+                if generation != self.coordinator.generation:
                     return
-                if fault != '0':
+                if fault:
                     raise RuntimeError(f'{arm} controller command watchdog fault')
-                if marker != 'vla':
-                    return
                 self._observe_control()
                 self.coordinator.acknowledge(arm, int(generation), int(command_id),
                                              message.position, time.monotonic_ns())
@@ -743,11 +742,9 @@ class RolloutCollector(Node):
     def _coordinated_publish(self, name, joints, gripper, generation, command_id):
         arm = next(a for a in self.config.arms if a.name == name)
         self._publish_sequence += 1
-        message = JointState()
-        message.header.stamp = self.get_clock().now().to_msg()
-        message.header.frame_id = f"vla:{generation}:{command_id}:{self._publish_sequence}"
-        message.name = list(self.servos[name].model.joint_names)
-        message.position = joints.tolist()
+        message = joint_command(self.servos[name].model.joint_names, joints,
+                                generation, command_id, self._publish_sequence,
+                                self.get_clock().now().to_msg())
         self._joint_publishers[name].publish(message)
         if self.coordinator.owner != 'pose' and self._last_gripper_goal.get(name) != gripper:
             self._send_gripper_goal(arm, gripper)

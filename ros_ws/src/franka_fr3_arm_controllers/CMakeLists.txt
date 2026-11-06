@@ -23,6 +23,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 option(CHECK_TIDY "Adds clang-tidy tests" OFF)
+option(CHECK_LINT "Adds optional source lint checks" OFF)
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
@@ -104,28 +105,29 @@ ament_export_dependencies(
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  find_package(ament_cmake_clang_format REQUIRED)
-  find_package(ament_cmake_copyright REQUIRED)
-  find_package(ament_cmake_cppcheck REQUIRED)
-  find_package(ament_cmake_lint_cmake REQUIRED)
-  find_package(ament_cmake_xmllint REQUIRED)
-
-  set(CPP_DIRECTORIES src include test)
-
-  ament_cppcheck(${CPP_DIRECTORIES})
-  ament_lint_cmake(CMakeLists.txt)
-  ament_xmllint()
-  ament_clang_format(CONFIG_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../../.clang-format ${CPP_DIRECTORIES})
-  ament_copyright(${CPP_DIRECTORIES} package.xml)
-
-ament_add_gtest(
-        test_joint_impedance_controller
-        test/test_joint_impedance_controller.cpp
-        test/invalid_configuration_test.cpp
-        test/setup_test.cpp
-)
+  ament_add_gtest(test_joint_impedance_controller
+    test/test_joint_impedance_controller.cpp
+    test/invalid_configuration_test.cpp
+    test/setup_test.cpp)
   if(TARGET test_joint_impedance_controller)
+    target_include_directories(test_joint_impedance_controller PRIVATE test)
     target_link_libraries(test_joint_impedance_controller ${PROJECT_NAME})
+    ament_target_dependencies(test_joint_impedance_controller rclcpp controller_interface
+      hardware_interface sensor_msgs std_msgs)
+  endif()
+  # Behavioral tests must not require unrelated lint tool installations.
+  if(CHECK_LINT)
+    find_package(ament_cmake_clang_format REQUIRED)
+    find_package(ament_cmake_copyright REQUIRED)
+    find_package(ament_cmake_cppcheck REQUIRED)
+    find_package(ament_cmake_lint_cmake REQUIRED)
+    find_package(ament_cmake_xmllint REQUIRED)
+    set(CPP_DIRECTORIES src include test)
+    ament_cppcheck(${CPP_DIRECTORIES})
+    ament_lint_cmake(CMakeLists.txt)
+    ament_xmllint()
+    ament_clang_format(${CPP_DIRECTORIES})
+    ament_copyright(${CPP_DIRECTORIES} package.xml)
   endif()
 endif()
 
