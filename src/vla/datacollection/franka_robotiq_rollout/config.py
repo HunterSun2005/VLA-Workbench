@@ -113,6 +113,8 @@ class RolloutConfig:
     low_success_rate_samples: int
     gamepad_tilt_speed: float = 0.15
     gamepad_roll_speed: float = 0.30
+    action_space: str = "tcp"
+    input_source: str = "gamepad"
     gamepad_profile: str | None = None
     subtasks: tuple[str, ...] = ()
     tasks: tuple[str, ...] = ()
@@ -123,7 +125,12 @@ class RolloutConfig:
 
     @property
     def action_dim(self) -> int:
-        return 10 * len(self.arms)
+        return self.action_spec.dim
+
+    @property
+    def action_spec(self):
+        from vla.actions import ActionSpec
+        return ActionSpec(self.action_space, tuple(arm.name for arm in self.arms))
 
 
 def _mapping(value: Any, label: str) -> dict[str, Any]:
@@ -333,6 +340,10 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     backend = str(raw.get("backend", "ros2"))
     if backend not in {"franky", "ros2"}:
         raise ValueError("rollout backend must be 'franky' or 'ros2'")
+    from vla.actions import ActionSpec
+    ActionSpec(space=str(raw.get("action_space", "tcp")))
+    if raw.get("input_source", "gamepad") not in ("gamepad", "gello"):
+        raise ValueError("input_source must be gamepad or gello")
     dataset = _mapping(raw.get("dataset"), "dataset")
     task = str(dataset.get("task", "")).strip()
     tasks_raw = dataset.get("tasks", [])
@@ -481,6 +492,8 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
                 raise ValueError(f"{arm.name}.gamepad.{label} must be -1.0 or 1.0")
     return RolloutConfig(
         backend=backend,
+        action_space=str(raw.get("action_space", "tcp")),
+        input_source=str(raw.get("input_source", "gamepad")),
         dataset_root=Path(str(dataset["root"])).expanduser().resolve(),
         task=tasks[0],
         fps=fps,

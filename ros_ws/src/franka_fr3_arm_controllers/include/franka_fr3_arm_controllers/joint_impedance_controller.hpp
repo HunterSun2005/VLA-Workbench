@@ -19,6 +19,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <string>
+#include <atomic>
+#include <realtime_tools/realtime_buffer.h>
+#include <std_msgs/msg/u_int64.hpp>
 #include "franka_fr3_arm_controllers/motion_generator.hpp"
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -42,6 +45,26 @@ class JointImpedanceController : public controller_interface::ControllerInterfac
   CallbackReturn on_activate(const rclcpp_lifecycle::State& previous_state) override;
 
  private:
+  struct CommandPacket {
+    std::array<double, 7> positions{};
+    uint64_t generation{0};
+    uint64_t command_id{0};
+    uint64_t sequence{0};
+    int64_t stamp_ns{0};
+  };
+  realtime_tools::RealtimeBuffer<CommandPacket> command_buffer_;
+  std::atomic<uint64_t> requested_generation_{0};
+  uint64_t active_generation_{0};
+  uint64_t received_command_id_{0};
+  uint64_t received_sequence_{0};
+  bool command_watchdog_fault_{false};
+  std::atomic<bool> diagnostic_fault_{false};
+  std::array<std::atomic<double>, 7> diagnostic_positions_{};
+  std::atomic<uint64_t> diagnostic_generation_{0};
+  std::atomic<uint64_t> diagnostic_command_id_{0};
+  rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr reset_subscriber_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr diagnostic_publisher_;
+  rclcpp::TimerBase::SharedPtr diagnostic_timer_;
   std::string arm_id_;
   std::string namespace_prefix_;
   std::string robot_description_;

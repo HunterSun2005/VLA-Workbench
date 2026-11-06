@@ -14,22 +14,22 @@ from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
 
 
 DEFAULT_CONFIG = Path(__file__).parents[1] / "franka_robotiq_rollout/configs/dual.yaml"
-ACTION_ENCODING = "controller_joint_command_fk_absolute_tcp_rot6d_gripper_goal_v2"
+ACTION_ENCODING = "ros_accepted_absolute_target_v1"
 
 
 def validate_dual_config(config):
-    if config.backend != "ros2" or tuple(arm.name for arm in config.arms) != ("left", "right"):
+    if config.backend != "ros2" or tuple(arm.name for arm in config.arms) not in (("left",), ("left", "right")):
         raise ValueError("dual gamepad recording requires ROS2 arms ordered left, right")
-    if tuple(camera.name for camera in config.cameras) not in (("base", "left_wrist", "right_wrist"), ("base", "left_wrist", "right_wrist", "side")):
+    if len(config.arms) == 2 and tuple(camera.name for camera in config.cameras) not in (("base", "left_wrist", "right_wrist"), ("base", "left_wrist", "right_wrist", "side")):
         raise ValueError("dual cameras must be ordered base, left_wrist, right_wrist, with optional side last")
     if len({camera.serial for camera in config.cameras}) != len(config.cameras):
         raise ValueError("dual recording requires distinct camera serials")
     for field in ("robot_state_topic", "measured_joint_topic", "gripper_state_topic",
                   "command_joint_topic", "command_gripper_topic", "gripper_action_topic",
                   "gripper_speed_topic"):
-        if len({getattr(arm, field) for arm in config.arms}) != 2:
+        if len({getattr(arm, field) for arm in config.arms}) != len(config.arms):
             raise ValueError(f"left/right {field} must be distinct")
-    if len({arm.gamepad.joy_topic for arm in config.arms}) != 2:
+    if len({arm.gamepad.joy_topic for arm in config.arms}) != len(config.arms):
         raise ValueError("left and right gamepads must use distinct Joy topics")
     if config.fps != 30 or config.image_size != (224, 224) or config.gamepad_control_rate != 100:
         raise ValueError("dual recording requires 30 FPS, 224x224 RGB and 100 Hz gamepad control")

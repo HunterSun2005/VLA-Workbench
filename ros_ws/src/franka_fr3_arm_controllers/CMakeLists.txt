@@ -27,6 +27,9 @@ option(CHECK_TIDY "Adds clang-tidy tests" OFF)
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(realtime_tools REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(controller_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
@@ -55,6 +58,9 @@ ament_target_dependencies(
         pluginlib
         rclcpp
         rclcpp_lifecycle
+        realtime_tools
+        sensor_msgs
+        std_msgs
         franka_semantic_components
         moveit_core
         moveit_msgs

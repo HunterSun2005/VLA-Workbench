@@ -20,6 +20,7 @@
 #include <cmath>
 #include <exception>
 #include <string>
+#include <sstream>
 
 using std::placeholders::_1;
 
@@ -52,10 +53,56 @@ JointImpedanceController::state_interface_configuration() const {
 controller_interface::return_type JointImpedanceController::update(const rclcpp::Time& /*time*/,
                                                                    const rclcpp::Duration& period) {
   updateJointStates_();
+  const auto requested = requested_generation_.load();
+  if (requested > active_generation_) {
+    // Only the real-time loop mutates controller/filter/motion state.
+    active_generation_ = requested;
+    received_command_id_ = 0;
+    received_sequence_ = 0;
+    command_watchdog_fault_ = false;
+    filtered_gello_position_values_ = q_;
+    filtered_gello_position_initialized_ = true;
+    last_commanded_q_goal_ = q_;
+    last_commanded_q_goal_initialized_ = true;
+    Eigen::Map<Vector7d>(gello_position_values_.data()) = q_;
+    gello_position_values_valid_ = false;
+    motion_generator_initialized_ = false;
+    move_to_start_position_finished_ = false;
+    // Preserve last torque to retain the torque slew-rate bound during reset.
+    dq_filtered_ = dq_;
+  }
+  const auto packet = *command_buffer_.readFromRT();
+  const auto now = get_node()->now();
+  if (!command_watchdog_fault_ && active_generation_ > 0 && packet.generation == active_generation_ &&
+      packet.sequence > received_sequence_ && packet.command_id >= received_command_id_ &&
+      packet.command_id > 0 && now.nanoseconds() >= packet.stamp_ns &&
+      now.nanoseconds() - packet.stamp_ns < 500000000) {
+    const Vector7d raw = Eigen::Map<const Vector7d>(packet.positions.data());
+    Eigen::Map<Vector7d>(gello_position_values_.data()) = filterGelloPositions_(raw);
+    received_command_id_ = packet.command_id;
+    received_sequence_ = packet.sequence;
+    last_joint_state_time_ = now;
+    gello_position_values_valid_ = true;
+    // Managed input is already initialized at measured pose by the coordinator.
+    motion_generator_initialized_ = true;
+    move_to_start_position_finished_ = true;
+  }
   if (last_joint_state_time_.seconds() > 0.0 &&
-      (get_node()->now() - last_joint_state_time_).seconds() > 0.5) {
+      (now - last_joint_state_time_).seconds() > 0.5) {
+    if (received_command_id_ > 0) {
+      command_watchdog_fault_ = true;
+      last_commanded_q_goal_ = q_;
+      filtered_gello_position_values_ = q_;
+      Eigen::Map<Vector7d>(gello_position_values_.data()) = q_;
+    }
     gello_position_values_valid_ = false;
   }
+  diagnostic_fault_.store(command_watchdog_fault_);
+  for (int i = 0; i < num_joints; ++i) {
+    diagnostic_positions_[i].store(gello_position_values_[i]);
+  }
+  diagnostic_command_id_.store(received_command_id_);
+  diagnostic_generation_.store(active_generation_);
   Vector7d q_goal;
   Vector7d tau_d_calculated;
   const double period_seconds = std::max(period.seconds(), 0.001);
@@ -112,26 +159,26 @@ controller_interface::return_type JointImpedanceController::update(const rclcpp:
 }
 
 void JointImpedanceController::jointStateCallback_(const sensor_msgs::msg::JointState msg) {
-  if (last_joint_state_time_.seconds() == 0.0) {
+  if (msg.position.size() != 7 || msg.header.frame_id.rfind("vla:", 0) != 0) {
+    return;  // Unmanaged publishers cannot acquire control.
+  }
+  CommandPacket packet;
+  std::string marker;
+  char separator;
+  std::istringstream input(msg.header.frame_id.substr(4));
+  if (!(input >> packet.generation >> separator) || separator != ':' ||
+      !(input >> packet.command_id >> separator) || separator != ':' ||
+      !(input >> packet.sequence) || !input.eof()) {
     return;
   }
-
-  if (msg.position.size() < gello_position_values_.size()) {
-    RCLCPP_WARN(get_node()->get_logger(),
-                "Received joint state size is smaller than expected size.");
-    return;
-  }
-
-  Vector7d raw_gello_positions;
   for (int i = 0; i < num_joints; ++i) {
-    raw_gello_positions(i) = msg.position[i];
+    if (!std::isfinite(msg.position[i])) {
+      return;
+    }
+    packet.positions[i] = msg.position[i];
   }
-
-  const auto filtered_gello_positions = filterGelloPositions_(raw_gello_positions);
-  Eigen::Map<Vector7d>(gello_position_values_.data()) = filtered_gello_positions;
-
-  validateGelloPositions_(msg);
-  last_joint_state_time_ = msg.header.stamp;
+  packet.stamp_ns = rclcpp::Time(msg.header.stamp).nanoseconds();
+  command_buffer_.writeFromNonRT(packet);
 }
 
 CallbackReturn JointImpedanceController::on_init() {
@@ -228,6 +275,27 @@ CallbackReturn JointImpedanceController::on_configure(
       "gello/joint_states", 1,
       [this](const sensor_msgs::msg::JointState& msg) { jointStateCallback_(msg); });
 
+  reset_subscriber_ = get_node()->create_subscription<std_msgs::msg::UInt64>(
+      "teleop/reset", 10, [this](const std_msgs::msg::UInt64& msg) {
+        auto previous = requested_generation_.load();
+        while (msg.data > previous && !requested_generation_.compare_exchange_weak(previous, msg.data)) {}
+      });
+  diagnostic_publisher_ = get_node()->create_publisher<sensor_msgs::msg::JointState>(
+      "teleop/controller_state", 10);
+  diagnostic_timer_ = get_node()->create_wall_timer(std::chrono::milliseconds(10), [this]() {
+    sensor_msgs::msg::JointState message;
+    const auto generation = diagnostic_generation_.load();
+    message.header.stamp = get_node()->now();
+    message.header.frame_id = "vla:" + std::to_string(generation) + ":" +
+                             std::to_string(diagnostic_command_id_.load()) + ":" +
+                             (diagnostic_fault_.load() ? "1" : "0");
+    for (int i = 0; i < num_joints; ++i) {
+      message.position.push_back(diagnostic_positions_[i].load());
+    }
+    if (generation == diagnostic_generation_.load()) {
+      diagnostic_publisher_->publish(message);
+    }
+  });
   return CallbackReturn::SUCCESS;
 }
 
@@ -236,7 +304,13 @@ CallbackReturn JointImpedanceController::on_activate(
   last_joint_state_time_ = get_node()->now();
   dq_filtered_.setZero();
   last_commanded_tau_.setZero();
-  last_commanded_q_goal_initialized_ = false;
+  updateJointStates_();
+  last_commanded_q_goal_ = q_;
+  last_commanded_q_goal_initialized_ = true;
+  filtered_gello_position_initialized_ = false;
+  motion_generator_initialized_ = false;
+  move_to_start_position_finished_ = false;
+  gello_position_values_valid_ = false;
   start_time_ = this->get_node()->now();
 
   return CallbackReturn::SUCCESS;
