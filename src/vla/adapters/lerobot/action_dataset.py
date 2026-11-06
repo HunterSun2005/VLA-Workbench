@@ -29,7 +29,7 @@ class ActionDataset(Dataset):
         return len(self.indices)
 
     def __getattr__(self, key):
-        return getattr(self.dataset, key)
+        return getattr(object.__getattribute__(self, 'dataset'), key)
 
     def __getitem__(self, index):
         start = int(self.indices[index])

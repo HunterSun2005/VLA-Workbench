@@ -4,7 +4,7 @@
 
 ## 独立开发副本
 
-当前开发副本为 `/data0/sht/VLA-Workbench`，基于远程 main 的 `6fffc50` 创建 `codex/test-suite-cleanup`。原采集目录 `/data0/sht/VLA` 保持 main，不切换它的分支或重新安装其环境。
+当前独立仓库为 `/data0/sht/VLA-Workbench`，在本地 main 维护，无 remotes。原采集仓库和已有环境不修改。
 
 ```bash
 cd /data0/sht/VLA-Workbench
@@ -26,10 +26,10 @@ nice -n 10 bash scripts/test.sh -q -p no:cacheprovider tests/web
 | 改动范围 | 优先运行（加在 `bash scripts/test.sh -q` 后） |
 | --- | --- |
 | Web 状态、接口、配置及监控 | `tests/web` |
-| 单臂 gamepad、控制安全与采集 | `tests/rlt/test_gamepad_teleop.py tests/rlt/test_gamepad_recording.py tests/rlt/test_franka_pi05_robot.py` |
+| 单臂 gamepad、控制安全与采集 | `tests/control tests/rlt/test_cartesian_gamepad.py tests/rlt/test_dual_gamepad_record.py` |
 | ROS／双臂启动与采集 | `tests/rlt/test_teleop_entrypoints.py tests/rlt/test_dual_gamepad_record.py tests/rlt/test_franka_dual_sft_recorder.py` |
 | 数据字段、处理和视频 | `tests/rlt/test_franka_absolute_recorder.py tests/rlt/test_extract_dataset_features.py tests/rlt/test_dataset_processing.py tests/test_camera_image_padding.py tests/web/test_processing.py` |
-| 部署协议、RTC 与人工接管 | `tests/rlt/test_franka_rollout_collection.py tests/rlt/test_franka_pi05_rtc_deployment.py tests/rlt/test_rlt_ac_rtc.py tests/rlt/test_rollout_sft_gamepad.py` |
+| 部署协议、RTC 与人工接管 | `tests/rlt/test_franka_rollout_collection.py tests/rlt/test_franka_pi05_rtc_deployment.py tests/rlt/test_rlt_ac_rtc.py tests/rlt/test_franka_sft_server.py` |
 | 核心训练、损失与模型保存 | `tests/rlt/test_losses.py tests/rlt/test_actor_critic.py tests/rlt/test_algorithm.py tests/rlt/test_training_step.py tests/rlt/test_pretrained_integration.py` |
 | 在线训练、回放与恢复 | `tests/rlt/test_online_consistency.py tests/rlt/test_online_training.py tests/rlt/test_training_safety.py tests/rlt/test_training_upgrade.py` |
 | LeRobot 依赖与工厂注册 | `tests/test_lerobot061.py tests/test_lerobot_registry_dataset.py tests/rlt/test_processor_rlt.py` |
@@ -40,9 +40,13 @@ nice -n 10 bash scripts/test.sh -q -p no:cacheprovider tests/web
 nice -n 10 bash scripts/test.sh -q -p no:cacheprovider --durations=20
 ```
 
-## 精简记录（2026-11-06）
+## 当前 ROS 迁移验收
 
-这轮仅修改测试及文档，不修改控制、数据写入、模型实现或依赖。完整默认发现机制不变，没有新增排除目录、默认跳过标记或测试选择框架。
+完整离线回归为 678 passed、6 skipped、0 failed。ROS 编译、解释器隔离、无 Franky 的 wheel／CLI／Web demo 冒烟结果及现场待验收范围见 [ROS 验收报告](../docs/ROS_VALIDATION.md)。动作契约可从 `tests/actions` 开始；稀疏 RLT 时序见 `tests/rlt/test_sparse_action_timing.py`。
+
+## 历史：迁移前的测试精简记录（2026-11-06）
+
+以下历史轮次仅修改测试及文档，不修改控制、数据写入、模型实现或依赖。完整默认发现机制不变，没有新增排除目录、默认跳过标记或测试选择框架。
 
 | 调整 | 仍保留的验证 |
 | --- | --- |

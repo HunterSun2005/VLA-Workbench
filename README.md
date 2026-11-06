@@ -6,7 +6,7 @@
 
 ```bash
 conda activate vla
-cd /data0/sht/VLA
+cd /data0/sht/VLA-Workbench
 source scripts/model_env.sh
 vla-web --root "$VLA_ROOT"
 ```
@@ -48,30 +48,25 @@ vla-web --root "$VLA_ROOT"
 
 - **采集**：单左臂／双臂 × GELLO／gamepad；保存完整状态，支持按后端能力录制、保存、丢弃及人工交接。相机角色使用 RealSense SDK 序列号，下拉额外显示型号；可选 Side 视角。Gamepad 可配置 TCP 工作空间，各采集路线可保存带备注的机械臂姿态并在待命时受控恢复。
 - **处理**：离线逐帧查看多视角、状态和动作，全局选择状态字段，手动剔除完整回合，转换到新数据集。不会修改源数据；真实硬件会话运行期间不能启动转换。
-- **部署**：VLA／RLT／自动模式按模型能力开放，支持 gamepad 人工接管和回合记录。Web 不管理在线训练。
+- **部署**：VLA／RLT／自动模式按模型能力开放，支持 GELLO／gamepad 人工接管和回合记录。Web 不管理在线训练。
 - **监控**：采集预览目标每视角 30 FPS，部署 10 FPS；显示实际服务端预览帧率和过期状态。预览设置不改变数据集帧率或控制频率，曲线可按物理量选择显示。
 
 Demo 的采集／部署不连接硬件，也不生成真实采集数据集；**数据处理页即使在 Demo 下仍读取本地数据并写入真实转换结果**。浏览器关闭不结束独立 runner 中的会话。软件暂停不是硬件急停，各后端暂停对未保存回合的影响见 [Web 面板说明](docs/WEB_PANEL.md)。姿态库位于忽略目录 `runtime/web/poses.json`，应单独备份。
 
-服务仅监听本机。远程访问使用 SSH 隧道，例如 `ssh -N -L 8765:127.0.0.1:8765 用户@机器人主机`。操作细节见 [Web 面板说明](docs/WEB_PANEL.md)、[离线数据处理](docs/DATA_PROCESSING.md)；历史离线证据见 [Web 验收](docs/web/VALIDATION.md)。
+服务仅监听本机。远程访问使用 SSH 隧道，例如 `ssh -N -L 8765:127.0.0.1:8765 用户@机器人主机`。操作细节见 [Web 面板说明](docs/WEB_PANEL.md)、[离线数据处理](docs/DATA_PROCESSING.md)；当前验收结果见 [ROS 离线验收](docs/ROS_VALIDATION.md)，历史证据见 [Web 验收](docs/web/VALIDATION.md)。
 
 ## 当前控制与采集架构
 
-| 路线 | 控制与状态读取 | 输入／相机 |
-| --- | --- | --- |
-| 单左臂 gamepad 采集、Franky 部署 | Franky → libfranka；状态从同一 Franky 实例读取 | ROS Joy 辅助进程转发手柄输入；RealSense SDK 直接采图 |
-| 单／双臂 GELLO 采集、双臂 gamepad、ROS 部署 | ROS 关节目标 → C++ 关节阻抗控制器 → libfranka；订阅 ROS 机械臂状态 | GELLO／gamepad 输入与交接走 ROS；采集器直接使用 RealSense SDK |
+单／双臂、GELLO／Gamepad、采集与部署统一使用 ROS 2 Humble 和现有 C++ 关节阻抗控制器。模型与 Web 使用 Python 3.12；ROS 使用系统 Python 3.10，通过本地协议传递绝对目标。RealSense 直接使用 SDK。
 
-模型与 Web 使用 **Python 3.12**；ROS 2 Humble 使用 **系统 Python 3.10**。两侧通过本地协议交互，不把 ROS Python 安装进模型环境。当前单臂 Franky 支持已有 RTC 流程，双臂沿用 ROS 时序，不宣称具备同等 RTC 能力。
-
-统一 Franky 执行器仍是后续设计方向，尚未完成。各路线虽保存相同形状的 TCP 动作，记录点和控制映射仍有区别：单臂 gamepad 按观测间隔积分速度命令，ROS 路线主要记录已发布关节目标的 FK，Franky 部署记录执行接口返回的有效目标。**相同维度不代表动作语义和动力学等价，混合训练前需核对来源契约、动作记录方式、控制参数和夹爪语义。**
+采集前选择 joint（8D／臂）或 TCP（10D／臂），Parquet 始终保存绝对目标与原始实测状态。模型配置选择 absolute／chunk_relative；相对动作以请求起点的原始实测状态为锚点，旋转通过矩阵组合。RTC 队列保存绝对目标，跨锚点前缀重新编码。细节、当前限制和实机待验收项目见 [ROS 动作契约](docs/ROS_ACTION_CONTRACT.md)。
 
 ## 专用 ROS 工作空间
 
 在单独终端操作，不激活模型环境：
 
 ```bash
-cd /data0/sht/VLA
+cd /data0/sht/VLA-Workbench
 /usr/bin/python3 scripts/fetch_ros.py
 bash scripts/install_ros_python.sh
 bash scripts/build_ros.sh
@@ -82,7 +77,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 系统前提是 ROS 2 Humble、MoveIt/ros2_control、Robotiq description/controllers、Joy、PyKDL，以及本机 `/opt/openrobots` 的原生依赖。Dynamixel SDK、串口库和 ROS 采集用的 NumPy/OpenCV/相机等依赖安装在 `ros_ws/python_deps`，版本固定在 `ros_ws/requirements-python.lock`；不改动系统 Python，也不引入模型 Conda 环境。版本快照见 `ros_ws/system-packages.lock`；第三方源码精确提交见 `ros_ws/dependencies.repos`。本轮没有安装或更改系统 ROS。
 
-`CHECK_ONLY=1` 只校验配置和依赖。实际启动需要按任务配置设备、模型和工作空间；单臂 Franky 独占机械臂、夹爪与相机，ROS 侧只运行 Joy sidecar。双臂/GELLO 使用专用 ROS 控制器。
+`CHECK_ONLY=1` 只校验配置；真实启动必须显式传入 `--execute`。所有路线由同一个 ROS 协调器管理控制权，不再提供可运行的 Franky 后端。旧配置需显式迁移。
 
 ## 功能入口
 
@@ -107,7 +102,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 `datasets/raw/` 存放人工原始采集，`sft/` 存放训练输入，`transitions/` 存放 transition cache，`rollouts/` 存放部署回合，`online/` 预留在线数据。目录骨架由 Git 管理，数据内容忽略。Web 自动预填相对输出路径，按采集配置调整；详见 [目录与命名说明](datasets/README.md)。
 
-完整原始状态为 **50D／臂、双臂 100D**，包含 TCP 位姿、夹爪实测开口、TCP 外力／外力矩估计、TCP 速度、关节位置／力矩／外部力矩估计／速度。`action` 为每臂 10D（TCP XYZ、rot6d、夹爪比例），双臂 20D。先保存完整状态，再按训练需求提取；旧 `_31d` 入口同样写完整 50D。旧 29D／31D／58D 数据不能续采新格式，仍可离线读取和提取。字段、单位及转换示例见 [采集格式说明](docs/DATA_COLLECTION_FORMAT.md)。
+完整原始状态为 **50D／臂、双臂 100D**，包含 TCP 位姿、夹爪实测开口、TCP 外力／外力矩估计、TCP 速度、关节位置／力矩／外部力矩估计／速度。`action` 按采集选择为 joint 8D／16D 或 TCP 10D／20D，始终是绝对目标。先保存完整状态，再按训练需求提取；旧 `_31d` 入口同样写完整 50D。旧 29D／31D／58D 数据不能续采新格式，仍可离线读取和提取。字段、单位及转换示例见 [采集格式说明](docs/DATA_COLLECTION_FORMAT.md)。
 
 ## 训练与评估产物
 
@@ -119,7 +114,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 配置中的设备编号和网络地址必须按现场核对，不按枚举顺序推断视角。旧部署 home 配置默认关闭，启用时必须提供通过校验的目标；Web 采集前姿态库是另一个显式操作流程，保存 TCP 位姿、不包含夹爪状态。旧数据格式中的 `evo_rlt` 元数据字段保留，以维持格式兼容；额外字段同时保存到 `meta/vla_metadata.json`。
 
-远程仓库为 [HunterSun2005/VLA-Workbench](https://github.com/HunterSun2005/VLA-Workbench)。当前采集目录保留 `main`；较大改动在独立工作副本的 `codex/` 分支开发，不切换运行目录的分支，不复用活动会话目录。Git 身份和 SSH 连接以仓库 **local config** 为准，不修改全局配置。数据、模型、tokenizer、运行日志和第三方构建产物不进入 Git，也不会随 clone 复制。来源与哈希见 `docs/migration/`；0.5.1 基线保存在历史中，当前仅维护 0.6.1。
+本仓库独立维护在本地 `main`，不配置 remotes、不发布。原采集仓库与已有环境不修改。数据、权重、tokenizer、回放、日志和第三方源码／构建产物不进入 Git。
 
 ## 开发与验证
 

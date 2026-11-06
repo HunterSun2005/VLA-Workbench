@@ -16,6 +16,8 @@ def install_action_training(trainer):
     def datasets(cfg):
         contract = getattr(cfg.policy, 'action_contract', None)
         if contract:
+            if getattr(cfg.dataset, 'eval_split', 0):
+                raise ValueError('materialize the training split before computing action statistics; set dataset.eval_split=0')
             root = Path(cfg.dataset.root or cfg.dataset.repo_id)
             from vla.dataset_metadata import load_info
             info = load_info(root)

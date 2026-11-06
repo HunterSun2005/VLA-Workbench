@@ -32,8 +32,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path)
     parser.add_argument('--arms', choices=['single_left', 'dual'], default='single_left')
-    parser.add_argument('--source', choices=['gello', 'gamepad'], default='gamepad')
-    parser.add_argument('--action-space', choices=['joint', 'tcp'], default='tcp')
+    parser.add_argument('--source', choices=['gello', 'gamepad'])
+    parser.add_argument('--action-space', choices=['joint', 'tcp'])
     parser.add_argument('--workflow', choices=['collect', 'deploy'], default='collect')
     parser.add_argument('--dataset-root', type=Path)
     parser.add_argument('--task')
@@ -44,7 +44,9 @@ def main(argv=None):
     parser.add_argument('--online', action='store_true', help='Require an existing online RLT server contract')
     parser.add_argument('--hardware-config', type=Path)
     parser.add_argument('--policy-path', default='')
+    parser.add_argument('--handover-path', default='')
     parser.add_argument('--policy-kind', choices=['sft', 'rlt'], default='sft')
+    parser.add_argument('--mode', choices=['vla', 'rlt', 'auto'], default='vla')
     parser.add_argument('--tokenizer-path', default='')
     parser.add_argument('--model-python', default=os.environ.get('VLA_PYTHON', sys.executable))
     mode = parser.add_mutually_exclusive_group()
@@ -55,24 +57,34 @@ def main(argv=None):
     from vla.paths import workspace
     from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
     root = workspace()
-    config = SessionConfig(workflow=args.workflow, arms=args.arms, source=args.source,
-        action_space=args.action_space, config_path=str(args.config or ''),
+    config = SessionConfig(workflow=args.workflow, arms=args.arms, source=args.source or 'gamepad',
+        action_space=args.action_space or 'tcp', config_path=str(args.config or ''),
         dataset_root=str(args.dataset_root or ''), task=args.task or "", resume=args.resume, side_camera_serial=args.side_camera_serial,
-        policy_path=args.policy_path, policy_kind=args.policy_kind, tokenizer_path=args.tokenizer_path,
+        policy_path=args.policy_path, handover_path=args.handover_path, policy_kind=args.policy_kind, mode=args.mode, tokenizer_path=args.tokenizer_path,
         model_python=args.model_python, ros_workspace=str(root/'ros_ws'), ros_config=str(args.hardware_config or ''))
     rollout = load_rollout_config(config.default_config())
     arms = 'dual' if len(rollout.arms) == 2 else 'single_left'
     tasks = tuple(dict.fromkeys(args.tasks or rollout.tasks))
     task = args.task or (tasks[0] if args.tasks else rollout.task)
     tasks = tuple(dict.fromkeys((task, *tasks)))
-    config = replace(config, arms=arms, task=task, tasks=tasks)
-    if args.resume and args.dataset_root is None:
+    config = replace(config, arms=arms, task=task, tasks=tasks,
+                     source=args.source or rollout.input_source,
+                     action_space=args.action_space or rollout.action_space,
+                     dataset_root=str(args.dataset_root or (rollout.dataset_root if args.config else '')))
+    if config.workflow == 'deploy' and config.policy_path:
+        from vla.actions import ActionSpec
+        from vla.actions.metadata import checkpoint_contract
+        spec = ActionSpec.from_dict(checkpoint_contract(config.policy_path)['action_spec'])
+        if spec.arms != tuple(arm.name for arm in rollout.arms):
+            raise ValueError('checkpoint arms do not match ROS configuration')
+        config = replace(config, action_space=spec.space)
+    if args.resume and not config.dataset_root:
         parser.error('--resume requires --dataset-root')
-    if args.dataset_root is not None and not args.online:
+    if config.dataset_root and not args.online:
         from vla.datacollection.franka_robotiq_dual.gamepad_record import validate_dataset_root
-        validate_dataset_root(args.dataset_root, resume=args.resume)
+        validate_dataset_root(config.dataset_root, resume=args.resume)
     if not args.execute:
-        print(f'ROS2 configuration valid: {arms}, {args.source}, {args.action_space}, '
+        print(f'ROS2 configuration valid: {arms}, {config.source}, {config.action_space}, '
               f'{50*len(rollout.arms)}D measured state, absolute storage; hardware not started')
         return
     if not sys.stdin.isatty():

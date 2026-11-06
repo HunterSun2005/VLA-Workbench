@@ -77,6 +77,17 @@ def test_training_masks_episode_padding_and_invalid_segments():
     assert wrapped[0]['action_is_pad'].tolist()==[False,True,True]
     assert wrapped[1]['action_is_pad'].tolist()==[False,False,True]
     assert wrapped[4]['action_is_pad'].tolist()==[False,True,True]
+    # Spawn workers unpickle the wrapper before assigning its dataset attribute.
+    import pickle
+    portable = ActionDataset(SimpleNamespace(hf_dataset=table), {'chunk_length':3, 'frame_stride':1})
+    restored = pickle.loads(pickle.dumps(portable))
+    assert restored.indices.tolist() == portable.indices.tolist()
+    from vla.adapters.lerobot.action_training import install_action_training
+    trainer = SimpleNamespace(make_train_eval_datasets=lambda cfg: None, make_pre_post_processors=lambda **kw: None)
+    install_action_training(trainer)
+    cfg = SimpleNamespace(policy=SimpleNamespace(action_contract={'version':1}), dataset=SimpleNamespace(eval_split=.1))
+    with pytest.raises(ValueError, match='materialize the training split'):
+        trainer.make_train_eval_datasets(cfg)
 
 
 def test_vla_pi05_loss_excludes_padded_targets_without_loading_model():

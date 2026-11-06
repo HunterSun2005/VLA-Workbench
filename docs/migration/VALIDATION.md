@@ -1,3 +1,5 @@
+> 历史记录：其中 Franky 路线与旧测试结果不适用于当前 ROS 统一版本。当前行为和限制以 [ROS 动作契约](../ROS_ACTION_CONTRACT.md) 为准。
+
 # 迁移验收记录
 
 日期：2026-10-30。目标：/data0/sht/VLA；源：Evo-RLT c592f5047fd1ffb853cbc820606382e6d2822a9d。

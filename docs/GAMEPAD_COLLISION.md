@@ -1,3 +1,5 @@
+> 历史记录：其中 Franky 路线与旧测试结果不适用于当前 ROS 统一版本。当前行为和限制以 [ROS 动作契约](ROS_ACTION_CONTRACT.md) 为准。
+
 # Gamepad 与 GELLO 碰撞阈值
 
 用户报告的现象是 gamepad 下稍加外力即触发碰撞／reflex。原单臂 Franky gamepad 入口没有显式设置碰撞阈值，而 GELLO 的 ROS 启动器默认调用 `set_full_collision_behavior`。此次将单臂 gamepad 遥操及采集配置对齐现有 GELLO 阈值；未读取或测量机器此前实际生效的阈值，不能据此断言具体提高了多少。

@@ -193,3 +193,20 @@ def test_key_event_invalidates_status_already_copied_by_worker(tmp_path, monkeyp
         assert 'RECORDING stale' not in stream.getvalue()
     finally:
         reporter.close()
+
+
+@pytest.mark.parametrize('override', [False, True])
+def test_shared_terminal_preserves_yaml_control_choices(tmp_path, capsys, override):
+    import yaml
+    from vla.paths import resource
+    from vla.cli.ros_session import main
+    raw = yaml.safe_load(resource('datacollection/franka_robotiq_rollout/configs/single_left.yaml').read_text())
+    raw.update(input_source='gello', action_space='joint')
+    raw['dataset']['root'] = str(tmp_path/'dataset')
+    path = tmp_path/'ros.yaml'
+    path.write_text(yaml.safe_dump(raw))
+    args = ['--config', str(path), '--check-only']
+    if override:
+        args += ['--source', 'gamepad', '--action-space', 'tcp']
+    main(args)
+    assert ('gamepad, tcp' if override else 'gello, joint') in capsys.readouterr().out
