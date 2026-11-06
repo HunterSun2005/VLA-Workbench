@@ -197,7 +197,7 @@ class ROSPoseDriver:
             m = c.coordinator._measurements[arm.name]
             tcp[arm.name] = (np.asarray(pose['position']), np.asarray(pose['rotation']), m.gripper)
         action = c.coordinator.gamepad_target(tcp, 1/c.config.fps)
-        c.coordinator.accept(action, source='pose', generation=c.coordinator.generation)
+        c.coordinator.accept(action, source='pose', generation=c.coordinator.generation, slot_id=time.monotonic_ns()*30//1_000_000_000)
         c._track_control(min(dt, .05))
 
     def stop(self):

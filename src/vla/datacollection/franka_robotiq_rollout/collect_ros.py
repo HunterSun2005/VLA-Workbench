@@ -883,7 +883,7 @@ class RolloutCollector(Node):
             raise RuntimeError("latest policy action stream expired")
         if self.coordinator.mode != 'active':
             return False
-        accepted = self.coordinator.accept(self._policy_action, source='policy', generation=self.coordinator.generation)
+        accepted = self.coordinator.accept(self._policy_action, source='policy', generation=self.coordinator.generation, slot_id=time.monotonic_ns()*30//1_000_000_000)
         return accepted is not None
 
     def _publish_gripper_speed(self, arm: ArmConfig, speed: float) -> None:
@@ -1298,7 +1298,7 @@ class RolloutCollector(Node):
                 if self._intervention:
                     if self.coordinator.mode == 'active' and getattr(self, '_input_action', None) is not None:
                         self.coordinator.accept(self._input_action, source=self.config.input_source,
-                                                generation=self.coordinator.generation)
+                                                generation=self.coordinator.generation, slot_id=time.monotonic_ns()*30//1_000_000_000)
                 else:
                     self._publish_policy(values, 1/self.config.fps)
                     self._submit_policy(raw_state, images)

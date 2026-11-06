@@ -95,7 +95,7 @@ def test_production_teaching_parquet_replay(models, tmp_path, space, arms, sourc
         if tick == 90:
             reset(c, 'human')
         if tick % 10 in (0, 4, 7):
-            receipt = c.accept(target(c, tick, source), source='human', generation=c.generation)
+            receipt = c.accept(target(c, tick, source), source='human', generation=c.generation, slot_id=tick)
             assert receipt is not None
             records.append((tick, receipt.target.copy(), anchor(c)))
         c.tick(.01)
@@ -137,7 +137,7 @@ def test_fk_tool_composition_clipping_and_finite_ik(models):
     tcp_p, tcp_r = servo.forward_tcp(Q, TOOL_P, TOOL_R)
     np.testing.assert_allclose(tcp_p, p+r@TOOL_P)
     np.testing.assert_allclose(tcp_r, r@TOOL_R)
-    receipt = c.accept(np.r_[[2., 0., .4], matrix_to_rot6d(tcp_r), .5], source='human', generation=c.generation)
+    receipt = c.accept(np.r_[[2., 0., .4], matrix_to_rot6d(tcp_r), .5], source='human', generation=c.generation, slot_id=0)
     assert receipt.target[0] == .8
     c.tick()
     q = published[-1][1]

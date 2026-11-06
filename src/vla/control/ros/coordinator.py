@@ -53,7 +53,8 @@ class ControlCoordinator:
         self._measurements = {}
         self._acknowledged = set()
         self._last_accept = None
-        self._next_accept = None
+        self._last_slot = -1
+        self.partial_submission = {}
         self._pending_owner = None
         self._lock = RLock()
 
@@ -79,7 +80,7 @@ class ControlCoordinator:
             self.accepted = None
             self.submitted = {}
             self._last_accept = None
-            self._next_accept = None
+            self._last_slot = -1
             self._acknowledged.clear()
             self.owner = None
             self._pending_owner = None if fault else owner
@@ -119,18 +120,17 @@ class ControlCoordinator:
                 self.mode = 'active' if self.owner else 'standby'
             return True
 
-    def accept(self, target, *, source, generation, command_id=None):
+    def accept(self, target, *, source, generation, slot_id):
         with self._lock:
             if self.mode != 'active' or source != self.owner or generation != self.generation:
                 raise RuntimeError('inactive or revoked command owner/generation')
             self._fresh()
             now = self.clock()
-            if command_id is None:
-                command_id = self.command_id + 1
-            if command_id <= self.command_id:
-                raise ValueError('duplicate or out of order command id')
-            if self._next_accept is not None and now < self._next_accept:
-                return None
+            if type(slot_id) is not int or slot_id < self._last_slot:
+                raise ValueError('expired or out of order slot id')
+            if slot_id == self._last_slot:
+                return self.accepted
+            command_id = slot_id + 1
             target = validate_array(target, self.spec).copy()
             if target.shape != (self.spec.dim,):
                 raise ValueError('ROS accepts one target at a time')
@@ -145,9 +145,7 @@ class ControlCoordinator:
             self.accepted = AcceptedCommand(self.spec, target, source, command_id, generation,
                                             min(m.observed_at_ns for m in self._measurements.values()), now)
             self.command_id, self._last_accept = command_id, now
-            period = int(1e9 / 30)
-            self._next_accept = (now+period if self._next_accept is None or now-self._next_accept > period
-                                 else self._next_accept+period)
+            self._last_slot = slot_id
             return self.accepted
 
     def gello_target(self, joints, grippers):
@@ -206,8 +204,10 @@ class ControlCoordinator:
                     submitted[arm] = {'joints': q.copy(), 'fk_tcp': np.r_[p, matrix_to_rot6d(r)],
                                       'gripper': float(block[-1])}
                 # Validate every arm before the first publish; a partial publish faults all arms.
+                self.partial_submission = {}
                 for arm, target in submitted.items():
                     self.publish(arm, target['joints'], target['gripper'], command.generation, command.command_id)
+                    self.partial_submission[arm] = target
                 self.submitted = submitted
                 return command
             except Exception as error:

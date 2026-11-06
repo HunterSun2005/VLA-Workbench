@@ -229,7 +229,7 @@ class Session:
                     if commands:
                         goals = {a: self.last_seen[a][1]+.004*np.sin(now*2) for a in self.models}
                         target = self.c.gello_target(goals, {a:.45 for a in self.models})
-                        accepted = self.c.accept(target, source=self.c.owner, generation=self.c.generation)
+                        accepted = self.c.accept(target, source=self.c.owner, generation=self.c.generation, slot_id=time.monotonic_ns()*30//1_000_000_000)
                         if accepted is not None and record:
                             self.accept_times.append(accepted.accepted_at_ns)
                     self.c.tick(.01)
