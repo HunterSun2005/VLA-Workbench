@@ -1,36 +1,28 @@
-# ROS 夹爪动作记录修复
+# ROS 夹爪目标与记录
 
-本修复只在 VLA-Workbench 实施；不修改正在采集的 VLA、已安装包或 ROS 环境。
+单／双臂、Web／终端采集共用 [RolloutCollector](../src/vla/datacollection/franka_robotiq_rollout/collect_ros.py) 与协调器。动作记录点遵循 [ROS 动作契约](ROS_ACTION_CONTRACT.md)，不再使用独立旧 recorder 的订阅路由作为采集定义。
 
-## 标签含义
+## 数值与记录点
 
-ROS Gamepad 的 action 夹爪维度现在记录提交给 ActionClient 的目标开度（0～1），持续开／关时保持端点目标；松手时以当时实测值提交一次 hold，并锁定该目标。之后的测量漂移只影响 observation，不重写 action。同步提交失败不更新命令缓存；异步拒绝／执行异常仍报告错误。这里的“命令”表示已提交的请求，不保证服务器接受或物理到达。
+| 字段／对象 | 含义 |
+| --- | --- |
+| `observation.state` 中夹爪实测字段 | 测量开口，单位为米 |
+| `observation.anchor` 中夹爪维度 | 原始测量转换后的 0～1 开度比例 |
+| `action` 中夹爪维度 | 当前接受目标，0～1 绝对开度；不由后续测量漂移改写 |
+| `command.joint` 中夹爪维度 | 与本次关节命令一起记录的提交目标 |
 
-FineTeleop 在 fine 和 returning 模式持续发布最后成功提交的目标，实测回调只更新测量。freshness 检查保留：缺少／过期测量、managed 未启用或故障时不发布有效夹爪记录心跳。普通 GELLO 模式仍使用其参考开度。
+Gamepad 持续开／关时使用端点目标；松手时锁定当时实测开度作为 hold。GELLO 使用输入参考开度，策略使用候选动作的夹爪目标。共同规则是区分目标和实测值，不能用测量差分替代示教动作。
 
-## 话题路由
+## 提交与故障
 
-| 输入链路 | 录制话题 | 驱动路径 |
-| --- | --- | --- |
-| 左臂 GELLO；Web 左／右臂 GELLO | `/<arm>/teleop/gripper_action_width_percent` | `/<arm>/teleop/gripper_drive_width_percent` |
-| fine、returning、ROS Gamepad | 同上，持续发布已提交目标 | 直接 ActionClient；不重复发布 drive |
-| ROS 策略控制 | 同上 | drive 话题 |
-| 终端双臂右侧原始 GELLO | `/right/gello/gripper_width_percent` | 保持原始 GELLO 路由 |
+公共 `_coordinated_publish` 在目标改变时经 `gripper_action_topic` 提交 ActionClient 请求，并在 `command_gripper_topic` 发布记录目标；pose 控制权不驱动夹爪。夹爪开／闭位置换算由每臂配置决定，不假设所有设备方向相同。
 
-启动器的 Robotiq remap 和订阅者预检同步更新：记录话题不再要求驱动订阅；独立 drive 至少一个消费者。原始 GELLO 共享话题仍要求录制器＋驱动两个订阅者。Web 双臂显式传入每臂协调器记录话题，不依赖模块导入后的环境变量修改。
+提交请求不等于 ActionServer 已接受，也不保证物理到达。同步提交失败不更新成功目标缓存；异步拒绝／执行异常进入故障处理。预检要求对应 ActionServer 和必要消费者可用，不能用记录话题的订阅数代替执行服务就绪状态。
 
-GELLO／策略经话题驱动时，底层原有端点吸附和 deadband 仍存在；本修复不声称这些标签已等于驱动后处理值。observation 夹爪宽度仍是米，action 仍是开度比例。
+## 数据契约与验证
 
-## 数据兼容
+当前采集写入 recording schema 5、`gripper_recording_version=2` 和 `action_gripper_source=command_goal_or_latched_hold`，并绑定实际动作／控制来源。旧数据不能通过补写一个版本字段成为新格式；当前采集、训练与回放规则见 [执行闭环](EXECUTION_RTC_RLT.md)。
 
-新 ROS 数据写入 `gripper_recording_version=2`，GELLO 数据还记录实际订阅话题。双臂 Gamepad 使用 recording contract v2 和 `controller_joint_command_fk_absolute_tcp_rot6d_gripper_goal_v2`。离线 transition 转换同时识别旧 v1 与新 v2，不能把旧标签自动视为已修复。
+相关离线用例位于 [夹爪命令测试](../tests/rlt/test_ros_gripper_commands.py) 和 [模拟采集恢复测试](../tests/rlt/test_dual_gamepad_record.py)。当前通过情况由 [自动化验收](ACCEPTANCE.md) 生成；真实 ActionClient 接受／抢占、夹爪到达和连续采集仍需现场验证。
 
-禁止续写缺少／不匹配新契约的旧目录，需选择新目录。严格元数据检查发生在临时文件恢复之前，拒绝续采不会先清理旧临时数据。
-
-## 验证与使用
-
-离线测试用真实 collector、FineTeleop 和 recorder 方法配合模拟 ROS 传输，覆盖两臂目标记录、松手保持、测量漂移、持续心跳、驱动不重复发送、提交失败、订阅预检、Web 所用双臂话题覆盖和旧目录拒绝。
-
-不在本轮启动任何设备。真实 DDS QoS、ActionClient 接受／抢占、夹爪到达和连续实机采集仍待验收。启用更新需后续部署 Workbench 版本并新建会话，驱动 remap、发布者和录制器须一起更新，不能混用新旧节点。
-
-2026-11-06 离线验收：夹爪、双臂 Gamepad、单／双臂 recorder、入口、单臂录制、Web hardware/panel 共 **160 passed**；系统 Python 3.10 对采集 Python 源码语法检查及轻量契约导入通过。Web 测试使用本地模拟服务，无硬件连接；现有 Starlette/AnyIO 弃用告警未改依赖。
+旧话题拆分、旧 recorder 和旧格式识别的背景保存在 [2026-11-06 历史记录](archive/ROS_GRIPPER_RECORDING_2026-11-06.md)。

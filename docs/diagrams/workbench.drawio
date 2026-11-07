@@ -545,13 +545,13 @@
         <mxCell id="decode" parent="1" value="&lt;b&gt;绝对还原&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;反归一化 · 请求锚点&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="874" y="300" width="250" height="86" as="geometry" />
         </mxCell>
-        <mxCell id="merge" parent="1" value="&lt;b&gt;延迟对齐 / 合并&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;有效代际 · 剔除过时前缀&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+        <mxCell id="merge" parent="1" value="&lt;b&gt;延迟对齐 / 合并&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;有效代次 · 固定替换边界&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="1162" y="300" width="340" height="86" as="geometry" />
         </mxCell>
         <mxCell id="prefix" parent="1" value="&lt;b&gt;前缀重编码&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;新锚点 · 归一化&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#D8CBEA;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="280" y="440" width="260" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="queue" parent="1" value="&lt;b&gt;绝对动作队列&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;保留每个 chunk 的绝对目标&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
+        <mxCell id="queue" parent="1" value="&lt;b&gt;ROS 绝对目标队列&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;保留每个 chunk 的绝对目标&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="640" y="656" width="300" height="80" as="geometry" />
         </mxCell>
         <mxCell id="consume" parent="1" value="&lt;b&gt;逐步消费&lt;/b&gt;&lt;br&gt;&lt;font style='font-size:17px;color:#64748B'&gt;ROS 接受 30 Hz&lt;/font&gt;" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#B5CBE8;strokeWidth=1.4;fontColor=#172B4D;fontSize=23;align=center;verticalAlign=middle;spacing=4;fontFamily=Noto Sans CJK SC;" vertex="1">
@@ -566,7 +566,7 @@
         <mxCell id="title" parent="1" value="A / RTC：推理与执行并行" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=34;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="48" y="28" width="1100" height="52" as="geometry" />
         </mxCell>
-        <mxCell id="subtitle" parent="1" value="Real-Time Chunking · 衔接动作块与补偿推理延迟 · Python 3.12 / PyTorch" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=19;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+        <mxCell id="subtitle" parent="1" value="Real-Time Chunking · ROS 持有执行队列 · 模型仅生成候选块" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=19;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="48" y="84" width="1150" height="34" as="geometry" />
         </mxCell>
         <mxCell id="async_title" parent="1" value="异步推理：生成下一段动作" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=25;fontColor=#172B4D;fontStyle=1;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
@@ -584,10 +584,10 @@
         <mxCell id="stride_note" parent="1" value="稀疏目标按采样间隔保持。" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#64748B;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="80" y="746" width="490" height="26" as="geometry" />
         </mxCell>
-        <mxCell id="consumed_caption" parent="1" value="按推理期间实际消费步数对齐" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+        <mxCell id="consumed_caption" parent="1" value="按请求固定边界安装后缀" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#3268D5;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="1038" y="516" width="290" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="leftover_caption" parent="1" value="未执行的绝对前缀" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#8252BD;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
+        <mxCell id="leftover_caption" parent="1" value="已承诺的绝对前缀" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#8252BD;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">
           <mxGeometry x="435" y="529" width="300" height="26" as="geometry" />
         </mxCell>
         <mxCell id="anchor_caption" parent="1" value="同一请求锚点" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=17;fontColor=#168679;fontStyle=0;spacing=0;fontFamily=Noto Sans CJK SC;" vertex="1">

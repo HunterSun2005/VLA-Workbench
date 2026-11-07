@@ -1,5 +1,7 @@
 # 原生动作重放：真实 FR3 运动学
 
+> 历史快照：仅代表文中日期、版本和范围；旧命令及依赖状态不作为当前操作指引。当前行为见[文档导航](../README.md)，当前结果由[自动化验收](../ACCEPTANCE.md)生成。
+
 使用系统 Python 3.10、工作空间固定版本 franka_description 的 FR3 URDF，以及生产 PyKDL、CartesianServo、ControlCoordinator。没有启动 ROS 节点或连接硬件。
 
 ```bash

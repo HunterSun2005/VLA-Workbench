@@ -1,6 +1,8 @@
 # ROS 统一控制离线验收（2026-11-06）
 
-当前提交请使用 [自动化验收](ACCEPTANCE.md) 生成绑定源码的报告。2026-11-07 的协议 v2、schema 5、Replay 4 和十分钟 mock 测量快照见 [统一执行闭环](EXECUTION_RTC_RLT.md)。以下仅保留历史记录，其中分支、远端和测试数量描述当时状态。
+> 历史快照：仅代表文中日期、版本和范围；旧命令及依赖状态不作为当前操作指引。当前行为见[文档导航](../README.md)，当前结果由[自动化验收](../ACCEPTANCE.md)生成。
+
+当前提交请使用 [自动化验收](../ACCEPTANCE.md) 生成绑定源码的报告。2026-11-07 的协议 v2、schema 5、Replay 4 和十分钟 mock 测量快照见 [执行闭环首次验收](EXECUTION_2026-11-07.md)。以下仅保留历史记录，其中分支、远端和测试数量描述当时状态。
 
 开发位置：`/data0/sht/VLA-Workbench`。初次验收使用本地 `main`，后续工作使用 `ros-dev`；未配置或发布远程。此报告只记录离线验证，不代表机器人现场验收通过。
 
@@ -55,7 +57,7 @@ ROS 编译使用 `ros_ws/dependencies.repos` 声明的精确上游版本。依�
 6. 在线 RLT 保存后训练、训练中断与进程重启恢复、稀疏目标保持和相应奖励时序。
 7. 四种动作空间／训练表示组合的真实训练收敛、模型效果与任务成功率。
 
-操作命令见 [WORKFLOWS.md](WORKFLOWS.md)，数据与数学约定见 [ROS_ACTION_CONTRACT.md](ROS_ACTION_CONTRACT.md)。
+操作命令见 [WORKFLOWS.md](../WORKFLOWS.md)，数据与数学约定见 [ROS_ACTION_CONTRACT.md](../ROS_ACTION_CONTRACT.md)。
 
 ## 后续补充：真实运动学与 ROS 模拟硬件通信
 

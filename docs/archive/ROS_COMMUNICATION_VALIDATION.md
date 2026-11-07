@@ -1,5 +1,7 @@
 # ROS 通信与控制器离线验收
 
+> 历史快照：仅代表文中日期、版本和范围；旧命令及依赖状态不作为当前操作指引。当前行为见[文档导航](../README.md)，当前结果由[自动化验收](../ACCEPTANCE.md)生成。
+
 本次验证使用真实 ROS 2 Humble DDS、`controller_manager`、FR3 URDF、PyKDL 和项目的 C++ 关节阻抗控制器。硬件接口仅允许 `vla_control_validation/TimingMockSystem`，没有连接 Franka、夹爪、GELLO 或相机。模型 Python 与系统 ROS Python 保持隔离。
 
 ## 复现

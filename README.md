@@ -2,6 +2,8 @@
 
 从 Evo-RLT 独立提取的 Franka 采集、训练和部署框架。采用官方 LeRobot 0.6.1，不包含 LeRobot fork、旧数据集、模型、tokenizer、回放数据库或训练结果。
 
+使用说明、契约、维护与验收入口统一见 [文档导航](docs/README.md)；旧版本记录见 [历史归档](docs/archive/README.md)。
+
 ## Workbench 整体架构
 
 Workbench 分为 **数据采集 → 模型训练 → 部署推理** 三个部分。采集和部署共用一套 ROS 控制系统，训练通过数据集和 checkpoint 与两端衔接。部署回合经持久回放进入在线 RLT，更新后的 checkpoint 再用于推理。
@@ -112,7 +114,7 @@ vla-web --root "$VLA_ROOT"
 
 Demo 的采集／部署不连接硬件，也不生成真实采集数据集；**数据处理页即使在 Demo 下仍读取本地数据并写入真实转换结果**。浏览器关闭不结束独立 runner 中的会话。软件暂停不是硬件急停，各后端暂停对未保存回合的影响见 [Web 面板说明](docs/WEB_PANEL.md)。姿态库位于忽略目录 `runtime/web/poses.json`，应单独备份。
 
-服务仅监听本机。远程访问使用 SSH 隧道，例如 `ssh -N -L 8765:127.0.0.1:8765 用户@机器人主机`。操作细节见 [Web 面板说明](docs/WEB_PANEL.md)、[离线数据处理](docs/DATA_PROCESSING.md)；当前验收结果通过 [自动化验收](docs/ACCEPTANCE.md) 生成，历史证据见 [Web 验收](docs/web/VALIDATION.md)。
+服务仅监听本机。远程访问使用 SSH 隧道，例如 `ssh -N -L 8765:127.0.0.1:8765 用户@机器人主机`。操作细节见 [Web 面板说明](docs/WEB_PANEL.md)、[离线数据处理](docs/DATA_PROCESSING.md)；当前验收结果通过 [自动化验收](docs/ACCEPTANCE.md) 生成，历史证据见 [Web 验收](docs/archive/WEB_VALIDATION.md)。
 
 ## 专用 ROS 工作空间
 
@@ -149,7 +151,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 | 在线 RLT / 恢复                                | `vla-serve-franka-rollout --online-*`；恢复使用 `--online-resume`                                |
 | 新格式回合恢复                                 | `vla-recover-episode --help`；[执行与数据闭环](docs/EXECUTION_RTC_RLT.md)                         |
 
-详细用法见 [操作说明](docs/WORKFLOWS.md)、[迁移对照](docs/migration/FEATURES.md) 和 [验收记录](docs/migration/VALIDATION.md)。
+详细用法见 [操作说明](docs/WORKFLOWS.md)；当前结果通过 [自动化验收](docs/ACCEPTANCE.md) 生成，来源和模块位置见 [迁移资料](docs/migration/README.md)。
 
 ## 数据集分层
 
