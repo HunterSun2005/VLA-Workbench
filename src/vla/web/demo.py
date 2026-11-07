@@ -32,6 +32,7 @@ class DemoBackend:
         self.poses = PoseActions(self, root or Path(directory), demo=True)
         self.started = time.monotonic()
         self.enabled = self.recording = self.human = self.fault = False
+        self.manual_requested = False
         self.episode = self.frames = 0
         self.mode = config.mode
         self.actual = 'vla'
@@ -75,8 +76,10 @@ class DemoBackend:
             if self.fault:
                 raise RuntimeError('recover first')
             self.enabled = True
+            self.human = self.manual_requested
         elif op == 'pause':
             self.enabled = False
+            self.human = False
         elif op == 'record':
             if not self.enabled or self.recording:
                 raise RuntimeError('enable first; only one active episode')
@@ -87,18 +90,32 @@ class DemoBackend:
             if not self.recording:
                 raise RuntimeError('no active episode')
             self.recording = self.enabled = False
+            self.human = False
             if op == 'save':
                 self.episode += 1
                 self.saved += 1
         elif op == 'mode':
-            if args.get('mode') not in self.config.modes(True):
+            mode = args.get('mode')
+            if self.config.workflow != 'deploy' or mode not in ['human', *self.config.modes(True)]:
                 raise ValueError('mode unavailable')
-            self.mode = args['mode']
+            if self.fault:
+                raise RuntimeError('recover first')
+            selected = 'human' if self.manual_requested else self.mode
+            if mode == selected:
+                return
+            positioning = self.human and self.enabled and not self.recording
+            self.manual_requested = mode == 'human'
+            self.human = self.enabled and self.manual_requested
+            if mode != 'human':
+                self.mode = mode
+                if positioning:
+                    self.enabled = False
             self._votes = 0
         elif op == 'intervention':
             if self.config.workflow != 'deploy' or not self.recording:
                 raise RuntimeError('intervention requires running deployment')
             self.human = not self.human
+            self.manual_requested = self.human
         elif op == 'critical':
             if not self.recording:
                 raise RuntimeError('no active episode')
@@ -131,11 +148,13 @@ class DemoBackend:
                 values[f'{arm}.tcp.{axis}'] = value
             for axis, value in zip('xyz', Rotation.from_matrix(pose['rotation']).as_rotvec()):
                 values[f'{arm}.orientation.r{axis}'] = float(value)
-        source = ('human' if self.human else self.actual) if self.config.workflow == 'deploy' else self.config.source
+        source = ('human' if self.human else self.actual if self.recording else 'idle') if self.config.workflow == 'deploy' else self.config.source
+        if not self.enabled:
+            source = 'idle'
         status = {'state': 'fault' if self.fault else 'recording' if self.recording else 'active' if self.enabled else 'standby',
                 'enabled': self.enabled, 'recording': self.recording, 'episode': self.episode,
                 'frames': self.frames, 'elapsed_s': self._recorded, 'saving': False, 'critical': self.critical if self.config.source=='gamepad' else None,
-                'requested_mode': self.mode, 'actual_source': source, 'switch_pending': False,
+                'requested_mode': 'human' if self.manual_requested else self.mode, 'actual_source': source, 'switch_pending': False,
                 'probability': self.probability, 'inference_ms': 35. if self.config.workflow == 'deploy' else None,
                 'arms': {a: {'source': self.config.source if source == 'human' else source,
                             'speed': 'normal' if self.config.source == 'gamepad' else 'fixed',
@@ -144,7 +163,7 @@ class DemoBackend:
                 'available_commands': ['enable','pause','record','save','discard','recover','stop'] +
                     (['critical'] if self.config.workflow=='collect' and self.config.source=='gamepad' else []) +
                     (['mode','intervention'] if self.config.workflow == 'deploy' else []),
-                'modes': self.config.modes(True), 'outcomes':['success','failure'] if self.config.workflow == 'deploy' or (self.config.arms == 'single_left' and self.config.source == 'gamepad') else ['success'], 'demo': True}
+                'modes': ['human', *self.config.modes(True)] if self.config.workflow == 'deploy' else [], 'outcomes':['success','failure'] if self.config.workflow == 'deploy' or (self.config.arms == 'single_left' and self.config.source == 'gamepad') else ['success'], 'demo': True}
         return self.poses.decorate(status)
 
     def images(self):

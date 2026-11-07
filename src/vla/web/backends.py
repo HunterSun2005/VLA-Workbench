@@ -32,6 +32,7 @@ class BaseBackend:
         self.resources.callback(self.children.close)
         self.arms = ['left','right'] if config.arms == 'dual' else ['left']
         self.enabled = False
+        self._policy_armed = False
         self.started = time.monotonic()
         self.record_started = None
         self.mode = config.mode
@@ -106,7 +107,10 @@ class BaseBackend:
         c = self.collector
         active = c.episode_active if hasattr(c,'episode_active') else c._recording
         if op == 'enable':
-            if self.config.workflow == 'collect' or hasattr(c,'_setup_teleop'):
+            if (c._faulted or getattr(c, '_storage_blocked', False) or getattr(c, '_saving', False)
+                    or getattr(c, '_processing', False)):
+                raise RuntimeError('control is blocked; finish saving or recover first')
+            if self.config.workflow == 'collect' or getattr(c, '_manual_requested', False) or hasattr(c,'_setup_teleop'):
                 c.enable_teleop()
                 self.enabled = bool(c._teleop_enabled if hasattr(c,'_teleop_enabled') else c._setup_teleop.mode == 'active')
                 if not self.enabled:
@@ -115,9 +119,13 @@ class BaseBackend:
                 problems = c._preflight_problems()
                 if problems:
                     raise RuntimeError('; '.join(problems))
-                self.enabled = True
                 if getattr(c, '_waiting_resume', False):
                     c.resume_policy()
+                    if c._waiting_resume:
+                        self.enabled = False
+                        raise RuntimeError('resume rejected; check device health')
+                self.enabled = True
+                self._policy_armed = not active
         elif op == 'next_task':
             if active:
                 raise RuntimeError('task selection requires standby')
@@ -129,6 +137,7 @@ class BaseBackend:
             active = c.episode_active if hasattr(c,'episode_active') else c._recording
             if not active:
                 raise RuntimeError('start rejected; see session log')
+            self._policy_armed = False
             self.record_started = time.monotonic()
         elif op in ('save','discard'):
             if not active and not getattr(c, '_storage_blocked', False) and not getattr(c, '_states', []):
@@ -144,6 +153,7 @@ class BaseBackend:
             if c.episode_active if hasattr(c,'episode_active') else c._recording:
                 raise RuntimeError('episode was not finalized; inspect storage/robot error')
             self.enabled = False
+            self._policy_armed = False
         elif op in ('pause','stop'):
             if hasattr(c,'pause_control'):
                 if op == 'stop' and active:
@@ -154,6 +164,7 @@ class BaseBackend:
                     raise RuntimeError('save or discard the current episode first')
                 c.pause_teleop()
             self.enabled = False
+            self._policy_armed = False
         elif op == 'intervention':
             if not active:
                 raise RuntimeError('no active deployment')
@@ -162,8 +173,16 @@ class BaseBackend:
             if c._intervention == before:
                 raise RuntimeError('intervention transition rejected')
         elif op == 'mode':
-            c.set_control_mode(args.get('mode'))
-            self.mode = args['mode']
+            mode = args.get('mode')
+            if self.config.workflow != 'deploy' or mode not in ['human', *self.config.modes()]:
+                raise ValueError('mode unavailable')
+            was_positioning = c._teleop_enabled and not active
+            c.select_control_mode(mode, enabled=self.enabled)
+            if mode != 'human':
+                self.mode = mode
+            if was_positioning and mode != 'human':
+                self.enabled = False
+            self._policy_armed = self.enabled and not active and not c._teleop_enabled
         elif op == 'critical' and (self.config.workflow == 'collect' or getattr(c, 'require_online', False)):
             if not active:
                 raise RuntimeError('no active episode')
@@ -181,7 +200,8 @@ class BaseBackend:
         active = c.episode_active if hasattr(c,'episode_active') else c._recording
         result = getattr(c, '_execution_record', None)
         human = c._intervention
-        actual = (c.config.input_source if human else 'waiting' if result is None else 'rlt' if result.source == 'actor' else 'vla' if result.source == 'vla' else 'holding') if active else 'idle'
+        actual = (c.config.input_source if human else 'waiting' if result is None else 'rlt' if result.source == 'actor' else 'vla' if result.source == 'vla' else 'holding') if active or getattr(c, '_teleop_enabled', False) else 'idle'
+        manual = human or getattr(c, '_manual_requested', False)
         setup = getattr(c,'_setup_teleop',None)
         controls = getattr(c,'_gamepad_controls',None) if active else setup
         arms = {a: {'source': actual, 'speed': 'fast' if getattr(c, '_high_speed', {}).get(a, False) else 'normal', 'speed_scale': getattr(c, '_speed_scale', {}).get(a, 1.)} for a in self.arms}
@@ -204,11 +224,11 @@ class BaseBackend:
                 'enabled': self.enabled, 'recording': active, 'episode': c.writer.episode_count,
                 'frames': len(c._states), 'elapsed_s': time.monotonic()-self.record_started if active and self.record_started else 0.,
                 'saving': bool(getattr(c,'_saving', False) or getattr(c,'_processing',False) or getattr(c,'_pending_finish',None) is not None), 'error': c._fault_reason,
-                'requested_mode': self.mode, 'actual_source': actual,
-                'switch_pending': bool(getattr(c,'_web_switch_pending',False)),
+                'requested_mode': 'human' if manual and self.config.workflow == 'deploy' else self.mode, 'actual_source': actual,
+                'switch_pending': not manual and bool(getattr(c,'_web_switch_pending',False)),
                 'probability': getattr(result,'probability',None),
                 'inference_ms': getattr(c, '_plan_latency_ms', None),
-                'arms': arms, 'available_commands': ops, 'modes': self.config.modes(),
+                'arms': arms, 'available_commands': ops, 'modes': ['human', *self.config.modes()] if self.config.workflow == 'deploy' else [],
                 'outcomes': ['success','failure'] if self.config.workflow == 'deploy' else ['success'],
                 'critical': c._phase == 'rl' if self.config.workflow == 'collect' else None,
                 'subtask': ({'index':c._subtask_index, 'total':len(c.config.subtasks),
@@ -317,7 +337,10 @@ class ROSBackend(BaseBackend):
         return self.collector_command(op, args)
 
     def tick(self):
-        if not self.collector._recording and not self.collector._teleop_enabled:
+        node = self.collector
+        if node._faulted or node._storage_blocked or node._waiting_resume or node._saving or node._processing:
+            self.enabled = self._policy_armed = False
+        elif not node._recording and not node._teleop_enabled and not self._policy_armed:
             self.enabled = False
         self.check_children()
         for _ in range(16):

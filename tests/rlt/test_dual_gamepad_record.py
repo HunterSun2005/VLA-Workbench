@@ -242,6 +242,7 @@ def test_demo_enable_record_pause_and_fault(collector):
     assert c._intervention  # no policy to hand back to
     c.pause_teleop()
     assert not c._recording and not c._teleop_enabled and c.writer.episode_count == 0
+    c._save_worker.join(30)  # Discard must finish before another explicit enable.
     c.enable_teleop()
     c._latest.pop("right.gamepad")
     c._gamepad_tick()

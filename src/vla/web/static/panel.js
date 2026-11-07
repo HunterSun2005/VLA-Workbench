@@ -158,7 +158,7 @@ function render(message){
  if(message.session_id&&session!==message.session_id){issueMessages.clear();seenFailedCommands.clear();drawIssues();render.lastState=null;session=message.session_id;awaitingCommandId=null;pending=false;rows=[];epoch=Date.now()/1000-message.now;descriptors=[];if(!s.final&&s.state!=='stopped')cameras(message.config||active?.config);else stopCameras();if(message.config){restoreSessionConfig(message.config);configureView();}}
 
  $('state').textContent=labels[s.state]||s.state;$('episode').textContent=s.episode??'—';$('frames').textContent=`${s.frames??'—'} / ${s.elapsed_s?.toFixed(1)??'—'}s`;$('source').textContent=({pose_return:'恢复姿态',waiting:'等待新动作',idle:'待命',human:'HUMAN',gamepad:'GAMEPAD'}[s.actual_source]||s.actual_source?.toUpperCase()||'—');
- $('modeState').textContent=s.switch_pending?'等待新策略动作':s.requested_mode?`已选择 ${s.requested_mode.toUpperCase()}`:'—';$('probability').textContent=s.probability==null?'—':s.probability.toFixed(3);$('actionContract').textContent=s.action_space?`${s.action_space.toUpperCase()} · ${s.training_representation||'absolute'} · ROS ${s.controller_state||''}`:'动作契约：等待会话';$('latency').textContent=`${s.inference_ms?.toFixed(0)??'—'} ms / ${s.rtc?'ON':'OFF'}`;
+ $('modeState').textContent=s.requested_mode==='human'?(s.enabled?(s.recording?'人工控制 · 记录中':'人工控制 · 摆位中，未记录'):'已选择人工控制 · 等待启用'):s.requested_mode&&!s.recording?`已选择 ${s.requested_mode.toUpperCase()} · ${s.enabled?'开始回合后执行':'等待启用'}`:s.switch_pending?'等待新策略动作':s.requested_mode?`已选择 ${s.requested_mode.toUpperCase()}`:'—';$('probability').textContent=s.probability==null?'—':s.probability.toFixed(3);$('actionContract').textContent=s.action_space?`${s.action_space.toUpperCase()} · ${s.training_representation||'absolute'} · ROS ${s.controller_state||''}`:'动作契约：等待会话';$('latency').textContent=`${s.inference_ms?.toFixed(0)??'—'} ms / ${s.rtc?'ON':'OFF'}`;
  const annotation=$('annotationStatus');annotation.hidden=(message.config||active?.config)?.workflow!=='collect';
  annotation.textContent=s.critical==null?'当前采集后端不提供 Critical 标注':`Critical：${s.critical?'ON · 正在标注':s.critical_state==='after'?'已结束（本回合不可再次开启）':'OFF'}`;
  if(s.subtask)annotation.textContent+=` · 阶段 ${s.subtask.index+1}/${s.subtask.total}：${s.subtask.name}`;
@@ -194,8 +194,9 @@ function freshness(){
  }
  for(const b of document.querySelectorAll('[data-mode]')){
   const supported=(s.modes||[]).includes(b.dataset.mode);
-  b.disabled=!isLive||pending||!supported;b.title=!supported?(b.dataset.mode==='auto'?'自动模式需要兼容的分类头资源':b.dataset.mode==='rlt'?'RLT 模式需要兼容的 Actor／RLToken 资源':'启动部署会话后可用'):!isLive?'等待实时会话连接':'';
-  b.classList.toggle('selected',s.requested_mode===b.dataset.mode);
+  const blocked=s.saving||['fault','waiting_resume','storage_blocked'].includes(s.state)||['fault','resetting'].includes(s.controller_state);
+  b.disabled=!isLive||pending||!supported||blocked||!(s.available_commands||[]).includes('mode');b.title=blocked?'请先完成保存、恢复故障或手动启用控制':!supported?(b.dataset.mode==='auto'?'自动模式需要兼容的分类头资源':b.dataset.mode==='rlt'?'RLT 模式需要兼容的 Actor／RLToken 资源':'启动部署会话后可用'):!isLive?'等待实时会话连接':'';
+  b.classList.toggle('selected',s.requested_mode===b.dataset.mode);b.setAttribute('aria-pressed',String(s.requested_mode===b.dataset.mode));
  }
  for(const card of document.querySelectorAll('.camera')){if(!card.querySelector('img').getAttribute('src')){card.classList.add('stale');card.querySelector('.age').textContent='预览暂停 · 遥测继续更新';continue;}const frame=current?.cameras?.[card.dataset.role];const age=frame?current.now-frame.captured_at+elapsed:Infinity;card.classList.toggle('stale',!connected||age>.5||age<0);card.querySelector('.age').textContent=Number.isFinite(age)?`${age>.5||!connected?'画面过期':'LIVE'} · ${(age*1000).toFixed(0)} ms · 服务端预览 ${age<=.5&&connected?(frame?.fps?.toFixed(1)??'—'):'—'} FPS`:'等待相机 / 无画面';}
 }

@@ -47,14 +47,14 @@ def test_collection_lifecycle_and_deduplicated_commands(tmp_path,arms,source):
 
 @pytest.mark.parametrize('arms', ['single_left','dual'])
 @pytest.mark.parametrize('mode', ['vla','rlt','auto'])
-def test_deployment_modes_and_human_precedence(tmp_path,arms,mode):
+def test_deployment_explicit_human_and_policy_selection(tmp_path,arms,mode):
     cfg=SessionConfig(task='test',workflow='deploy',arms=arms,mode=mode)
     backend=DemoBackend(cfg,tmp_path)
     backend.command('enable',{});backend.command('record',{})
     backend.tick();backend.command('intervention',{})
-    backend.command('mode',{'mode':mode});backend.tick()
+    backend.command('mode',{'mode':'human'});backend.tick()
     assert backend.sample()['actual_source']=='human'
-    backend.command('intervention',{});backend.tick()
+    backend.command('mode',{'mode':mode});backend.tick()
     assert backend.sample()['actual_source'] in ('vla','rlt')
     sft=replace(cfg,policy_kind='sft',mode='vla')
     with pytest.raises(ValueError,match='unavailable'):

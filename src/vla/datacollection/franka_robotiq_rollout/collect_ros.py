@@ -193,6 +193,7 @@ class RolloutCollector(Node):
         self.config = config
         self.demonstration = demonstration
         self._teleop_enabled = False
+        self._manual_requested = demonstration
         self._subtask_index = 0
         self._episode_task_index = 0
         self._last_demo_images: dict[str, int] = {}
@@ -749,9 +750,11 @@ class RolloutCollector(Node):
                                       arm.gamepad, self.config) for arm in self.config.arms)
 
     def enable_teleop(self) -> None:
-        """Enable both gamepads together for unrecorded demonstration positioning."""
+        """Explicitly enable unrecorded human positioning on either workflow."""
         with self._lock:
-            if not self.demonstration or self._recording or self._faulted or self._teleop_enabled:
+            if (self._recording or self._faulted or self._teleop_enabled or self._saving
+                    or self._processing or self._storage_blocked or self._waiting_resume
+                    or self.coordinator.mode in ('fault', 'resetting')):
                 return
             problems = self._preflight_problems()
             if problems:
@@ -983,6 +986,39 @@ class RolloutCollector(Node):
         if not self._intervention and self._recording:
             self._republish_arm_hold()
             self._stop_grippers_at_measured_position()
+
+    def select_control_mode(self, mode: str, *, enabled: bool) -> None:
+        """Select an explicit human/policy owner without enabling disabled control.
+
+        `set_control_mode` remains policy-only (including terminal selection during
+        intervention). Web selection additionally requests a deliberate handback.
+        """
+        with self._lock:
+            if (self.demonstration or self._faulted or self._storage_blocked
+                    or self._waiting_resume or self._saving or self._processing
+                    or self._pending_finish is not None or self.coordinator.mode in ('fault', 'resetting')):
+                raise RuntimeError('control selection requires healthy, settled control; recover/enable explicitly')
+            selected = 'human' if self._manual_requested or self._intervention else getattr(self, '_web_mode', 'vla')
+            if mode == selected:
+                return
+            if mode == 'human':
+                if enabled:
+                    if self._recording:
+                        self.toggle_intervention()
+                    else:
+                        self.enable_teleop()
+                    if not self._intervention:
+                        raise RuntimeError('human control rejected; release inputs and check device health')
+                self._manual_requested = True
+            else:
+                self.set_control_mode(mode)
+                if self._intervention:
+                    if self._recording:
+                        self.toggle_intervention()
+                    else:
+                        # Positioning ends at standby; no inference outside a recorded episode.
+                        self.pause_teleop()
+                self._manual_requested = False
 
     def _consume_policy_result(self):
         if self.policy_client is None:
@@ -1249,7 +1285,7 @@ class RolloutCollector(Node):
         return
 
     def _initialize_episode_hold(self, values):
-        self._control_boundary(self.config.input_source if self.demonstration else 'policy', reason='episode start')
+        self._control_boundary(self.config.input_source if self._intervention else 'policy', reason='episode start')
 
     def _submit_policy(
         self,
@@ -1309,7 +1345,7 @@ class RolloutCollector(Node):
                 ("robot state", arm.robot_state_topic),
                 ("measured joints", arm.measured_joint_topic),
                 ("gripper state", arm.gripper_state_topic),
-                ("gamepad", arm.gamepad.joy_topic),
+                ("input", f"/{arm.name}/gello/joint_states" if self.config.input_source == 'gello' else arm.gamepad.joy_topic),
             ):
                 if self.count_publishers(topic) < 1:
                     problems.append(f"{arm.name} {label} has no publisher: {topic}")
@@ -1542,7 +1578,7 @@ class RolloutCollector(Node):
                     flush=True,
                 )
                 return
-            if self.demonstration and (not self._teleop_enabled or not self._neutral_gamepads()):
+            if (self.demonstration or self._intervention) and (not self._teleop_enabled or not self._neutral_gamepads()):
                 print("请先启用遥操作；开始录制前松开双侧手柄输入。", flush=True)
                 return
             problems = self._preflight_problems()
@@ -1586,11 +1622,11 @@ class RolloutCollector(Node):
             self._pending_phase = None
             self._pending_finish = None
             self._reset_policy_on_request = True
-            if not self.demonstration:
+            if not self._intervention:
                 self._restore_policy_gripper_speed()
             self._initialize_episode_hold(snapshot[0])
             self._recording = True
-            source = "HUMAN demonstration" if self.demonstration else "requested policy phase=vla"
+            source = "HUMAN demonstration" if self.demonstration else "HUMAN intervention" if self._intervention else f"requested policy phase={self._phase}"
             print(f"Recording episode {episode_index}; task={self.config.tasks[self._episode_task_index]!r}; {source}", flush=True)
 
     @staticmethod
@@ -1785,8 +1821,16 @@ class RolloutCollector(Node):
 
     def toggle_intervention(self) -> None:
         with self._lock:
+            if (self._faulted or self._storage_blocked or self._waiting_resume
+                    or self._saving or self._processing or self._pending_finish is not None
+                    or self.coordinator.mode in ('fault', 'resetting')):
+                raise RuntimeError('intervention requires healthy, settled control; recover/enable explicitly')
             if self.demonstration and self._intervention:
                 print("演示采集保持人工控制；暂停会丢弃当前回合。", flush=True)
+                return
+            if self._intervention and not self._recording:
+                self.pause_teleop()
+                self._manual_requested = False
                 return
             if not self._intervention:
                 if not (self._recording or self._teleop_enabled):
@@ -1804,6 +1848,8 @@ class RolloutCollector(Node):
                         (f"{arm.name}.gripper_state", self.config.gamepad_state_timeout_s),
                         (f"{arm.name}.gello_joint" if self.config.input_source == "gello" else f"{arm.name}.gamepad", self.config.gamepad_joy_timeout_s),
                     )
+                    if self.config.input_source == 'gello':
+                        required += ((f'{arm.name}.gello_gripper', self.config.gamepad_joy_timeout_s),)
                     if any(key not in self._latest for key, _ in required):
                         print(f"Cannot enter intervention: {arm.name} gamepad/state is missing")
                         return
@@ -1856,6 +1902,7 @@ class RolloutCollector(Node):
                 self._policy_responses_in_phase = 0
                 self._log_next_policy_request = True
             self._control_boundary(self.config.input_source if self._intervention else 'policy', reason='takeover/return')
+            self._manual_requested = self._intervention
             requested = "active" if self._intervention else "inactive"
             next_source = "gamepad" if self._intervention else "policy"
             print(
