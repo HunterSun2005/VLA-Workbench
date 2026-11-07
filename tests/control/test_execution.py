@@ -101,3 +101,51 @@ def test_deadline_skip_idempotence_horizon_and_wire():
     assert e.advance(0, 3) is row
     with pytest.raises(ValueError):
         row.accepted.setflags(write=True)
+
+
+def test_auto_mode_freeze_fits_the_shortest_possible_response():
+    e = Executor(ExecutionContract(ActionSpec('joint'), {'vla': 50, 'rlt': 10, 'auto': 50},
+                                  'c', 'k', 't'), session_id='s', model_version='m', epoch_ns=0)
+    e.enable(np.r_[np.zeros(7),.5], episode_id='e')
+    def auto(slot):
+        return e.request(slot=slot, anchor=e.hold, observation_id=slot,
+                         observed_at_ns=e.control_clock.deadline(slot), policy='auto')
+    first = auto(0)
+    full = response(first)
+    short = replace(full, actions=full.actions[:10], sources=full.sources[:10],
+                    phases=full.phases[:10], vla_reference=full.vla_reference[:10])
+    assert e.install(short, 1)
+    e.advance(0,0)
+    assert auto(1) is None  # d=9 cannot fit a possible H=10 Actor response.
+    for i in range(1,5):
+        e.advance(i,e.control_clock.deadline(i))
+    follow = auto(5)
+    assert follow.start_idx == 5 and follow.replace_slot == 10
+
+
+@pytest.mark.parametrize('stride', [1,3])
+def test_deterministic_replay_of_clock_candidate_and_manual_events(stride):
+    def replay():
+        e = executor(stride)
+        first = request(e)
+        candidate = response(first)
+        trace = []
+        assert e.install(candidate, first.deadline_ns-1)
+        assert not e.install(candidate, first.deadline_ns-1)
+        # A missed timer deadline never submits historical actions in a burst.
+        slots = [0,1,*range(4,first.horizon*stride+2)]
+        for slot in slots:
+            record = e.advance(slot,e.control_clock.deadline(slot))
+            if record is not None:
+                trace.append((record.slot_id,record.generation,record.source,record.phase,record.accepted.tolist()))
+        assert e.state == ExecutionState.WAITING
+        assert not e.install(candidate,e.control_clock.deadline(slots[-1]))
+        assert request(e,slots[-1]+1) is None
+        e.enable(e.hold,episode_id='episode')
+        resumed = request(e,slots[-1]+2)
+        assert resumed.generation > first.generation
+        from vla.datacollection.episode_journal import jsonable
+        return trace,jsonable(e.events)
+    first = replay()
+    assert first == replay()
+    assert 2 not in [r[0] for r in first[0]] and 3 not in [r[0] for r in first[0]]

@@ -39,7 +39,6 @@ from vla.control.ros.transport import joint_command, controller_identity
 
 from vla.datacollection.franka_robotiq_single_left import schema
 from vla.datacollection.franka_robotiq_single_left.auto_record import (
-    AsyncVideoWriter,
     RealSenseCamera,
     prepare_image,
 )
@@ -229,7 +228,6 @@ class RolloutCollector(Node):
         self._lock = threading.RLock()
         self._latest: dict[str, tuple[int, object]] = {}
         self._cameras: dict[str, RealSenseCamera] = {}
-        self._video_writers: dict[str, AsyncVideoWriter] = {}
         self._states: list[np.ndarray] = []
         self._actions: list[np.ndarray] = []
         self._annotations = {key: [] for key in self._extra_features}
@@ -394,6 +392,8 @@ class RolloutCollector(Node):
             self.executor = Executor(execution, session_id=uuid.uuid4().hex,
                                      model_version=model.get('model_version', model['checkpoint_fingerprint']), epoch_ns=epoch,
                                      project=self.coordinator.project)
+            self._slot_clock = self.executor.control_clock
+            self._tracking_clock = self.executor.tracking_clock
         self._start_cameras()
 
         # Poll fresh base frames frequently; demonstrations must not duplicate
@@ -849,7 +849,7 @@ class RolloutCollector(Node):
         goal.data = gripper
         self._gripper_publishers[name].publish(goal)
 
-    def _control_boundary(self, owner=None, *, fault=False, reason='control boundary'):
+    def _control_boundary(self, owner=None, *, fault=False, reason='control boundary', execution_state=None):
         if getattr(self, 'executor', None) is not None:
             from vla.control.execution import ExecutionState
             if owner == 'policy' and not fault:
@@ -859,7 +859,8 @@ class RolloutCollector(Node):
                                      episode_id=str(self.writer.next_episode_index()))
                 self._waiting_resume = False
             else:
-                state = ExecutionState.FAULT if fault else ExecutionState.HUMAN if owner else ExecutionState.WAITING
+                state = ExecutionState(execution_state) if execution_state else (
+                    ExecutionState.FAULT if fault else ExecutionState.HUMAN if owner else ExecutionState.STANDBY)
                 self.executor.invalidate(state, reason)
             self.policy_client.invalidate(self.executor.session_id, self.executor.generation)
         self._execution_record = None
@@ -973,7 +974,7 @@ class RolloutCollector(Node):
         self.policy_client.set_control_mode(mode)
         self._web_mode = mode
         self._web_switch_pending = True
-        if not self._intervention:
+        if not self._intervention and self._recording and not (self._processing or self._saving):
             self._control_boundary('policy', reason='policy mode change')
         self._latest_policy_result = None
         self._reset_policy_on_request = True
@@ -997,7 +998,8 @@ class RolloutCollector(Node):
         record = self.executor.advance(self._slot_id, time.monotonic_ns())
         if record is None:
             if self.executor.state.value == 'waiting_resume' and not self._waiting_resume:
-                self._control_boundary(reason='policy queue exhausted; manual resume required')
+                self._control_boundary(reason='policy queue exhausted; manual resume required',
+                                       execution_state='waiting_resume')
                 self._waiting_resume = True
                 self._stop_grippers_at_measured_position()
             return False
@@ -1512,12 +1514,16 @@ class RolloutCollector(Node):
     def _online_save_tick(self):
         if self._pending_online_save is None or self.coordinator.mode != 'standby':
             return
+        execution_context = {'session_id': self.executor.session_id, 'generation': self.executor.generation,
+                             'slot_id': self._slot_id, 'state': 'standby',
+                             'reset_acknowledged': self.coordinator._acknowledged == set(self.config.action_spec.arms)}
         episode, outcome = self._pending_online_save
         self._pending_online_save = None
         def process():
             try:
                 self.policy_client.process_saved_episode(dataset_root=self.config.dataset_root,
-                                                         episode_id=episode, outcome=outcome)
+                                                         episode_id=episode, outcome=outcome,
+                                                         execution_context=execution_context)
             except Exception as error:
                 with self._lock:
                     self._faulted, self._fault_reason = True, f'online training failed: {error}'
@@ -1561,7 +1567,6 @@ class RolloutCollector(Node):
                 identity={**self._episode_identity, 'journal_id': self._journal_id, 'episode_index': episode_index,
                           'task': self.config.tasks[self._episode_task_index],
                           'execution_contract': self.executor.contract.to_dict() if self.executor else None}, fps=self.config.fps)
-            self._video_writers = {}
             self._states = []
             self._actions = []
             self._annotations = {key: [] for key in self._extra_features}
@@ -1769,7 +1774,6 @@ class RolloutCollector(Node):
         self._clear_saved_episode()
 
     def _clear_saved_episode(self):
-        self._video_writers = {}
         self._journal = None
         self._pending_events = []
         self._storage_blocked = False
@@ -1869,7 +1873,7 @@ class RolloutCollector(Node):
                 if self._journal is not None and self._journal.error is not None:
                     self._journal.retry()
                 return True
-            if self._recording or self._video_writers:
+            if self._recording:
                 raise RuntimeError('finish storage cleanup before recovery')
             if self.require_online:
                 self.policy_client.recover_online()

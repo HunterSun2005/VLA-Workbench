@@ -151,23 +151,14 @@ def test_detached_session_reattach_camera_and_cleanup():
 
 
 def test_managed_server_accepts_actual_auto_phase_and_rejects_old_version():
-    from tests.rlt.test_franka_rollout_collection import _mock_rollout_server
-    server=_mock_rollout_server()
-    server.mode_version=-1;server.control_mode=None;server.control_modes=['vla','rlt','auto']
-    modes=[]
-    server.policy.set_control_mode=modes.append
-    server.policy._ensure_modifier=lambda:SimpleNamespace(phase_ctrl=SimpleNamespace(last_probability=.9))
-    server.policy.pop_step_metadata=lambda:SimpleNamespace(phase=1.,source_type=1.)
-    arrays={'observation.anchor':np.array([.4,0,.3,1,0,0,0,1,0,.5]),'observation.state':np.zeros(10,dtype=np.float32),
-            **{key:np.zeros((224,224,3),dtype=np.uint8) for key in server.camera_keys}}
-    header={'kind':'infer','request_id':1,'task':server.task,'phase':'vla','control_mode':'auto','mode_version':1}
-    result,_=server.handle(header,arrays)
-    assert result['phase']==1. and result['mode_version']==1 and result['probability']==.9
-    assert modes==['auto']
-    with pytest.raises(ValueError,match='stale'):
-        server.handle({**header,'mode_version':0},arrays)
-    with pytest.raises(RuntimeError,match='phase mismatch'):
-        server.handle({**header,'mode_version':2,'control_mode':'vla'},arrays)
+    from tests.control.test_execution import executor, request, response
+    from dataclasses import replace
+    e = executor()
+    req = request(e)
+    old = replace(req, generation=req.generation-1)
+    assert not e.install(response(old), 1)
+    assert e.install(response(req), 1)
+    assert e.advance(req.replace_slot, e.control_clock.deadline(req.replace_slot)).phase == 1
 
 
 def test_ros_collector_drops_old_mode_and_preserves_human_control(ros_module):
@@ -178,7 +169,7 @@ def test_ros_collector_drops_old_mode_and_preserves_human_control(ros_module):
     c.policy_client=Mock(mode_version=2)
     import threading
     c._lock=threading.RLock()
-    c._intervention=True;c._recording=True;c.robot=Mock()
+    c._intervention=True;c._recording=True;c._processing=False;c._saving=False;c.robot=Mock()
     from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
     c.config=load_rollout_config(SessionConfig().default_config())
     c._control_boundary=Mock();c._reset_servo_tracking=Mock()
@@ -188,13 +179,17 @@ def test_ros_collector_drops_old_mode_and_preserves_human_control(ros_module):
     action=np.array([.4,0,.3,1,0,0,0,1,0,.5],dtype=np.float32)
     result=PolicyResult(1,action,'vla',False,1.,1.,'x',.01,time.monotonic(),'auto',1,.9)
     c.policy_client.poll_latest.return_value=result
+    c.executor = Mock()
+    c.executor.install.return_value = False
     c._consume_policy_result()
     assert c._latest_policy_result is None
     c._intervention=False;c._phase='vla'
     c.policy_client.poll_latest.return_value=replace(result,mode_version=2)
+    c.executor = Mock()
+    c.executor.install.return_value = False
     c._consume_policy_result()
-    assert c._latest_policy_result.mode_version == 2
-    assert not c._web_switch_pending
+    assert c._latest_policy_result is None
+    assert c._web_switch_pending  # Only an accepted plan can finish a switch.
 
 
 def test_policy_mode_reset_retains_classifier_and_clears_queues():

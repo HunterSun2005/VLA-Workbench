@@ -213,7 +213,7 @@ def validate_execution_transition(value):
 
 def encode_execution_dataset(*, dataset, episode_id, episode_start, episode_stop, contract,
                              success, pi05, rl_token, preprocessor, capture, chunk_length,
-                             proprio_dim, state_indices, task, device):
+                             proprio_dim, state_indices, task, device, online_mode=None):
     """Use saved request state/reference; only evaluate the constrained bootstrap policy."""
     from vla.core.online_contract import TIMING_FIELDS
     from vla.actions.metadata import require_recording_source
@@ -231,6 +231,13 @@ def encode_execution_dataset(*, dataset, episode_id, episode_start, episode_stop
         row.update(action=np.asarray(raw['action']), anchor=np.asarray(raw['observation.anchor']),
                    dataset_index=index)
         rows.append(row)
+    if online_mode == 'full' and any(r['action_valid'] and r['collector_policy_id'] >= 0 and
+            (r['phase'] != 1 or r['is_intervention']) for r in rows):
+        raise ValueError('full-episode online RLT requires autonomous critical-phase execution')
+    if online_mode == 'single':
+        phases = np.asarray([r['phase'] == 1 for r in rows])
+        if np.count_nonzero(phases & ~np.r_[False, phases[:-1]]) > 1:
+            raise ValueError('online RLT supports only one contiguous critical phase')
     root = getattr(dataset, 'root', getattr(dataset.meta, 'root', None))
     events = load_execution_events(root, episode_id)
     normalizer = QuantileNormalizer(contract['statistics'])

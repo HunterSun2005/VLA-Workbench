@@ -147,7 +147,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 | RTC 部署 / 采集客户端                          | `vla-deploy-franka-pi05-rtc` / `vla-collect-franka`                                              |
 | SFT 服务 / RLT 服务                            | `vla-serve-franka-sft` / `vla-serve-franka-rollout`                                              |
 | 在线 RLT / 恢复                                | `vla-serve-franka-rollout --online-*`；恢复使用 `--online-resume`                                |
-| 训练语义升级                                   | `python -m vla.cli.upgrade_rlt_training --help`                                                  |
+| 新格式回合恢复                                 | `vla-recover-episode --help`；[执行与数据闭环](docs/EXECUTION_RTC_RLT.md)                         |
 
 详细用法见 [操作说明](docs/WORKFLOWS.md)、[迁移对照](docs/migration/FEATURES.md) 和 [验收记录](docs/migration/VALIDATION.md)。
 
@@ -155,7 +155,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 `datasets/raw/` 存放人工原始采集，`sft/` 存放训练输入，`transitions/` 存放 transition cache，`rollouts/` 存放部署回合，`online/` 预留在线数据。目录骨架由 Git 管理，数据内容忽略。Web 自动预填相对输出路径，按采集配置调整；详见 [目录与命名说明](datasets/README.md)。
 
-完整原始状态为 **50D／臂、双臂 100D**，包含 TCP 位姿、夹爪实测开口、TCP 外力／外力矩估计、TCP 速度、关节位置／力矩／外部力矩估计／速度。`action` 按采集选择为 joint 8D／16D 或 TCP 10D／20D，始终是绝对目标。先保存完整状态，再按训练需求提取；旧 `_31d` 入口同样写完整 50D。旧 29D／31D／58D 数据不能续采新格式，仍可离线读取和提取。字段、单位及转换示例见 [采集格式说明](docs/DATA_COLLECTION_FORMAT.md)。
+完整原始状态为 **50D／臂、双臂 100D**，包含 TCP 位姿、夹爪实测开口、TCP 外力／外力矩估计、TCP 速度、关节位置／力矩／外部力矩估计／速度。`action` 按采集选择为 joint 8D／16D 或 TCP 10D／20D，始终是绝对目标。先保存完整状态，再按训练需求提取；旧 `_31d` 入口同样写完整 50D。旧数据仅作历史资料；采集、训练和部署新链路只接受 schema 5 及新模型契约，不提供旧资产转换。字段、单位及转换示例见 [采集格式说明](docs/DATA_COLLECTION_FORMAT.md)。
 
 ## 训练与评估产物
 

@@ -48,3 +48,7 @@ vla-deploy-franka-pi05-rtc --arms single_left --policy-path outputs/sft/task_run
 在线训练仍由终端启动服务；新运行使用独立 dataset/replay 路径，恢复使用服务器 `--online-resume`。客户端用 `vla-collect-franka --config ROS_YAML --online --execute` 连接 YAML 的 socket，要求服务已声明 online 契约。客户端保存回合后等待所有控制器停止确认，再通知训练服务处理；停止失败不能宣称恢复。
 
 所有实机操作的验收范围见 [动作契约末尾](ROS_ACTION_CONTRACT.md#离线与实机边界)。
+
+## 执行耗尽与保存恢复
+
+策略耗尽进入等待恢复，使用终端 `e`／Web 启用明确恢复；迟到结果不会恢复运动。存储阻塞保留回合，先重试保存或显式丢弃，存储恢复不会启动运动。重启后的 staging 可用 `vla-recover-episode` 检查及恢复。只支持 schema 5、新模型契约和 Replay 4；详见 [协议、数据及验证命令](EXECUTION_RTC_RLT.md)。

@@ -46,11 +46,11 @@
 
 ## 推理、RTC 与在线回放
 
-推理请求保留独立的原始锚点。模型返回后一次性还原绝对 chunk，执行队列存绝对目标。RTC 截断只移除已消费前缀；新请求的重叠引导由绝对目标按新锚点重新相对化和归一化。接管、归还、故障和回合结束使在途结果失效。
+推理请求保留独立的原始锚点。模型返回后一次性还原绝对 chunk，执行队列存绝对目标。ROS 执行器固定承诺前缀，模型侧按新锚点重新编码，结果仅安装固定边界后的后缀。接管、归还、故障和回合结束使在途结果失效。
 
 RLT reference、actor 和 executed chunk 使用相同表示及该请求锚点；next-state 分支保留自己的锚点。回放同时保存绝对 executed chunk 和锚点，缓存／checkpoint 校验嵌入的动作契约。在线保存先取得终点观测、持久化回合，再等待控制器停止确认后通知既有在线训练服务；Web 不提供训练任务管理。
 
-SFT 与 RLT 支持不同 chunk 长度和目标帧间隔；稀疏目标部署按间隔保持绝对目标。RLT 将有效模型动作数 `actual_steps` 与实际控制帧数 `elapsed_steps` 分开记录，按 `reward_offsets` 计算奖励折扣，bootstrap 使用实际经过的控制帧数；末尾不足一个 chunk 时屏蔽 padding。缓存／在线命令中的 `frame_stride` 是训练起点间隔，与动作契约中的目标帧间隔不同。回放覆盖时长按实际控制帧计算，UTD 仍按 transition 计数。
+SFT 与 RLT 支持不同 chunk 长度和目标帧间隔；稀疏目标部署按间隔保持绝对目标。RLT 将有效模型动作数 `actual_steps` 与实际控制帧数 `elapsed_steps` 分开记录，按 `reward_offsets` 计算奖励折扣，bootstrap 使用实际经过的控制帧数；末尾不足一个 chunk 时屏蔽 padding。缓存／在线命令中的 `frame_stride` 是训练起点间隔，与动作契约中的目标帧间隔不同。回放奖励按真实纳秒区间折扣；UTD 按唯一有效控制区间计数。完整协议、状态、schema 5、Replay 4、损失与恢复说明见 [统一执行闭环](EXECUTION_RTC_RLT.md)。
 
 ## 离线与实机边界
 

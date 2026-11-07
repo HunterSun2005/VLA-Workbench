@@ -29,7 +29,7 @@ def _make_dataset(root: Path, *, episodes: int = 2, length: int = 55, state_fiel
     camera = "observation.images.base"
     from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
     state_fields = STATE_FIELDS if state_fields is None else state_fields
-    writer = V30DatasetWriter(root, 30, "synthetic absolute task", (camera,), 16, 16, state_fields=state_fields)
+    writer = V30DatasetWriter(root, 30, "synthetic absolute task", (camera,), 16, 16, state_fields=state_fields, info_metadata={"recording_schema_version": 5})
     all_states = []
     for episode_index in range(episodes):
         video = writer.video_path(episode_index, camera)
@@ -192,7 +192,7 @@ def test_extractor_refuses_existing_output_and_bad_source_schema(tmp_path: Path)
 
 
 @pytest.mark.parametrize("width", [29, 31, 50])
-def test_named_extraction_accepts_legacy_and_full_sources(tmp_path, width):
+def test_named_extraction_accepts_selected_and_full_state_fields(tmp_path, width):
     from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS, LEGACY_STATE_FIELDS
     from vla.datacollection.franka_robotiq_single_left.schema_31d import STATE_31D_FIELDS
     fields = {29: LEGACY_STATE_FIELDS, 31: STATE_31D_FIELDS, 50: STATE_FIELDS}[width]

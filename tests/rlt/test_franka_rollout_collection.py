@@ -105,7 +105,7 @@ def test_rollout_protocol_round_trip() -> None:
         },
     )
     header, arrays = recv_packet(connection)
-    assert header == {"kind": "infer", "request_id": 4, "protocol_version": 1}
+    assert header == {"kind": "infer", "request_id": 4, "protocol_version": 2}
     np.testing.assert_array_equal(arrays["state"], np.arange(10, dtype=np.float32))
     assert arrays["image"].shape == (8, 8, 3)
 
@@ -166,132 +166,42 @@ def _mock_rollout_server() -> FrankaRolloutPolicyServer:
     server.preprocessor = object()
     server.postprocessor = object()
     server.use_amp = False
-    server._predict_action = lambda **_kwargs: np.array(
-        [0.4, 0.0, 0.3, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.5],
-        dtype=np.float32,
-    )
     server.policy = SimpleNamespace(
         reset=lambda: None,
         pop_step_metadata=lambda: None,
         set_rl_mode=lambda: None,
         set_vla_mode=lambda: None,
     )
+    server.policy.config = SimpleNamespace(chunk_exec_steps=12, chunk_length=10)
+    server.action_stride = 1
+    from vla.control.plan_service import PlanGate
+    server.plan_gate = PlanGate()
     return server
 
 
-def test_rollout_server_rejects_task_and_exact_camera_shape_mismatches() -> None:
+def test_rollout_server_rejects_legacy_infer_even_with_valid_task():
     server = _mock_rollout_server()
-    arrays = {
-        "observation.state": np.zeros(10, dtype=np.float32),
-        "observation.anchor": np.array([.4,0,.3,1,0,0,0,1,0,.5]),
-        **{key: np.zeros((224, 224, 3), dtype=np.uint8) for key in server.camera_keys},
-    }
-    header = {
-        "kind": "infer",
-        "request_id": 1,
-        "task": server.task,
-        "phase": "rl",
-        "checkpoint_fingerprint": server.fingerprint,
-    }
-    response, response_arrays = server.handle(header, arrays)
-    assert response["request_id"] == 1
-    assert response_arrays["action"].shape == (10,)
-
-    with pytest.raises(ValueError, match="task mismatch"):
-        server.handle({**header, "task": "wrong task"}, arrays)
-    with pytest.raises(ValueError, match="shape"):
-        server.handle(
-            header,
-            {
-                **arrays,
-                "observation.images.base": np.zeros((128, 128, 3), dtype=np.uint8),
-            },
-        )
+    with pytest.raises(ValueError, match='protocol-v2'):
+        server.handle({'kind': 'infer', 'task': server.task}, {})
 
 
-def test_rollout_server_inference_value_logging_is_opt_in(capsys) -> None:
+def test_rollout_server_inference_value_logging_is_opt_in(capsys):
     server = _mock_rollout_server()
-    arrays = {
-        "observation.state": np.zeros(10, dtype=np.float32),
-        "observation.anchor": np.array([.4,0,.3,1,0,0,0,1,0,.5]),
-        **{key: np.zeros((224, 224, 3), dtype=np.uint8) for key in server.camera_keys},
-    }
-    header = {
-        "kind": "infer",
-        "request_id": 1,
-        "task": server.task,
-        "phase": "rl",
-        "checkpoint_fingerprint": server.fingerprint,
-    }
-
-    server.handle(header, arrays)
-    assert "Policy inference" not in capsys.readouterr().out
-
-    server.log_inference_every = 1
-    server.handle({**header, "request_id": 2}, arrays)
-    output = capsys.readouterr().out
-    assert "Policy inference started" in output
-    assert "Policy inference completed" in output
+    with pytest.raises(ValueError, match='protocol-v2'):
+        server.handle({'kind': 'infer'}, {})
+    assert capsys.readouterr().out == ''
 
 
-def test_rollout_server_reset_forces_requested_vla_phase() -> None:
+def test_rollout_server_rejects_legacy_infer_with_reset():
     server = _mock_rollout_server()
-    calls = []
-    server.policy = SimpleNamespace(
-        reset=lambda: calls.append("reset"),
-        pop_step_metadata=lambda: None,
-        set_rl_mode=lambda: calls.append("rl"),
-        set_vla_mode=lambda: calls.append("vla"),
-    )
-    arrays = {
-        "observation.state": np.zeros(10, dtype=np.float32),
-        "observation.anchor": np.array([.4,0,.3,1,0,0,0,1,0,.5]),
-        **{key: np.zeros((224, 224, 3), dtype=np.uint8) for key in server.camera_keys},
-    }
-    response, _ = server.handle(
-        {
-            "kind": "infer",
-            "request_id": 2,
-            "task": server.task,
-            "phase": "vla",
-            "reset_episode": True,
-            "checkpoint_fingerprint": server.fingerprint,
-        },
-        arrays,
-    )
-
-    assert calls == ["reset", "vla"]
-    assert response["requested_phase"] == "vla"
-    assert response["phase"] == 0.0
-    assert response["source_type"] == 0.0
+    with pytest.raises(ValueError, match='protocol-v2'):
+        server.handle({'kind': 'infer', 'reset_episode': True, 'phase': 'vla'}, {})
 
 
-def test_rollout_server_rejects_actor_metadata_for_requested_vla_phase() -> None:
+def test_rollout_server_rejects_legacy_infer_with_rl_phase():
     server = _mock_rollout_server()
-    server.policy = SimpleNamespace(
-        reset=lambda: None,
-        pop_step_metadata=lambda: SimpleNamespace(phase=1.0, source_type=1.0),
-        set_rl_mode=lambda: None,
-        set_vla_mode=lambda: None,
-    )
-    arrays = {
-        "observation.state": np.zeros(10, dtype=np.float32),
-        "observation.anchor": np.array([.4,0,.3,1,0,0,0,1,0,.5]),
-        **{key: np.zeros((224, 224, 3), dtype=np.uint8) for key in server.camera_keys},
-    }
-
-    with pytest.raises(RuntimeError, match="metadata phase mismatch"):
-        server.handle(
-            {
-                "kind": "infer",
-                "request_id": 3,
-                "task": server.task,
-                "phase": "vla",
-                "reset_episode": True,
-                "checkpoint_fingerprint": server.fingerprint,
-            },
-            arrays,
-        )
+    with pytest.raises(ValueError, match='protocol-v2'):
+        server.handle({'kind': 'infer', 'phase': 'rl'}, {})
 
 
 def test_rollout_server_processes_online_episode_and_reports_warmup_progress(
@@ -299,7 +209,7 @@ def test_rollout_server_processes_online_episode_and_reports_warmup_progress(
 ) -> None:
     server = _mock_rollout_server()
     dataset_root = tmp_path / "dataset"
-    replay = SimpleNamespace(warmup_env_steps=640)
+    replay = SimpleNamespace(warmup_env_steps=640, active_checkpoint='revision')
     config = SimpleNamespace(warmup_steps=1000, full_episode=False)
     calls = []
 
@@ -324,9 +234,12 @@ def test_rollout_server_processes_online_episode_and_reports_warmup_progress(
         config=config,
         process_saved_episode=process_saved_episode,
     )
+    stop = dict(session_id='s', generation=1, state='standby', reset_acknowledged=True)
+    server.handle({'kind':'progress', **stop}, {})
     response, arrays = server.handle(
         {
             "kind": "episode_saved",
+            "execution_context": stop,
             "request_id": -2,
             "task": server.task,
             "checkpoint_fingerprint": server.fingerprint,
@@ -391,6 +304,7 @@ def test_policy_client_streams_training_progress_in_collector(
     client._connect = FakeConnection
     responses = iter(
         [
+            ({'kind':'progress'}, {}),
             (
                 {
                     "kind": "training_progress",
@@ -434,6 +348,7 @@ def test_policy_client_streams_training_progress_in_collector(
 
     response = client.process_saved_episode(
         dataset_root=tmp_path,
+        execution_context=dict(session_id='s', generation=1, state='standby', reset_acknowledged=True),
         episode_id=3,
         outcome="success",
     )
@@ -446,11 +361,11 @@ def test_policy_client_streams_training_progress_in_collector(
     assert "actor_updates=5" in output
 
 
-def test_rollout_server_uses_vla_inference_adapter() -> None:
+def test_rollout_server_uses_candidate_plan_adapter() -> None:
     source = (
         Path(__file__).parents[2] / "src/vla/cli/serve_franka_rollout.py"
     ).read_text()
-    assert "from vla.adapters.lerobot.inference import predict_action" in source
+    assert "from vla.adapters.lerobot.plan_inference import infer_plan" in source
     assert "from lerobot.policies.utils import predict_action" not in source
     assert 'parser.add_argument(\n        "--tokenizer-path"' in source
     assert "config.tokenizer_path = args.tokenizer_path" in source

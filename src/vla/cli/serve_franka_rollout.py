@@ -188,10 +188,8 @@ class FrankaRolloutPolicyServer:
         from vla.adapters.lerobot.policies.processor_rlt_ac import (
             make_rlt_ac_pre_post_processors,
         )
-        from vla.adapters.lerobot.inference import predict_action
         from lerobot.utils.device_utils import get_safe_torch_device
 
-        self._predict_action = predict_action
         if args.log_inference_every < 0:
             raise ValueError("log-inference-every must be non-negative")
         self.log_inference_every = int(args.log_inference_every)
@@ -402,7 +400,8 @@ class FrankaRolloutPolicyServer:
                     "action_spec": self.action_contract["action_spec"],
                     "wire_action_representation": "absolute",
             "phase_mode": self.phase_mode,
-            "control_modes": getattr(self, "control_modes", []),
+            "control_modes": (["rlt"] if self.online_session.config.full_episode else ["vla", "rlt"])
+                if self.online_session is not None else getattr(self, "control_modes", []),
             "control_mode_protocol": 1,
             "rtc_enabled": self.rtc_enabled,
             "rtc_profile_path": (
@@ -476,6 +475,14 @@ class FrankaRolloutPolicyServer:
             result = session.recover(progress_callback) if kind == "recover_online" else session.begin_episode()
             return {"kind": kind, "request_id": request_id, **result, **self.contract}, {}
         if kind == "episode_saved":
+            stopped = header.get('execution_context', {})
+            session_id = stopped.get('session_id')
+            with self.plan_gate.lock:
+                progress = self.plan_gate.progress.get(session_id)
+                if (not progress or progress.get('state') != 'standby' or not progress.get('reset_acknowledged')
+                        or stopped.get('generation') != self.plan_gate.generations.get(session_id)
+                        or any(progress.get(k) != v for k,v in stopped.items())):
+                    raise RuntimeError('online training requires current acknowledged executor stop progress')
             if getattr(self, "online_session", None) is None:
                 raise RuntimeError("policy server is not configured for online RLT")
             expected_fingerprint = header.get("checkpoint_fingerprint")

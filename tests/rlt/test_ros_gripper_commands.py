@@ -217,46 +217,12 @@ def test_collector_preflight_requires_drive_consumer_not_recording_listener(ros_
     assert len(problems) == 1 and 'gripper' in problems[0]
 
 
-@pytest.mark.parametrize("managed", [False, True], ids=["terminal", "web"])
-def test_recorder_topic_override_and_live_driver_checks(ros_transport, monkeypatch, managed):
-    # Execute real recorder construction, replacing only I/O and device boundaries.
-    monkeypatch.setitem(sys.modules, 'pyrealsense2', ModuleType('pyrealsense2'))
-    def load(name, relative):
-        spec = importlib.util.spec_from_file_location(name, Path(__file__).parents[2] / 'src/vla/datacollection' / relative)
-        module = importlib.util.module_from_spec(spec)
-        monkeypatch.setitem(sys.modules, name, module)
-        spec.loader.exec_module(module)
-        return module
-    single = load('vla.datacollection.franka_robotiq_single_left.auto_record', 'franka_robotiq_single_left/auto_record.py')
-    dual = load('vla.datacollection.franka_robotiq_dual._test_recorder', 'franka_robotiq_dual/auto_record.py')
-    topics = {a: f'/{a}/teleop/gripper_action_width_percent' for a in ('left', 'right')} if managed else {}
-    monkeypatch.setattr(dual, 'V30DatasetWriter', lambda *args, **kw: NS(info=kw['info_metadata'], episode_count=0))
-    cls = dual.DualLeRobotRecorder
-    monkeypatch.setattr(cls, '_validate_existing_dataset', lambda _: None)
-    monkeypatch.setattr(cls, '_load_robot_description', lambda *_: '')
-    monkeypatch.setattr(dual, 'CommandPoseKinematics', lambda *_: None)
-    monkeypatch.setattr(dual, 'QoSProfile', lambda **_: None)
-    monkeypatch.setattr(dual, 'HistoryPolicy', NS(KEEP_LAST=1))
-    monkeypatch.setattr(dual, 'ReliabilityPolicy', NS(BEST_EFFORT=1))
-    subscribed = []
-    monkeypatch.setattr(cls, 'create_subscription', lambda self, kind, topic, *args: subscribed.append(topic), raising=False)
-    monkeypatch.setattr(dual, 'DirectRealSenseCapture', lambda *_: NS(start=lambda: None))
-    recorder = cls(gripper_command_topics=topics)
-    right = recorder.arms[1].gripper_command_topic
-    assert right == (topics['right'] if managed else dual.schema.ARMS[1].gripper_command_topic)
-    assert right in subscribed and recorder.dataset.info['gripper_command_topics']['right'] == right
-    from vla.datacollection.gripper_contract import gripper_consumer_requirement
-    counts = {}
-    for arm in recorder.arms:
-        counts[arm.command_joint_topic] = 2
-        topic, minimum = gripper_consumer_requirement(arm.gripper_command_topic)
-        counts[topic] = minimum
-    recorder.count_subscribers = lambda topic: counts.get(topic, 0)
-    assert recorder.unconsumed_command_topics() == []
-    counts[gripper_consumer_requirement(right)[0]] -= 1
-    assert recorder.unconsumed_command_topics() == [gripper_consumer_requirement(right)[0]]
-    left = object.__new__(single.DirectLeRobotRecorder)
-    left.count_subscribers = recorder.count_subscribers
-    assert left.unconsumed_command_topics() == []
-    counts[gripper_consumer_requirement(single.schema.TOPIC_GRIPPER_COMMAND)[0]] = 0
-    assert left.unconsumed_command_topics() == [gripper_consumer_requirement(single.schema.TOPIC_GRIPPER_COMMAND)[0]]
+@pytest.mark.parametrize('arms', ['single_left', 'dual'])
+def test_gello_terminal_entry_uses_shared_session_without_hardware(monkeypatch, tmp_path, arms):
+    import importlib
+    entry = importlib.import_module(f'vla.datacollection.franka_robotiq_{arms}.auto_record')
+    monkeypatch.setattr(sys, 'argv', ['record', '--check-only', '--dataset-root', str(tmp_path / 'data')])
+    entry.main()
+    assert not list(tmp_path.iterdir())
+    assert not hasattr(entry, 'DualLeRobotRecorder')
+    assert not hasattr(entry, 'DirectLeRobotRecorder')

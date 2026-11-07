@@ -4,7 +4,7 @@ from scipy.spatial.transform import Rotation
 from vla.actions import (ActionSpec, ObservationSnapshot, ChunkContext, DeltaActions, AbsoluteActions,
                          matrix_to_rot6d, SamplingSpec, compute_statistics, validate_statistics,
                          QuantileNormalizer)
-from vla.actions.chunks import ChunkCodec, AbsoluteChunkQueue
+from vla.actions.chunks import ChunkCodec
 
 
 def sample(spec, n=7):
@@ -72,26 +72,16 @@ def test_statistics_masks_episode_boundaries_and_cache(length, stride):
         validate_statistics(stats, spec, SamplingSpec(length+1, stride), 'dataset-a')
 
 
-def test_latched_requests_rtc_reanchor_and_stale_generation():
+def test_committed_prefix_reencodes_with_each_request_anchor():
     spec = ActionSpec('tcp', representation='chunk_relative')
     absolute = sample(spec)
     stats = compute_statistics([(absolute, absolute, np.ones(7, bool))], spec, SamplingSpec(4), 'x')
     norm = QuantileNormalizer(stats)
     first = ChunkCodec(ChunkContext(spec, absolute[0], 0, 0, 1), norm)
     second = ChunkCodec(ChunkContext(spec, absolute[3], 1, 0, 2), norm)
-    queue = AbsoluteChunkQueue()
-    assert queue.install(first, first.encode(absolute), consumed=2)
-    expected = absolute[2:]
-    np.testing.assert_allclose(queue.snapshot(), expected, atol=1e-12)
-    np.testing.assert_allclose(second.decode(second.prefix(queue.snapshot())), expected, atol=1e-12)
-    assert not np.allclose(first.encode(expected), second.prefix(expected))
-    assert queue.install(second, second.encode(expected))
-    assert not queue.install(first, first.encode(absolute))
-    queue.invalidate()
-    assert not queue.install(second, second.encode(expected))
-    assert queue.pop() is None
-    replay = first.replay(absolute, absolute, next_context=second.context, next_absolute=expected)
-    np.testing.assert_allclose(second.decode(replay['next']), expected, atol=1e-12)
+    committed = absolute[2:]
+    np.testing.assert_allclose(second.decode(second.prefix(committed)), committed, atol=1e-12)
+    assert not np.allclose(first.encode(committed), second.prefix(committed))
 
 
 def test_checkpoint_and_derived_data_contracts(tmp_path):

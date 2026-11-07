@@ -50,6 +50,7 @@ def control_message(server, header):
         return {'kind': kind, 'request_id': header.get('request_id', -1)}, {}
     if kind == 'progress':
         with gate.lock:
+            gate.invalidate(header['session_id'], int(header['generation']))
             gate.progress[header['session_id']] = dict(header)
         return {'kind': kind, 'request_id': header.get('request_id', -1)}, {}
     return None

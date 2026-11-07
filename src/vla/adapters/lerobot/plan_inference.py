@@ -49,6 +49,7 @@ def infer_plan(server, header, arrays, *, sft=False):
                         or header.get('reset_episode')):
                     if getattr(server, 'online_session', None) is not None:
                         server.online_session.require_ready()
+                        ctrl.mode = 'manual'
                         server._set_phase('rl' if mode == 'rlt' else 'vla', force=True)
                     else:
                         policy.set_control_mode(mode)

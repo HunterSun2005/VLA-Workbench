@@ -444,7 +444,8 @@ def encode_saved_episode(
             episode_start=episode_start, episode_stop=episode_stop, contract=execution_contract,
             success=episode_success, pi05=pi05, rl_token=rl_token, preprocessor=preprocessor,
             capture=capture, chunk_length=chunk_length, proprio_dim=proprio_dim,
-            state_indices=state_indices, task=task_instruction, device=device)
+            state_indices=state_indices, task=task_instruction, device=device,
+            online_mode="full" if require_full_episode else "single")
     if type(action_stride) is not int or action_stride < 1:
         raise ValueError('action_stride must be positive')
     if action_stride != 1 and not require_timing:

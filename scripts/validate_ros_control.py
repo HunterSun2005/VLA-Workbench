@@ -27,6 +27,7 @@ from std_msgs.msg import UInt64
 from ament_index_python.packages import get_package_share_directory
 from vla.actions import ActionSpec
 from vla.control.ros import ControlCoordinator, ArmMeasurement
+from vla.control.execution import FixedDeadline
 from vla.control.ros.cartesian_servo import CartesianServo
 from vla.control.ros.transport import joint_command, controller_identity
 from vla.datacollection.start_teleop.franka_kinematics import build_kinematic_model
@@ -219,29 +220,30 @@ class Session:
 
     def run_for(self, seconds, *, commands=True, record=False):
         end = time.monotonic()+seconds
-        deadline = time.monotonic()
-        while time.monotonic()<end:
-            now = time.monotonic()
-            if now < deadline:
-                self.executor.spin_once(timeout_sec=min(.002, deadline-now)); continue
+        if not hasattr(self, 'slot_clock'):
+            epoch = time.monotonic_ns()
+            self.slot_clock = FixedDeadline(epoch, 30)
+            self.track_clock = FixedDeadline(epoch, 100)
+        while time.monotonic() < end:
+            now_ns = time.monotonic_ns()
             try:
                 if self.c.mode == 'active':
-                    if commands:
-                        goals = {a: self.last_seen[a][1]+.004*np.sin(now*2) for a in self.models}
+                    slot = self.slot_clock.poll(now_ns)
+                    if commands and slot is not None:
+                        goals = {a: self.last_seen[a][1]+.004*np.sin(now_ns/1e9*2) for a in self.models}
                         target = self.c.gello_target(goals, {a:.45 for a in self.models})
-                        accepted = self.c.accept(target, source=self.c.owner, generation=self.c.generation, slot_id=time.monotonic_ns()*30//1_000_000_000)
-                        if accepted is not None and record:
+                        accepted = self.c.accept(target, source=self.c.owner, generation=self.c.generation, slot_id=slot)
+                        if record:
                             self.accept_times.append(accepted.accepted_at_ns)
-                    self.c.tick(.01)
-                    if record: self.tick_times.append(time.monotonic_ns())
+                    if self.track_clock.poll(now_ns) is not None:
+                        self.c.tick(.01)
+                        if record:
+                            self.tick_times.append(time.monotonic_ns())
             except (KeyError, ValueError, RuntimeError, np.linalg.LinAlgError) as error:
-                # Same exception-to-fault boundary as RolloutCollector's timers.
                 if self.c.mode != 'fault':
                     self.c.transition(fault=True, reason=str(error))
                 raise
-            deadline += .01
-            if time.monotonic()-deadline > .05: deadline=time.monotonic()+.01
-            self.executor.spin_once(timeout_sec=0)
+            self.executor.spin_once(timeout_sec=.001)
 
     def raw(self, arm, generation, command_id, sequence, *, age=0, q=None):
         stamp = (self.node.get_clock().now()-Duration(seconds=age)).to_msg()
@@ -262,6 +264,7 @@ class Session:
         self.drop_ack.clear(); self.wait(lambda:self.c.mode=='active')
         self.run_for(.1)
         # Hold coordinator ticks while malformed DDS packets are injected, <watchdog duration.
+        self.wait(lambda: self.diag['left'][1] == self.c.command_id)
         baseline = self.diag['left'][1]
         for gen, ident, seq, age in [(old,9999,9999,0), (self.c.generation,9999,9999,1),
                                     (self.c.generation,9999,9999,-1), (self.c.generation,0,9999,0)]:

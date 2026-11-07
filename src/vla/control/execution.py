@@ -243,7 +243,8 @@ class Executor:
         boundary = max(start+self.contract.freeze_steps*r, self.locked_until)
         d = (boundary-start)//r
         horizon = self.contract.horizons[policy]
-        if horizon < 2*d:
+        minimum_horizon = min(self.contract.horizons.values()) if policy == 'auto' else horizon
+        if minimum_horizon < 2*d:
             return None  # A locked Actor block is still too long: request closer to its end.
         prefix = []
         for first in range(start, boundary, r):

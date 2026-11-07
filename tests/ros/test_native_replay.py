@@ -156,8 +156,8 @@ def test_negative_control_detects_changed_history_and_wrong_anchor(models):
         observe(a, ca, tick); observe(b, cb, tick)
         goal = target(a, tick, 'gello')
         if tick % 10 in (0, 4, 7):
-            a.accept(goal, source='human', generation=a.generation)
-            b.accept(goal, source='policy', generation=b.generation)
+            a.accept(goal, source='human', generation=a.generation, slot_id=tick)
+            b.accept(goal, source='policy', generation=b.generation, slot_id=tick)
         a.tick(); b.tick()
     assert np.linalg.norm(a.servos['left']._last_linear_velocity) > 1e-6
     b.servos['left'].reset_tracking()

@@ -234,12 +234,20 @@ class AsyncPolicyClient:
         dataset_root: str | Path,
         episode_id: int,
         outcome: str,
+        execution_context: dict,
         task: str | None = None,
     ) -> dict[str, Any]:
         if not self.contract.get("online_enabled", False):
             raise RuntimeError("policy server is not configured for online RLT")
         timeout_s = float(self.contract.get("online_timeout_s", self.timeout_s))
         self._wait_for_idle(timeout_s)
+        if execution_context.get('state') != 'standby' or not execution_context.get('reset_acknowledged'):
+            raise RuntimeError('online training requires acknowledged stopped motion')
+        with self._connect() as connection:
+            send_packet(connection, {'kind': 'progress', **execution_context})
+            acknowledgement, _ = recv_packet(connection)
+        if acknowledgement.get('kind') != 'progress':
+            raise RuntimeError('executor stop progress was not acknowledged')
         resolved_root = str(Path(dataset_root).expanduser().resolve())
         expected_root = str(self.contract.get("online_dataset_root", ""))
         if resolved_root != expected_root:
@@ -252,6 +260,7 @@ class AsyncPolicyClient:
                 connection,
                 {
                     "kind": "episode_saved",
+                    "execution_context": execution_context,
                     "request_id": -2,
                     "task": self.contract["task"] if task is None else str(task),
                     "checkpoint_fingerprint": self.contract["checkpoint_fingerprint"],

@@ -165,32 +165,6 @@ def test_all_lerobot_imports_resolve_including_lazy_entrypoints():
             importlib.import_module(module + "." + name)
 
 
-def test_single_step_inference_image_scale_and_call_order():
-    import numpy as np
-    from vla.adapters.lerobot.inference import predict_action
-    image = np.full((4, 6, 3), 255, dtype=np.uint8)
-    observation = {"observation.images.base": image, "observation.state": np.zeros(10, dtype=np.float32)}
-    calls = []
-    def pre(batch):
-        calls.append("pre")
-        assert batch["observation.images.base"].shape == (1, 3, 4, 6)
-        assert torch.all(batch["observation.images.base"] == 1)
-        assert batch["task"] == "test"
-        assert not torch.is_grad_enabled()
-        return batch
-    class Policy:
-        def select_action(self, batch):
-            calls.append("policy")
-            return torch.ones(1, 10)
-    def post(action):
-        calls.append("post")
-        return action * 2
-    action = predict_action(observation, Policy(), "cpu", pre, post, False, "test", "franka_robotiq")
-    assert action.shape == (1, 10)
-    assert calls == ["pre", "policy", "post"]
-    assert observation["observation.images.base"] is image
-    assert isinstance(observation["observation.state"], np.ndarray)
-
 @pytest.mark.parametrize("kind", ["rlt", "rlt_token", "rlt_ac"])
 def test_public_make_policy_constructs_real_custom_classes(kind, monkeypatch):
     from lerobot.policies import make_policy, make_policy_config
