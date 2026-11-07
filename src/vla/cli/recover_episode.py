@@ -1,5 +1,6 @@
 """Inspect or publish a durable staging prefix while collection is stopped."""
 import argparse
+from dataclasses import asdict
 import json
 from pathlib import Path
 import numpy as np
@@ -24,7 +25,8 @@ def _recover_episode(root, staging, *, outcome=None):
     recovery = recover_staging(staging)
     if outcome is None:
         return {'durable_frames': recovery.frames, 'complete': recovery.complete,
-                'incomplete_tail': recovery.incomplete_tail}
+                'incomplete_tail': recovery.incomplete_tail,
+                'issues': [asdict(issue) for issue in recovery.issues]}
     if outcome not in {'success', 'failure'}:
         raise ValueError('explicit episode outcome required')
     info = load_info(root)
@@ -60,7 +62,8 @@ def _recover_episode(root, staging, *, outcome=None):
                                   frame_features={k: columns[k] for k in extras},
                                   extra_episode_metadata=metadata, task=header['task'])
     result = {'episode_index': episode, 'durable_frames': recovery.frames,
-              'incomplete_tail': recovery.incomplete_tail}
+              'incomplete_tail': recovery.incomplete_tail,
+              'issues': [asdict(issue) for issue in recovery.issues]}
     durable_json(staging/'published.json', result)
     return result
 

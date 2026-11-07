@@ -12,10 +12,12 @@ import json
 import os
 import queue
 import shutil
-import subprocess
+import re
+import zipfile
 import threading
 import numpy as np
 from vla.core.online_contract import durable_json, file_digest, fsync_directory
+from vla.core.media_process import run_media
 
 
 class StorageBlocked(RuntimeError):
@@ -49,10 +51,15 @@ def jsonable(value):
 
 
 def video_frames(path):
-    result = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-count_frames',
-                             '-show_entries', 'stream=nb_read_frames', '-of', 'json', str(path)],
-                            check=True, capture_output=True, text=True)
+    result = run_media(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-count_frames',
+                        '-show_entries', 'stream=nb_read_frames', '-of', 'json', str(path)])
     return int(json.loads(result.stdout)['streams'][0]['nb_read_frames'])
+
+
+@dataclass(frozen=True)
+class RecoveryIssue:
+    file: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -61,33 +68,97 @@ class Recovery:
     segments: tuple
     complete: bool
     incomplete_tail: bool
+    issues: tuple[RecoveryIssue, ...] = ()
+
+
+def _read_json(path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError(f'{path.name}: {error}') from error
+
+
+def _local_file(path, name):
+    if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', name) or name in ('.', '..'):
+        raise ValueError(f'invalid segment filename: {name!r}')
+    candidate = path/name
+    if candidate.is_symlink() or not candidate.is_file():
+        raise ValueError(f'missing or symlinked segment file: {name}')
+    return candidate
+
+
+def _validate_events(path):
+    value = _read_json(path)
+    if not isinstance(value, dict) or value.get('schema_version') != 5 or not isinstance(value.get('events'), list):
+        raise ValueError(f'{path.name}: invalid schema-5 events')
+
+
+def _validate_segment(path, manifest, index, frames, layout):
+    value = _read_json(_local_file(path, manifest.name))
+    if (not isinstance(value, dict) or value.get('schema_version') != 5
+            or type(value.get('index')) is not int or value['index'] != index
+            or manifest.name != f'segment-{index:06d}.json'
+            or type(value.get('start_frame')) is not int or value['start_frame'] != frames
+            or type(value.get('frames')) is not int or value['frames'] <= 0):
+        raise ValueError('invalid schema, sequence or frame range')
+    videos, files = value['videos'], value['files']
+    if not isinstance(videos, dict) or not isinstance(files, dict):
+        raise ValueError('invalid media/checksum mapping')
+    names = [value['arrays'], value['events'], *videos.values()]
+    if len(set(names)) != len(names) or set(files) != set(names):
+        raise ValueError('checksums must cover exactly the arrays, events and videos')
+    for name, digest in files.items():
+        if file_digest(_local_file(path, name)) != digest:
+            raise ValueError(f'checksum mismatch: {name}')
+    with np.load(path/value['arrays'], allow_pickle=False) as data:
+        if not data.files:
+            raise ValueError(f'empty arrays: {value["arrays"]}')
+        columns = {}
+        for key in data.files:
+            array = data[key]
+            if not array.ndim or len(array) != value['frames']:
+                raise ValueError(f'array length mismatch: {value["arrays"]}, {key}')
+            columns[key] = (array.dtype.str, array.shape[1:])
+    current_layout = (columns, set(videos))
+    if layout is not None and current_layout != layout:
+        raise ValueError('column or camera layout changed across segments')
+    _validate_events(path/value['events'])
+    for name in videos.values():
+        if video_frames(path/name) != value['frames']:
+            raise ValueError(f'video frame count mismatch: {name}')
+    return value, current_layout
 
 
 def recover_staging(path):
     path = Path(path)
-    header = json.loads((path/'episode.json').read_text())
-    if header.get('schema_version') != 5:
+    header = _read_json(path/'episode.json')
+    if not isinstance(header, dict) or header.get('schema_version') != 5:
         raise ValueError('unsupported episode journal schema')
-    segments, frames = [], 0
+    segments, frames, issues, layout = [], 0, [], None
     for manifest in sorted(path.glob('segment-[0-9][0-9][0-9][0-9][0-9][0-9].json')):
-        value = json.loads(manifest.read_text())
-        if value['index'] != len(segments) or value['start_frame'] != frames:
-            break
-        if any(not (path/name).is_file() or file_digest(path/name) != digest
-               for name, digest in value['files'].items()):
-            break
-        with np.load(path/value['arrays'], allow_pickle=False) as data:
-            if any(len(data[key]) != value['frames'] for key in data.files):
-                break
-        if any(video_frames(path/name) != value['frames'] for name in value['videos'].values()):
-            break
+        try:
+            value, layout = _validate_segment(path, manifest, len(segments), frames, layout)
+        except (OSError, ValueError, KeyError, TypeError, IndexError, EOFError, zipfile.BadZipFile, RuntimeError) as error:
+            issues.append(RecoveryIssue(manifest.name, f'{type(error).__name__}: {error}'))
+            break  # Never skip a broken segment and promote later rows.
         segments.append(value)
         frames += value['frames']
     complete = False
-    if (path/'complete.json').is_file():
-        completion = json.loads((path/'complete.json').read_text())
-        complete = (completion['frames'] == frames and completion['segments'] == len(segments))
-    return Recovery(frames, tuple(segments), complete, not complete)
+    if not issues:
+        marker = path/'complete.json'
+        try:
+            completion = _read_json(_local_file(path, marker.name))
+            if (not isinstance(completion, dict) or type(completion.get('frames')) is not int
+                    or type(completion.get('segments')) is not int
+                    or completion['frames'] != frames or completion['segments'] != len(segments)):
+                raise ValueError('completion counts disagree with the verified prefix')
+            for tail in sorted(path.glob('events-tail-*.json')):
+                marker = tail
+                _validate_events(_local_file(path, tail.name))
+            complete = True
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            issues.append(RecoveryIssue(marker.name, f'{type(error).__name__}: {error}'))
+    return Recovery(frames, tuple(segments), complete, not complete, tuple(issues))
 
 
 class EpisodeJournal:
@@ -209,7 +280,11 @@ class EpisodeJournal:
             raise RuntimeError('journal worker is still active')
         self.error = None
         self.closed = False
-        self._flush()
+        try:
+            self._flush()
+        except BaseException as error:
+            self.error = error
+            self.check()
         self.thread = threading.Thread(target=self._worker, name='episode-journal-retry', daemon=True)
         self.thread.start()
 
@@ -238,8 +313,8 @@ def materialize(path, writer, *, allow_incomplete=False):
         listing.write_text(''.join("file '"+s['videos'][key]+"'\n" for s in recovery.segments))
         target = writer.video_path(episode, key)
         target.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '1',
-                        '-i', str(listing), '-c', 'copy', str(target)], check=True, capture_output=True)
+        run_media(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-f', 'concat', '-safe', '1',
+                   '-i', str(listing), '-c', 'copy', str(target)], timeout_s=120)
         if video_frames(target) != recovery.frames:
             raise StorageBlocked('final video/data frame mapping mismatch')
         import cv2

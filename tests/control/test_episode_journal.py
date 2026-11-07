@@ -75,3 +75,82 @@ def test_video_segments_have_exact_frame_mapping(tmp_path):
         journal.submit(frame(i), {'observation.images.base': np.full((16, 16, 3), i*20, np.uint8)})
     recovered = journal.close()
     assert recovered.frames == 7 and [s['frames'] for s in recovered.segments] == [3,3,1]
+
+
+@pytest.mark.parametrize('damage', ['json', 'schema', 'missing', 'gap', 'checksum', 'npz',
+                                   'events', 'layout', 'unhashed', 'traversal', 'symlink'])
+def test_corrupt_middle_segment_keeps_only_verified_prefix(tmp_path, damage):
+    from vla.core.online_contract import file_digest
+    journal = EpisodeJournal(tmp_path/'stage', identity={}, fps=1)
+    for i in range(3):
+        journal.submit(frame(i), {})
+    journal.close()
+    path = journal.path/'segment-000001.json'
+    value = json.loads(path.read_text())
+    payload = journal.path/value['arrays']
+    if damage == 'json':
+        path.write_text('{')
+    elif damage == 'missing':
+        payload.unlink()
+    elif damage == 'gap':
+        path.unlink()
+    elif damage == 'checksum':
+        payload.write_bytes(b'corrupt payload')
+    elif damage == 'symlink':
+        target = tmp_path/'outside.npz'
+        payload.rename(target)
+        payload.symlink_to(target)
+    else:
+        if damage == 'schema':
+            value['schema_version'] = 4
+        elif damage == 'npz':
+            payload.write_bytes(b'not an archive')
+            value['files'][payload.name] = file_digest(payload)
+        elif damage == 'events':
+            event = journal.path/value['events']
+            event.write_text('{')
+            value['files'][event.name] = file_digest(event)
+        elif damage == 'layout':
+            np.savez(payload, other=np.zeros((1,3)))
+            value['files'][payload.name] = file_digest(payload)
+        elif damage == 'unhashed':
+            value['files'].pop(value['arrays'])
+        elif damage == 'traversal':
+            value['arrays'] = '../outside.npz'
+            value['files'] = {name: '' for name in (value['arrays'], value['events'])}
+        path.write_text(json.dumps(value))
+    before = {p.name: p.read_bytes() for p in journal.path.iterdir() if p.is_file()}
+    recovered = recover_staging(journal.path)
+    assert recovered.frames == 1 and len(recovered.segments) == 1
+    assert not recovered.complete and recovered.incomplete_tail
+    assert recovered.issues[0].file == ('segment-000002.json' if damage == 'gap' else path.name)
+    assert before == {p.name: p.read_bytes() for p in journal.path.iterdir() if p.is_file()}
+
+
+@pytest.mark.parametrize('marker', ['complete.json', 'events-tail-000002.json'])
+def test_corrupt_completion_preserves_all_verified_frames(tmp_path, marker):
+    journal = EpisodeJournal(tmp_path/'stage', identity={}, fps=1)
+    for i in range(2):
+        journal.submit(frame(i), {})
+    journal.close()
+    (journal.path/marker).write_text('{')
+    recovered = recover_staging(journal.path)
+    assert recovered.frames == 2 and recovered.incomplete_tail and not recovered.complete
+    assert recovered.issues[0].file == marker
+
+
+def test_video_probe_timeout_reports_unverified_tail(tmp_path, monkeypatch):
+    import vla.datacollection.episode_journal as module
+    from vla.core.media_process import MediaProcessError
+    journal = EpisodeJournal(tmp_path/'stage', identity={}, fps=1)
+    for i in range(2):
+        journal.submit(frame(i), {'observation.images.base': np.zeros((16,16,3), np.uint8)})
+    journal.close()
+    original = module.video_frames
+    def probe(path):
+        if path.name.startswith('segment-000001'):
+            raise MediaProcessError('ffprobe timed out')
+        return original(path)
+    monkeypatch.setattr(module, 'video_frames', probe)
+    recovered = recover_staging(journal.path)
+    assert recovered.frames == 1 and 'timed out' in recovered.issues[0].reason

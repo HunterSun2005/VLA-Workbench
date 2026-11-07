@@ -8,7 +8,6 @@ from pathlib import Path
 import queue
 import select
 import shutil
-import subprocess
 import sys
 import termios
 import threading
@@ -16,6 +15,7 @@ import tty
 
 import cv2
 import numpy as np
+from vla.core.media_process import StreamingEncoder
 
 
 VIDEO_CRF = 23
@@ -67,7 +67,7 @@ class ImageRunningStats:
 
 
 class FfmpegVideoWriter:
-    def __init__(self, path: Path, *, width: int, height: int, fps: int) -> None:
+    def __init__(self, path: Path, *, width: int, height: int, fps: int, timeout_s=30) -> None:
         if shutil.which("ffmpeg") is None:
             raise RuntimeError("ffmpeg is required for streaming video capture")
         if width <= 0 or height <= 0 or fps <= 0:
@@ -76,7 +76,7 @@ class FfmpegVideoWriter:
         self.path = path
         self.width = int(width)
         self.height = int(height)
-        self.process = subprocess.Popen(
+        self.encoder = StreamingEncoder(
             [
                 "ffmpeg",
                 "-hide_banner",
@@ -106,13 +106,10 @@ class FfmpegVideoWriter:
                 "+faststart",
                 str(path),
             ],
-            stdin=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            timeout_s=timeout_s,
         )
 
     def write(self, rgb: np.ndarray) -> None:
-        if self.process.stdin is None:
-            raise RuntimeError("ffmpeg stdin is closed")
         rgb = np.asarray(rgb)
         expected = (self.height, self.width, 3)
         if rgb.shape != expected or rgb.dtype != np.uint8:
@@ -120,24 +117,13 @@ class FfmpegVideoWriter:
                 f"video frame must be uint8 RGB with shape {expected}, "
                 f"got {rgb.shape}/{rgb.dtype}"
             )
-        self.process.stdin.write(np.ascontiguousarray(rgb).tobytes())
+        self.encoder.write(np.ascontiguousarray(rgb).tobytes())
 
     def close(self) -> None:
-        if self.process.stdin is not None:
-            self.process.stdin.close()
-            self.process.stdin = None
-        return_code = self.process.wait()
-        stderr = self.process.stderr.read().decode(errors="replace") if self.process.stderr else ""
-        if return_code:
-            raise RuntimeError(f"ffmpeg failed for {self.path}: {stderr.strip()}")
+        self.encoder.close()
 
     def abort(self) -> None:
-        if self.process.poll() is None:
-            self.process.kill()
-        self.process.wait()
-        if self.process.stdin is not None:
-            self.process.stdin.close()
-            self.process.stdin = None
+        self.encoder.abort()
 
 
 class AsyncVideoWriter:

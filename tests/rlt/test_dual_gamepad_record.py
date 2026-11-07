@@ -496,8 +496,8 @@ def test_save_retry_after_commit_does_not_rewrite_episode(collector, monkeypatch
     assert before == {p: persistence.file_digest(p) for p in before}
 
 
-@pytest.mark.parametrize('incomplete', [False, True])
-def test_stopped_collector_recovers_only_durable_prefix(collector, incomplete):
+@pytest.mark.parametrize('damage', [None, 'arrays', 'manifest'])
+def test_stopped_collector_recovers_only_durable_prefix(collector, damage):
     from vla.cli.recover_episode import recover_episode
     from vla.datacollection.episode_journal import recover_staging
     c = collector
@@ -514,11 +514,17 @@ def test_stopped_collector_recovers_only_durable_prefix(collector, incomplete):
     staging = c._journal.path
     c.close()
     durable = recover_staging(staging)
+    incomplete = damage is not None
     if incomplete:
         (staging/'complete.json').unlink()
-        (staging/durable.segments[-1]['arrays']).write_bytes(b'crash tail')
+        if damage == 'arrays':
+            (staging/durable.segments[-1]['arrays']).write_bytes(b'crash tail')
+        else:
+            (staging/'segment-000001.json').write_text('{')
     expected = 30 if incomplete else 32
-    assert recover_episode(c.config.dataset_root, staging)['durable_frames'] == expected
+    inspection = recover_episode(c.config.dataset_root, staging)
+    assert inspection['durable_frames'] == expected
+    assert bool(inspection['issues']) is incomplete
     result = recover_episode(c.config.dataset_root, staging, outcome='success')
     assert result['episode_index'] == 0 and result['incomplete_tail'] is incomplete
     frame = pd.read_parquet(c.writer.data_path(0))
