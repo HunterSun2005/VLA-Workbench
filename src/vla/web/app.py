@@ -6,6 +6,7 @@ import base64
 from contextlib import asynccontextmanager
 import hmac
 from importlib.resources import files
+import json
 import os
 from pathlib import Path
 import secrets
@@ -67,12 +68,17 @@ def create_app(root=None, *, demo=False):
     async def camera_defaults(request: Request):
         from dataclasses import replace
         from .config import collection_camera_serials
+        from .hardware import config_path, validate
         try:
             config = SessionConfig.parse(await request.json())
             if config.workflow != 'collect':
                 raise ValueError('此接口用于采集相机默认配置')
             config = replace(config, camera_serials=None, side_camera_serial='')
-            return {'serials': await asyncio.to_thread(collection_camera_serials, config)}
+            def resolve():
+                hardware = (validate(json.loads(config_path(manager.root, config.ros_config).read_text()), config.arms)
+                            if config.ros_config else None)
+                return collection_camera_serials(config, hardware)
+            return {'serials': await asyncio.to_thread(resolve)}
         except (ValueError, OSError, KeyError, TypeError) as error:
             raise HTTPException(422, str(error)) from error
 

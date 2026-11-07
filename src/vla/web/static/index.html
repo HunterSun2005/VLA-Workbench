@@ -9,22 +9,23 @@
 <label><span id="sourceLabel">遥操作输入源</span><select name="source"><option value="gamepad">Gamepad</option><option value="gello">GELLO</option></select></label>
 <label>控制与记录空间<select name="action_space"><option value="tcp">TCP · XYZ + rot6d + 夹爪</option><option value="joint">关节 · 7 轴 + 夹爪</option></select></label><p class="hint">磁盘数据始终保存绝对目标。部署从 checkpoint 读取动作空间与训练表示。</p>
 <label id="schemaField">采集格式<select name="schema" aria-label="完整采集格式"><option value="full">完整状态 · 50D</option></select></label>
+<details id="hardwareSetup" open hidden><summary>Franka、夹爪与输入设备</summary>
+<label>配置方式<select id="hardwareMode"><option value="preset">预设与设备选择</option><option value="custom">自定义 JSON 文件</option></select></label>
+<div id="hardwareEditor"><p class="hint">Franka 与夹爪配置由两种输入源共用。GELLO 模式单独配置串口与校准；Gamepad 设备映射使用采集／部署 YAML 的 gamepad 配置。</p><div class="row"><button type="button" id="hardwareRefresh">刷新设备</button><button type="button" id="hardwareReset">恢复仓库预设</button></div><div id="hardwareFields"></div><button type="button" id="hardwareSave" class="full">保存并使用</button><p class="hint">检查配置／启动时也会自动保存。切换输入源保留已填写参数；更换 GELLO 串口不改变校准参数。</p></div>
+<p id="hardwareStatus" class="hint" role="status"></p><p id="hardwareNotice" class="hint"></p>
+</details>
 <details id="cameraSetup" open><summary>采集相机 · 角色与设备</summary>
-<p class="hint">摄像头统一显示 USB 序列号。配置默认值不代表自动检测结果；若提示未检测到，请按实际安装位置从列表选择 Base／左腕。</p>
-<div id="cameraFields"></div><div class="row"><button id="cameraRefresh" type="button">刷新设备列表</button><button id="cameraReset" type="button">使用 YAML 默认</button></div><p id="cameraStatus" class="hint" role="status"></p></details>
+<p class="hint">摄像头统一显示 RealSense SDK 序列号。配置默认值不代表自动检测结果；若提示未检测到，请按实际安装位置选择 Base／左腕／右腕；切换输入源保留相机选择。</p>
+<div id="cameraFields"></div><div class="row"><button id="cameraRefresh" type="button">刷新设备列表</button><button id="cameraReset" type="button">使用硬件／YAML 默认</button></div><p id="cameraStatus" class="hint" role="status"></p></details>
 <div id="sideCameraField"><label>Side 相机（可选）<select id="sideCamera" name="side_camera_serial"><option value="">不添加 · 标准 base + wrist</option></select></label><button id="sideCameraRefresh" type="button">刷新摄像头列表</button><p id="sideCameraNotice" class="hint">选中后额外预览并保存 side 视角；留空使用标准相机组合。</p></div>
-<details id="workspaceSetup"><summary>TCP 工作空间（米）</summary><p class="hint">各机械臂自身基座坐标系下的 XYZ 范围，仅在启动新 gamepad 采集会话时生效。</p><label class="check"><input id="workspaceCustom" type="checkbox">手动设置范围</label><div id="workspaceFields"></div><button id="workspaceReset" type="button">恢复配置文件范围</button><p id="workspaceStatus" class="hint" role="status"></p></details>
+<details id="workspaceSetup"><summary>Gamepad 输入 · TCP 工作空间（米）</summary><p class="hint">各机械臂自身基座坐标系下的 XYZ 范围，仅在启动新 gamepad 采集会话时生效。</p><label class="check"><input id="workspaceCustom" type="checkbox">手动设置范围</label><div id="workspaceFields"></div><button id="workspaceReset" type="button">恢复配置文件范围</button><p id="workspaceStatus" class="hint" role="status"></p></details>
 <label>任务描述<textarea name="task" rows="2" placeholder="描述本次操作任务" required>将物体放入目标位置</textarea></label>
 <label>数据集输出目录<input name="dataset_root" placeholder="datasets/raw/任务名" required><small id="datasetBase">相对路径基于面板工作目录</small></label>
 <button type="button" id="datasetDefault">使用推荐路径</button>
 <label class="check"><input name="resume" type="checkbox">续采已有数据集</label>
 <label><span id="configPathLabel">采集／部署 YAML</span><input name="config_path" placeholder="留空使用对应默认配置"></label>
 <div id="modelFields" hidden><label>模型类型<select name="policy_kind"><option value="rlt">RLT · 包含 VLA 主干</option><option value="sft">PI0.5 SFT · 仅 VLA</option></select></label><label>模型目录<input name="policy_path" placeholder="/模型/checkpoint"></label><label>Tokenizer 目录<input name="tokenizer_path" placeholder="/模型/tokenizer"></label><label>分类头目录<input name="handover_path" placeholder="自动模式所需"></label></div>
-<details id="hardwareSetup" open hidden><summary>ROS 硬件 · 预设与设备选择</summary>
-<label>配置方式<select id="hardwareMode"><option value="preset">预设与设备选择</option><option value="custom">自定义 JSON 文件</option></select></label>
-<div id="hardwareEditor"><p class="hint">按所选单双臂预填。设备可下拉选择或手动填写；请确认左右臂与相机角色。</p><div class="row"><button type="button" id="hardwareRefresh">刷新设备</button><button type="button" id="hardwareReset">恢复仓库预设</button></div><div id="hardwareFields"></div><button type="button" id="hardwareSave" class="full">保存并使用</button><p class="hint">检查配置／启动时也会自动保存。串口选择不改变 GELLO 校准参数。</p></div>
-<p id="hardwareStatus" class="hint" role="status"></p><p id="hardwareNotice" class="hint"></p>
-</details>
+
 <details><summary>环境与 ROS 配置</summary><label>模型 Python<input name="model_python"></label><label>ROS 工作空间<input name="ros_workspace" placeholder="仅 VLA_ROOT/ros_ws"></label><label>ROS 硬件 JSON<input name="ros_config" placeholder="由预设自动生成，也可手动填写自定义路径"></label></details>
 <div class="row"><button type="button" id="preflight">检查配置</button><button type="submit" id="start" class="primary">启动会话</button></div>
 </form></details></section>

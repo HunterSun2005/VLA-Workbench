@@ -77,10 +77,10 @@ class SessionConfig:
         if self.camera_serials is None:
             return
         if self.workflow != 'collect':
-            raise ValueError('独立相机角色设置仅用于单臂 gamepad 采集；ROS 路线请使用硬件配置')
+            raise ValueError('独立相机角色设置仅用于数据采集；部署请使用硬件配置')
         import re
         if not isinstance(self.camera_serials, dict) or set(self.camera_serials) - set(self.cameras):
-            raise ValueError('相机角色仅支持 base / left_wrist')
+            raise ValueError('相机角色必须与所选机械臂及侧视相机配置一致')
         for value in self.camera_serials.values():
             if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value):
                 raise ValueError('相机序列号不能为空或包含非法字符')

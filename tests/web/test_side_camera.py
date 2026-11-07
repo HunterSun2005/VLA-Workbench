@@ -97,3 +97,34 @@ def test_camera_default_api_uses_yaml_and_requires_token(tmp_path):
         assert result.json()['serials'] == collection_camera_serials(SessionConfig())
         invalid={**data,'camera_serials':{'base':'B','left_wrist':'B'}}
         assert client.post('/api/preflight',json=invalid,headers=headers).status_code == 422
+
+
+@pytest.mark.parametrize('arms', ['single_left', 'dual'])
+@pytest.mark.parametrize('source', ['gamepad', 'gello'])
+def test_shared_camera_editor_resolves_hardware_defaults_and_overrides(tmp_path, arms, source):
+    """The displayed defaults and submitted bindings use the collector's precedence."""
+    from fastapi.testclient import TestClient
+    from vla.web.app import create_app
+    hardware = preset(arms)
+    hardware['BASE_CAMERA_SERIAL'] = 'HARDWARE_BASE'
+    hardware['LEFT_WRIST_CAMERA_SERIAL'] = 'HARDWARE_LEFT'
+    if arms == 'dual':
+        hardware['RIGHT_WRIST_CAMERA_SERIAL'] = 'HARDWARE_RIGHT'
+    (tmp_path/'custom.json').write_text(json.dumps(hardware))
+    payload = dict(task='test', arms=arms, source=source, ros_config='custom.json',
+                   camera_serials={'base':'EDITOR_BASE'}, side_camera_serial='EDITOR_SIDE')
+    config = SessionConfig.parse(payload)
+    with TestClient(create_app(tmp_path, demo=True), base_url='http://127.0.0.1') as client:
+        headers = {'X-VLA-Token': client.get('/api/bootstrap').json()['token']}
+        result = client.post('/api/camera-defaults', json=payload, headers=headers)
+        assert result.status_code == 200
+        defaults = result.json()['serials']
+        expected = {'base':'HARDWARE_BASE', 'left_wrist':'HARDWARE_LEFT'}
+        if arms == 'dual':
+            expected['right_wrist'] = 'HARDWARE_RIGHT'
+        assert defaults == expected
+        assert collection_camera_serials(config, hardware) == {
+            **defaults, 'base':'EDITOR_BASE', 'side':'EDITOR_SIDE'}
+        # A broken explicit profile must not silently display YAML defaults.
+        (tmp_path/'custom.json').write_text('{broken')
+        assert client.post('/api/camera-defaults', json=payload, headers=headers).status_code == 422
