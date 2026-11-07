@@ -28,11 +28,12 @@ nice -n 10 bash scripts/test.sh -q -p no:cacheprovider tests/web
 | Web 状态、接口、配置及监控 | `tests/web` |
 | 单臂 gamepad、控制安全与采集 | `tests/control tests/rlt/test_cartesian_gamepad.py tests/rlt/test_dual_gamepad_record.py` |
 | ROS／双臂启动与采集 | `tests/rlt/test_teleop_entrypoints.py tests/rlt/test_dual_gamepad_record.py tests/rlt/test_franka_dual_sft_recorder.py` |
-| 数据字段、处理和视频 | `tests/rlt/test_franka_absolute_recorder.py tests/rlt/test_extract_dataset_features.py tests/rlt/test_dataset_processing.py tests/test_camera_image_padding.py tests/web/test_processing.py` |
-| 部署协议、RTC 与人工接管 | `tests/rlt/test_franka_rollout_collection.py tests/rlt/test_franka_pi05_rtc_deployment.py tests/rlt/test_rlt_ac_rtc.py tests/rlt/test_franka_sft_server.py` |
+| 数据字段、处理、视频和恢复 | `tests/control/test_episode_journal.py tests/control/test_media_process.py tests/rlt/test_franka_absolute_recorder.py tests/rlt/test_extract_dataset_features.py tests/rlt/test_dataset_processing.py tests/web/test_processing.py` |
+| 部署协议、RTC 与人工接管 | `tests/control/test_execution.py tests/control/test_plan_service.py tests/rlt/test_franka_rollout_collection.py tests/rlt/test_franka_pi05_rtc_deployment.py tests/rlt/test_rlt_ac_rtc.py tests/rlt/test_franka_sft_server.py` |
 | 核心训练、损失与模型保存 | `tests/rlt/test_losses.py tests/rlt/test_actor_critic.py tests/rlt/test_algorithm.py tests/rlt/test_training_step.py tests/rlt/test_pretrained_integration.py` |
 | 在线训练、回放与恢复 | `tests/rlt/test_online_consistency.py tests/rlt/test_online_training.py tests/rlt/test_training_safety.py tests/rlt/test_training_upgrade.py` |
 | LeRobot 依赖与工厂注册 | `tests/test_lerobot061.py tests/test_lerobot_registry_dataset.py tests/rlt/test_processor_rlt.py` |
+| 锁生命周期／验收报告 | `tests/test_lock_lifecycle.py tests/test_validation_report.py` |
 
 运行单个故障用例可用 `文件.py::测试名`。完整离线回归：
 
@@ -40,13 +41,17 @@ nice -n 10 bash scripts/test.sh -q -p no:cacheprovider tests/web
 nice -n 10 bash scripts/test.sh -q -p no:cacheprovider --durations=20
 ```
 
-## 当前 ROS 迁移验收
+## 当前提交的验收
 
-完整离线回归为 678 passed、6 skipped、0 failed。ROS 编译、解释器隔离、无 Franky 的 wheel／CLI／Web demo 冒烟结果及现场待验收范围见 [ROS 验收报告](../docs/ROS_VALIDATION.md)。动作契约可从 `tests/actions` 开始；稀疏 RLT 时序见 `tests/rlt/test_sparse_action_timing.py`。
+运行 `VLA_PYTHON=/path/to/existing/model/python python3 scripts/validate.py`，统一执行模型环境测试、ROS 原生回放和干净 wheel 验证。每次生成独立的 commit／源码摘要、状态、跳过原因、JUnit 和日志；默认位置为 `artifacts/validation/`，不进入 Git。完整命令和状态定义见 [自动化验收](../docs/ACCEPTANCE.md)。
+
+当前 RTC 队列属于 ROS 执行器；模型侧单动作接口应被拒绝。动作契约见 `tests/actions`，固定前缀与锁定后缀见 `tests/control`，梯度／物理奖励／Replay 见 `tests/rlt/test_execution_learning.py`。下文及其他带日期报告的数量仅是历史快照，不是当前通过数，也不是测试数量门槛。
 
 ## 历史：迁移前的测试精简记录（2026-11-06）
 
 以下历史轮次仅修改测试及文档，不修改控制、数据写入、模型实现或依赖。完整默认发现机制不变，没有新增排除目录、默认跳过标记或测试选择框架。
+
+本节提到的模型动作队列／逐动作消费已在后续统一执行器改造中删除，仅保留为历史说明。
 
 | 调整 | 仍保留的验证 |
 | --- | --- |

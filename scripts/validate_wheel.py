@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build a clean wheel and check external imports without installing anything."""
+import argparse
 import json
 import os
 from pathlib import Path
@@ -10,9 +11,16 @@ import tempfile
 import zipfile
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, help='New directory for all build/import artifacts')
+    args = parser.parse_args(argv)
     root = Path(__file__).resolve().parents[1]
-    output = Path(tempfile.mkdtemp(prefix='vla-wheel-validation-'))
+    if args.output:
+        output = args.output.resolve()
+        output.mkdir(parents=True, exist_ok=False)
+    else:
+        output = Path(tempfile.mkdtemp(prefix='vla-wheel-validation-'))
     source = output / 'source'
     source.mkdir()
     for name in ('pyproject.toml', 'README.md', 'LICENSE'):
@@ -65,8 +73,10 @@ from pathlib import Path
 import vla.control.execution as execution
 assert Path(execution.__file__).is_relative_to(os.environ['PYTHONPATH'])
 '''], check=True, cwd=output, env=env)
-    print(json.dumps({'wheel': str(wheel), 'python_files': len(expected),
-                      'external_imports': 'passed', 'installed': False}, indent=2))
+    result = {'wheel': str(wheel), 'python_files': len(expected),
+              'external_imports': 'passed', 'installed': False}
+    (output/'result.json').write_text(json.dumps(result, indent=2)+'\n')
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == '__main__':

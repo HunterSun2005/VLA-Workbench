@@ -34,6 +34,7 @@
 ## Verification and delivery
 
 - Run meaningful affected tests first. Model example: `VLA_PYTHON=/path/to/existing/model/python bash scripts/test.sh tests/control -q`. ROS example: `bash scripts/test_ros.sh tests/ros -q`. Do not install dependencies merely to make a check pass.
+- For integration acceptance, use `VLA_PYTHON=/path/to/existing/model/python python3 scripts/validate.py`. It retains source-bound JSON/Markdown reports, JUnit, logs and wheel artifacts under ignored `artifacts/validation/`; select checks with `--checks`. Skipped or unrun checks are not passes. See `docs/ACCEPTANCE.md`; do not present historical counts as current results.
 - For packaging changes, use the model interpreter to run `scripts/validate_wheel.py`: it builds in a clean temporary source tree and checks external imports without installation. Direct builds can retain deleted modules in `build/`.
 - For timing/control changes, `scripts/validate_ros_control.sh --duration 600` is the approved fixed-state mock harness, using an isolated DDS domain. Do not replace its mock plugin with hardware. Do not rerun costly checks without a relevant change or unresolved concern.
 - Update relevant docs when behavior/contracts change. Report the changes, tests and skipped/unverified cases. Offline/mock results do not establish physical continuity, real GPU latency, camera throughput or task success.

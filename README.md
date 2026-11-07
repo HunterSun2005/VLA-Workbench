@@ -15,7 +15,7 @@ Workbench 分为 **数据采集 → 模型训练 → 部署推理** 三个部分
 <details>
 <summary>局部图 A：RTC——推理与执行并行</summary>
 
-RTC（Real-Time Chunking）在当前动作块执行期间异步生成下一块，按推理期间实际消费的步数对齐并衔接队列。每次请求锁存原始实测锚点，模型输出还原为绝对目标后入队；未执行前缀用于新请求时，必须按新锚点重新编码和归一化。推理速率不固定，ROS 目标接受为 30 Hz，稀疏目标按采样间隔保持。
+RTC（Real-Time Chunking）在当前动作块执行期间异步生成下一块，按请求时固定的承诺边界安装后缀并衔接 ROS 执行队列。每次请求锁存原始实测锚点，模型输出还原为绝对目标后入队；未执行前缀用于新请求时，必须按新锚点重新编码和归一化。推理速率不固定，ROS 目标接受为 30 Hz，稀疏目标按采样间隔保持。
 
 ![RTC 详图：请求锚点、异步推理、前缀重编码与绝对动作队列](docs/diagrams/rtc.svg)
 
@@ -59,7 +59,7 @@ RTC（Real-Time Chunking）在当前动作块执行期间异步生成下一块�
 | RTC         | [rtc.svg](docs/diagrams/rtc.svg)             | 推理／执行并行、锚点与队列衔接    |
 | ROS Control | [impedance.svg](docs/diagrams/impedance.svg) | 目标跟踪、关节阻抗与记录点        |
 
-修改模块边界、解释器归属、控制权、动作记录点或训练数据流时，同步更新对应图与定位表。离线验证和实机待验收范围见 [ROS 验收报告](docs/ROS_VALIDATION.md)。
+修改模块边界、解释器归属、控制权、动作记录点或训练数据流时，同步更新对应图与定位表。当前离线验证方式和实机待验收范围见 [自动化验收](docs/ACCEPTANCE.md)。
 
 ## 本机使用
 
@@ -112,7 +112,7 @@ vla-web --root "$VLA_ROOT"
 
 Demo 的采集／部署不连接硬件，也不生成真实采集数据集；**数据处理页即使在 Demo 下仍读取本地数据并写入真实转换结果**。浏览器关闭不结束独立 runner 中的会话。软件暂停不是硬件急停，各后端暂停对未保存回合的影响见 [Web 面板说明](docs/WEB_PANEL.md)。姿态库位于忽略目录 `runtime/web/poses.json`，应单独备份。
 
-服务仅监听本机。远程访问使用 SSH 隧道，例如 `ssh -N -L 8765:127.0.0.1:8765 用户@机器人主机`。操作细节见 [Web 面板说明](docs/WEB_PANEL.md)、[离线数据处理](docs/DATA_PROCESSING.md)；当前验收结果见 [ROS 离线验收](docs/ROS_VALIDATION.md)，历史证据见 [Web 验收](docs/web/VALIDATION.md)。
+服务仅监听本机。远程访问使用 SSH 隧道，例如 `ssh -N -L 8765:127.0.0.1:8765 用户@机器人主机`。操作细节见 [Web 面板说明](docs/WEB_PANEL.md)、[离线数据处理](docs/DATA_PROCESSING.md)；当前验收结果通过 [自动化验收](docs/ACCEPTANCE.md) 生成，历史证据见 [Web 验收](docs/web/VALIDATION.md)。
 
 ## 专用 ROS 工作空间
 
@@ -171,7 +171,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 ## 开发与验证
 
-按改动范围选择测试与精简记录见 [测试指南](tests/README.md)。
+按改动范围选择测试见 [测试指南](tests/README.md)，统一入口与报告格式见 [自动化验收](docs/ACCEPTANCE.md)。
 
 在要测试的工作副本中显式设置根目录，避免继承原采集目录的环境变量：
 
@@ -182,8 +182,8 @@ export VLA_PYTHON="$CONDA_PREFIX/bin/python"
 source scripts/model_env.sh
 # 优先运行本次修改涉及的测试
 bash scripts/test.sh -q tests/web
-# 集成检查时运行完整离线回归
-bash scripts/test.sh -q
+# 集成验收：模型回归、ROS 原生回放、干净 wheel；结果保存在 artifacts/validation/
+python3 scripts/validate.py
 ```
 
 测试脚本禁用外部 pytest 插件自动加载并启用模型离线模式。缺少真实 checkpoint 的跳过项不算通过；模拟设备和合成数据的结果不等于实机验收。不要在测试中启动或移动机器人。

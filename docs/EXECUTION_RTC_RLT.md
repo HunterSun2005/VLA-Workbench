@@ -1,6 +1,6 @@
 # 统一执行、RTC 与 RLT 数据闭环
 
-本轮在 `ros-dev` 实现，只作本地提交。ROS 进程拥有动作时隙、执行队列和运动代次；模型服务只返回候选块。Web 与终端共用 `RolloutCollector`／`ControlCoordinator`。模型 Python 与 ROS Python 分离。
+实现在 `ros-dev` 维护。ROS 进程拥有动作时隙、执行队列和运动代次；模型服务只返回候选块。Web 与终端共用 `RolloutCollector`／`ControlCoordinator`。模型 Python 与 ROS Python 分离。当前提交的验证方式见 [自动化验收](ACCEPTANCE.md)，本文末尾保留初次验收快照。
 
 ## 协议与时间轴
 
@@ -59,6 +59,8 @@ Unix socket 使用 NumPy 数组协议 v2，magic 为 `VLARLT02`。旧 magic、�
 控制回调只提交有界队列中的不可变记录；编码、NPZ、Parquet、视频合并和 fsync 在后台完成。`staging/<journal_id>` 中按一秒写独立视频片段、对应数组及事件，再发布带校验和的 segment 清单。完成全部媒体帧数检查后，episode 元数据行是提交点。提交后发布标记失败的重试只重建元数据和标记，不重写视频、不重复回合。
 
 重启恢复只接受连续且校验和、数组长度、视频帧数相符的持久前缀。缺失尾部标记 `incomplete_tail`，不制造 terminal、endpoint、图像或动作；缺少因果终点的窗口不进入 RL。只有显式丢弃会删除未提交回合。正常用户暂停沿用主动丢弃约定，耗尽和存储阻塞不走该入口。
+
+损坏清单、数组或事件，以及媒体检查失败，会终止当前扫描并返回此前的有效前缀；`issues` 给出失败文件和原因。编码写入／结束与帧数检查默认超时 30 秒，最终拼接默认 120 秒。超时保留 staging，并允许停止运动后重试；具体恢复操作见 [工作流](WORKFLOWS.md#执行耗尽与保存恢复)。
 
 实际 TCP、URDF、Python 跟踪参数、C++ 控制器有效参数、执行预算和投影边界绑定契约。控制器要求 1000 Hz；运行中参数变化触发故障。训练与部署比较实际 recording source 和模型声明来源。RLToken 沿用 SFT 归一化并单独记录自己的训练数据指纹；AC 独立校验 Actor horizon。
 
@@ -134,11 +136,13 @@ bash scripts/validate_ros_control.sh --duration 600
 
 尚待资源／现场验收：新格式真实 PI0.5 权重和 tokenizer 下的前后向、推理、GPU 延迟；真实相机采集／同步与长回合磁盘吞吐；实机控制连续性、接触／跟踪误差、双臂运动和任务成功率。它们均未计为通过。Actor 模型输出自身的轨迹连续性也不在本轮保证范围内。
 
-## 完成记录（2026-11-07）
+## 历史：首次完成记录（2026-11-07）
+
+以下数量、产物路径及提交状态仅描述首次验收，不代表后续提交。当前结果由 `scripts/validate.py` 生成，绑定 commit、工作区状态和源码摘要，不以本文的旧数量作为通过标准。
 
 - 模型环境全量回归：708 passed、7 skipped，42.67 秒。7 个跳过中，1 个 ROS 专用模块另在 ROS Python 下通过，6 个依赖未提供的真实 PI0.5 资源，未计通过。日志：`/tmp/vla-execution-completion-final.log`。
 - 补充候选请求的任务／相机形状拒绝断言并清理旧测试名称后，服务／协议针对性复验：53 passed，3.19 秒。日志：`/tmp/vla-execution-last-targeted.log`。
 - ROS Python 原生回放：10 passed，2.38 秒；无硬件启动。日志：`/tmp/vla-execution-completion-native.log`。
 - 干净 wheel：176 个 Python 文件与当前源码清单一致；仓库外导入通过。ROS 侧不导入 Torch，模型侧不导入 ROS；未安装 wheel 或改动既有环境。产物：`/tmp/vla-wheel-validation-jzuxqrtz/vla-0.1.0-py3-none-any.whl`；日志：`/tmp/vla-execution-clean-wheel.log`。
 - 十分钟 ROS mock 测量沿用上表及原始报告；后续改动为旧入口清理、停止状态校验及测试／文档收尾，没有重新测量真实相机或 GPU 负载。
-- 五个本地提交依次覆盖协议与执行器、候选块与 RTC、记录和恢复、Replay 与损失、集成验收。未推送、未合并 `main`；数据、权重、日志及构建产物均不入 Git。
+- 初次验收形成五个本地提交，依次覆盖协议与执行器、候选块与 RTC、记录和恢复、Replay 与损失、集成验收；后经用户授权，与锁修复一并推送至 `origin/ros-dev`（截至 `bf77ed1`）。未合并 `main`；数据、权重、日志及构建产物均不入 Git。
