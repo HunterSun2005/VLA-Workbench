@@ -35,7 +35,6 @@ class Server:
         self.action_contract = checkpoint_contract(self.path)
         self.spec = ActionSpec.from_dict(self.action_contract['action_spec'])
         self.frame_stride = self.action_contract['statistics']['contract']['sampling']['frame_stride']
-        self._hold_remaining = 0
         cfg.action_contract = self.action_contract
         self.policy=PI05Policy.from_pretrained(self.path,config=cfg).to(self.device).eval()
         from transformers import AutoTokenizer
@@ -64,76 +63,37 @@ class Server:
             'control_modes': ['vla'], 'control_mode_protocol': 1, 'phase_mode': 'vla',
             'rtc_enabled': True, 'rtc_execution_horizon': cfg.rtc_config.execution_horizon,
             'rtc_queue_threshold': min(28, cfg.chunk_size-1), 'online_enabled': False}
-        from vla.deployment.franka_pi05_rtc import Pi05RTC
-        self.rtc = Pi05RTC(self.policy, self.pre, self.post, rtc_config=cfg.rtc_config,
-                           queue_threshold=self.contract['rtc_queue_threshold'], fps=30/self.frame_stride)
-        self.mode_version = -1
+        from vla.control.plan_service import PlanGate
+        self.plan_gate = PlanGate()
+        self.contract.update(plan_horizons={'vla': cfg.chunk_size}, frame_stride=self.frame_stride,
+                             action_contract=self.action_contract)
 
-    def handle(self,h,a):
-        kind=h.get("kind"); rid=int(h.get("request_id",-1))
-        if kind=="health": return {"kind":"health","request_id":rid,**self.contract},{}
-        if kind!="infer": raise ValueError(f"unsupported request kind: {kind!r}")
-        if h.get("task",self.task) not in getattr(self, "tasks", (self.task,)): raise ValueError("task mismatch")
-        if h.get("phase", "vla") != "vla": raise ValueError("SFT server only supports vla phase")
-        task = h.get('task', self.task)
-        if task != getattr(self, '_active_task', task):
-            self._hold_remaining = 0
-            self.rtc.reset()
-            self.policy.reset()
-        self._active_task = task
-        managed = h.get("control_mode")
-        if managed is not None:
-            version = int(h.get("mode_version", -1))
-            if managed != "vla" or version < 0 or version < self.mode_version:
-                raise ValueError("invalid or stale SFT control mode")
-            if version != self.mode_version:
-                self._hold_remaining = 0
-                self.rtc.reset()
-                self.policy.reset()
-            self.mode_version = version
-        if h.get("reset_episode", False):
-            self._hold_remaining = 0
-            self.rtc.reset()
-            self.policy.reset()
-        obs={"observation.state":np.asarray(a["observation.state"],dtype=np.float32),
-             "observation.anchor": np.asarray(a["observation.anchor"], dtype=np.float64),
-             **{key: np.asarray(a[key]) for key in self.camera_keys}}
-        if obs["observation.state"].shape != (self.state_dim,) or not np.isfinite(obs["observation.state"]).all():
-            raise ValueError("invalid SFT state")
-        for key in self.camera_keys:
-            if list(obs[key].shape) != self.contract["camera_shapes_hwc"][key] or obs[key].dtype != np.uint8:
-                raise ValueError("invalid SFT image shape/type")
-        x = self.prepare(obs, self.device, task, self.robot_type)
-        self.rtc.publish(x)
-        if self.rtc.queue.empty():
-            self.rtc.infer(account_for_latency=False)
-        if getattr(self, '_hold_remaining', 0) <= 0:
-            self._held_action = self.rtc.get()
-            self._hold_remaining = getattr(self, 'frame_stride', 1)
-        y = self._held_action
-        self._hold_remaining -= 1
-        self.rtc.maybe_start()
-        if y is None:
-            raise RuntimeError('RTC queue empty')
-        y=np.asarray(y.detach().cpu() if hasattr(y,"detach") else y,dtype=np.float32); y=y.reshape(-1,self.action_dim)[0]
-        return {"kind":"action","request_id":rid,"checkpoint_fingerprint":self.fingerprint,"requested_phase":"vla","source_type":0.0,"phase":0.0,
-                **({"control_mode":"vla","mode_version":self.mode_version} if managed else {})},{"action":y}
+    def handle(self, h, a):
+        from vla.control.plan_service import control_message
+        from vla.adapters.lerobot.plan_inference import infer_plan
+        kind = h.get('kind')
+        if kind == 'health':
+            return {'kind': 'health', 'request_id': h.get('request_id', -1), **self.contract}, {}
+        result = control_message(self, h)
+        if result is not None:
+            return result
+        if kind != 'plan':
+            raise ValueError('only protocol-v2 candidate plans are supported')
+        return infer_plan(self, h, a, sft=True)
+
 
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("--arms",choices=["single_left","dual"],default="single_left"); p.add_argument("--checkpoint",required=True,type=pathlib.Path); p.add_argument("--socket-path",required=True,type=pathlib.Path); p.add_argument("--task",default=TASK); p.add_argument("--device",default="cuda"); p.add_argument("--tokenizer-path", required=True); a=p.parse_args(); s=Server(a); stop=False
-    def sig(*_):
-        nonlocal stop; stop=True
-    signal.signal(signal.SIGINT,sig); signal.signal(signal.SIGTERM,sig); a.socket_path.parent.mkdir(parents=True,exist_ok=True)
-    if a.socket_path.exists(): a.socket_path.unlink()
-    srv=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); srv.bind(str(a.socket_path)); srv.listen(1); srv.settimeout(.5); print(f"PI05 SFT server ready: {a.socket_path}",flush=True)
-    try:
-        while not stop:
-            try: c,_=srv.accept()
-            except socket.timeout: continue
-            with c:
-                try:
-                    h,arr=recv_packet(c); rh,ra=s.handle(h,arr); send_packet(c,rh,ra)
-                except Exception as e: send_packet(c,{"kind":"error","request_id":int(h.get("request_id",-1)),"error_type":type(e).__name__,"error":str(e)})
-    finally:
-        srv.close(); a.socket_path.unlink(missing_ok=True)
-if __name__=="__main__": main()
+    p = argparse.ArgumentParser()
+    p.add_argument('--arms', choices=['single_left', 'dual'], default='single_left')
+    p.add_argument('--checkpoint', required=True, type=pathlib.Path)
+    p.add_argument('--socket-path', required=True, type=pathlib.Path)
+    p.add_argument('--task', default=TASK)
+    p.add_argument('--device', default='cuda')
+    p.add_argument('--tokenizer-path', required=True)
+    args = p.parse_args()
+    from vla.web.policy_server import serve
+    serve(Server(args), args.socket_path)
+
+
+if __name__ == '__main__':
+    main()

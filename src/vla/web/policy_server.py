@@ -40,38 +40,67 @@ def main():
     serve(server,args.socket_path)
 
 
-def serve(server,path):
-    from vla_rollout_protocol import recv_packet,send_packet
-    stop=False
+def serve(server, path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import BoundedSemaphore
+    from vla_rollout_protocol import recv_packet, send_packet
+    from vla.cli.serve_franka_rollout import _TrainingProgressSender
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stop = False
+    slots = BoundedSemaphore(8)
+
     def interrupt(*_):
         nonlocal stop
-        stop=True
-    signal.signal(signal.SIGTERM,interrupt)
-    signal.signal(signal.SIGINT,interrupt)
-    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as listener:
-        listener.bind(str(path)); path.chmod(0o600)
-        listener.listen(4); listener.settimeout(.5)
+        stop = True
+
+    def handle_connection(connection):
+        header = {}
         try:
-            while not stop:
+            with connection:
+                connection.settimeout(30)
                 try:
-                    connection,_=listener.accept()
-                except socket.timeout:
-                    continue
-                with connection:
-                    connection.settimeout(30)
-                    header={}
-                    try:
-                        header,arrays=recv_packet(connection)
-                        response,values=server.handle(header,arrays)
-                        send_packet(connection,response,values)
-                    except Exception as error:
+                    header, arrays = recv_packet(connection)
+                    if header.get('kind') in {'episode_saved', 'recover_online', 'begin_episode'}:
+                        if not server.plan_gate.worker.acquire(blocking=False):
+                            raise RuntimeError('model worker is busy')
                         try:
-                            send_packet(connection,{'kind':'error','request_id':header.get('request_id',-1),
-                                                    'error_type':type(error).__name__,'error':str(error)})
-                        except OSError:
-                            pass  # A timed-out/disconnected caller must not kill the model service.
+                            callback = _TrainingProgressSender(connection, header.get('request_id', -1))
+                            response, values = server.handle(header, arrays, progress_callback=callback)
+                        finally:
+                            server.plan_gate.worker.release()
+                    else:
+                        response, values = server.handle(header, arrays)
+                    send_packet(connection, response, values)
+                except Exception as error:
+                    try:
+                        send_packet(connection, {'kind': 'error', 'request_id': header.get('request_id', -1),
+                                                 'error_type': type(error).__name__, 'error': str(error)})
+                    except OSError:
+                        pass
         finally:
-            path.unlink(missing_ok=True)
+            slots.release()
+
+    signal.signal(signal.SIGTERM, interrupt)
+    signal.signal(signal.SIGINT, interrupt)
+    with ThreadPoolExecutor(max_workers=8, thread_name_prefix='plan-service') as workers:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(str(path))
+            path.chmod(0o600)
+            listener.listen(8)
+            listener.settimeout(.5)
+            try:
+                while not stop:
+                    try:
+                        connection, _ = listener.accept()
+                    except socket.timeout:
+                        continue
+                    if slots.acquire(blocking=False):
+                        workers.submit(handle_connection, connection)
+                    else:
+                        connection.close()
+            finally:
+                path.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

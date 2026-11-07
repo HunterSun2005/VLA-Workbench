@@ -131,22 +131,26 @@ class ControlCoordinator:
             if slot_id == self._last_slot:
                 return self.accepted
             command_id = slot_id + 1
-            target = validate_array(target, self.spec).copy()
-            if target.shape != (self.spec.dim,):
-                raise ValueError('ROS accepts one target at a time')
-            for i, arm in enumerate(self.spec.arms):
-                off = i * self.spec.width
-                if self.spec.space == 'joint':
-                    model = self.servos[arm].model
-                    target[off:off+7] = np.clip(target[off:off+7], model.lower_limits, model.upper_limits)
-                else:
-                    target[off:off+3] = np.clip(target[off:off+3], *self.bounds[arm])
-                    target[off+3:off+9] = matrix_to_rot6d(rot6d_to_matrix(target[off+3:off+9]))
+            target = self.project(target)
             self.accepted = AcceptedCommand(self.spec, target, source, command_id, generation,
                                             min(m.observed_at_ns for m in self._measurements.values()), now)
             self.command_id, self._last_accept = command_id, now
             self._last_slot = slot_id
             return self.accepted
+
+    def project(self, target):
+        target = validate_array(target, self.spec).copy()
+        if target.shape != (self.spec.dim,):
+            raise ValueError('ROS accepts one target at a time')
+        for i, arm in enumerate(self.spec.arms):
+            off = i * self.spec.width
+            if self.spec.space == 'joint':
+                model = self.servos[arm].model
+                target[off:off+7] = np.clip(target[off:off+7], model.lower_limits, model.upper_limits)
+            else:
+                target[off:off+3] = np.clip(target[off:off+3], *self.bounds[arm])
+                target[off+3:off+9] = matrix_to_rot6d(rot6d_to_matrix(target[off+3:off+9]))
+        return target
 
     def gello_target(self, joints, grippers):
         parts = []

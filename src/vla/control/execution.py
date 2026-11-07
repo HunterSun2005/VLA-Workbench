@@ -130,7 +130,9 @@ class PlanResponse:
     context: Mapping[str, np.ndarray] = field(default_factory=dict)
 
     def __post_init__(self):
-        shape = (self.request.horizon, self.request.anchor.size)
+        shape = (len(self.actions), self.request.anchor.size)
+        if not 2*self.request.start_idx <= shape[0] <= self.request.horizon:
+            raise ValueError('candidate has no valid suffix or exceeds requested range')
         for name in ('actions', 'vla_reference'):
             value = np.asarray(getattr(self, name))
             if value.shape != shape or not np.isfinite(value).all():
@@ -194,7 +196,7 @@ class FixedDeadline:
 
 
 class Executor:
-    def __init__(self, contract, *, session_id, model_version, epoch_ns):
+    def __init__(self, contract, *, session_id, model_version, epoch_ns, project=None):
         self.contract, self.session_id, self.model_version = contract, session_id, model_version
         self.control_clock = FixedDeadline(epoch_ns, contract.control_hz)
         self.tracking_clock = FixedDeadline(epoch_ns, contract.tracking_hz)
@@ -208,6 +210,7 @@ class Executor:
         self.events = []
         self.hold = None
         self.current = None
+        self.project = project or (lambda target: target)
 
     def invalidate(self, state=ExecutionState.WAITING, reason='control boundary'):
         self.generation += 1
@@ -263,7 +266,7 @@ class Executor:
         # Freeze both values and provenance until the response's immutable boundary.
         if self.state == ExecutionState.PREPARING:
             for s in range(slot, boundary):
-                self.queue[s] = (self.hold, 'system_hold', 0, -1, -1)
+                self.queue[s] = (self.hold, 'system_hold', 0, -1, -1, self.hold)
         self.inflight = request
         self.events.append(('request', request))
         return request
@@ -289,17 +292,22 @@ class Executor:
             return False
         validate_array(response.actions, self.contract.action_spec)
         d, r = request.start_idx, request.frame_stride
+        horizon = len(response.actions)
+        if horizon not in self.contract.horizons.values():
+            raise ValueError('response horizon does not match a declared policy')
         if request.replace_slot < self.locked_until:
             raise ValueError('cannot replace locked Actor suffix')
+        projected = [immutable_array(self.project(action)) for action in response.actions[d:]]
         for s in list(self.queue):
             if s >= request.replace_slot:
                 del self.queue[s]
-        for i in range(d, request.horizon):
+        for i in range(d, horizon):
+            accepted = projected[i-d]
             for s in range(request.start_slot+i*r, request.start_slot+(i+1)*r):
-                self.queue[s] = (response.actions[i], response.sources[i], response.phases[i],
-                                 request.plan_version, i)
+                self.queue[s] = (accepted, response.sources[i], response.phases[i],
+                                 request.plan_version, i, response.actions[i])
         if 'actor' in response.sources[d:]:
-            self.locked_until = request.start_slot+request.horizon*r
+            self.locked_until = request.start_slot+horizon*r
         self.inflight = None
         self.events.append(('install', response))
         return True
@@ -319,8 +327,8 @@ class Executor:
         if entry is None:
             self.invalidate(ExecutionState.WAITING, 'queue exhausted')
             return None
-        action, source, phase, plan, index = entry
+        action, source, phase, plan, index, candidate = entry
         if source != 'system_hold':
             self.state = ExecutionState.POLICY
-        self.current = ExecutionRecord(slot, self.generation, plan, index, action, action, source, phase, now_ns)
+        self.current = ExecutionRecord(slot, self.generation, plan, index, candidate, action, source, phase, now_ns)
         return self.current

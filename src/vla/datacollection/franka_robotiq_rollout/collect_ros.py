@@ -337,6 +337,25 @@ class RolloutCollector(Node):
             allow_multiple_tasks=demonstration and len(config.tasks) > 1,
         )
 
+        from vla.control.execution import ExecutionContract, Executor, FixedDeadline
+        import uuid
+        epoch = time.monotonic_ns()
+        self._slot_clock = FixedDeadline(epoch, 30)
+        self._tracking_clock = FixedDeadline(epoch, 100)
+        self._slot_id = -1
+        self.executor = None
+        self._execution_record = None
+        self._waiting_resume = False
+        if self.policy_client is not None:
+            model = self.policy_client.contract
+            horizons = {**model['plan_horizons'], 'auto': max(model['plan_horizons'].values())}
+            execution = ExecutionContract(config.action_spec, horizons,
+                metadata['recording_contract']['control_fingerprint'],
+                metadata['recording_contract']['kinematics_fingerprint'],
+                metadata['recording_contract']['tool_fingerprint'], frame_stride=model['frame_stride'])
+            self.executor = Executor(execution, session_id=uuid.uuid4().hex,
+                                     model_version=model['checkpoint_fingerprint'], epoch_ns=epoch,
+                                     project=self.coordinator.project)
         self._start_cameras()
 
         # Poll fresh base frames frequently; demonstrations must not duplicate
@@ -754,6 +773,19 @@ class RolloutCollector(Node):
         self._gripper_publishers[name].publish(goal)
 
     def _control_boundary(self, owner=None, *, fault=False, reason='control boundary'):
+        if getattr(self, 'executor', None) is not None:
+            from vla.control.execution import ExecutionState
+            if owner == 'policy' and not fault:
+                values = {key: value[1] for key, value in self._latest.items()}
+                raw = self._raw_state(values, time.monotonic_ns())
+                self.executor.enable(self.coordinator.project(self._raw_anchor(raw)),
+                                     episode_id=str(self.writer.next_episode_index()))
+                self._waiting_resume = False
+            else:
+                state = ExecutionState.FAULT if fault else ExecutionState.HUMAN if owner else ExecutionState.WAITING
+                self.executor.invalidate(state, reason)
+            self.policy_client.invalidate(self.executor.session_id, self.executor.generation)
+        self._execution_record = None
         self.coordinator.transition(owner, fault=fault, reason=reason)
         self._last_command_snapshot = None
         self._input_action = None
@@ -766,11 +798,13 @@ class RolloutCollector(Node):
         if command is None:
             return
         source = COLLECTOR_HUMAN if command.source in ('gamepad', 'gello', 'pose') else (
-            COLLECTOR_RLT_ACTOR if self._latest_policy_result and self._latest_policy_result.source_type > .5 else COLLECTOR_PI05)
+            COLLECTOR_RLT_ACTOR if self._execution_record and self._execution_record.source == 'actor' else
+            -1 if self._execution_record and self._execution_record.source == 'system_hold' else COLLECTOR_PI05)
         self._last_command_snapshot = CommandSnapshot(
             arms={arm: ArmCommandSnapshot(value['joints'], value['gripper'])
                   for arm, value in self.coordinator.submitted.items()},
-            source=source, phase=float(self._phase == 'rl'), published_at_ns=time.monotonic_ns())
+            source=source, phase=(self._execution_record.phase if command.source == 'policy' and self._execution_record
+                                  else float(self._phase == 'rl')), published_at_ns=time.monotonic_ns())
 
     def _record_frame(
         self,
@@ -830,7 +864,8 @@ class RolloutCollector(Node):
         self.policy_client.set_control_mode(mode)
         self._web_mode = mode
         self._web_switch_pending = True
-        self._control_boundary(self.config.input_source if self._intervention else "policy", reason="policy mode change")
+        if not self._intervention:
+            self._control_boundary('policy', reason='policy mode change')
         self._latest_policy_result = None
         self._reset_policy_on_request = True
         self._policy_action = None
@@ -839,51 +874,26 @@ class RolloutCollector(Node):
             self._republish_arm_hold()
             self._stop_grippers_at_measured_position()
 
-    def _consume_policy_result(self) -> None:
+    def _consume_policy_result(self):
         if self.policy_client is None:
             return
         result = self.policy_client.poll_latest()
-        if result is None:
-            return
-        if self._intervention:
-            return
-        managed = getattr(result, "control_mode", None) is not None
-        if managed and result.mode_version != self.policy_client.mode_version:
-            return
-        if not managed and result.requested_phase != self._phase:
-            print(
-                "Discarded policy response after local phase change "
-                f"id={result.request_id} requested_phase={result.requested_phase} "
-                f"current_phase={self._phase}",
-                flush=True,
-            )
-            return
-        returned_phase = "rl" if result.phase > 0.5 else "vla"
-        if getattr(result, "control_mode", None) != "auto" and returned_phase != result.requested_phase:
-            raise RuntimeError(
-                "policy phase mismatch: "
-                f"id={result.request_id} requested={result.requested_phase} "
-                f"returned={returned_phase} source_type={result.source_type}"
-            )
-        if getattr(result, "control_mode", None) != "auto" and result.requested_phase == "vla" and result.source_type > 0.5:
-            raise RuntimeError(
-                "policy source mismatch: "
-                f"id={result.request_id} requested=vla but source_type={result.source_type}"
-            )
-        action = validate_array(result.action, self.config.action_spec)
-        self._latest_policy_result = result
-        if managed:
+        if result is not None and self.executor.install(result, time.monotonic_ns()):
             self._web_switch_pending = False
-        self._policy_action = action
 
     def _publish_policy(self, values, dt):
-        if self._policy_action is None or self._latest_policy_result is None:
-            return False
-        if time.monotonic() - self._latest_policy_result.received_at > self.config.control_discontinuity_timeout_s:
-            raise RuntimeError("latest policy action stream expired")
         if self.coordinator.mode != 'active':
             return False
-        accepted = self.coordinator.accept(self._policy_action, source='policy', generation=self.coordinator.generation, slot_id=time.monotonic_ns()*30//1_000_000_000)
+        record = self.executor.advance(self._slot_id, time.monotonic_ns())
+        if record is None:
+            if self.executor.state.value == 'waiting_resume' and not self._waiting_resume:
+                self._control_boundary(reason='policy queue exhausted; manual resume required')
+                self._waiting_resume = True
+                self._stop_grippers_at_measured_position()
+            return False
+        self._execution_record = record
+        accepted = self.coordinator.accept(record.accepted, source='policy',
+                                           generation=self.coordinator.generation, slot_id=record.slot_id)
         return accepted is not None
 
     def _publish_gripper_speed(self, arm: ArmConfig, speed: float) -> None:
@@ -1067,7 +1077,10 @@ class RolloutCollector(Node):
 
     def _gamepad_tick(self):
         with self._lock:
-            now = time.monotonic()
+            now_ns = time.monotonic_ns()
+            if self._tracking_clock.poll(now_ns) is None:
+                return
+            now = now_ns / 1e9
             dt = min(max(now-self._last_gamepad_tick, .001), .05)
             self._last_gamepad_tick = now
             try:
@@ -1118,9 +1131,15 @@ class RolloutCollector(Node):
         raw_state: np.ndarray,
         images: dict[str, np.ndarray],
     ) -> None:
-        if self._intervention:
+        if self._intervention or self._waiting_resume or self.coordinator.mode != 'active':
+            return
+        mode = self.policy_client.control_mode or ('rlt' if self._phase == 'rl' else 'vla')
+        plan = self.executor.request(slot=self._slot_id, anchor=self._raw_anchor(raw_state),
+                                     observation_id=self._slot_id, observed_at_ns=time.monotonic_ns(), policy=mode)
+        if plan is None:
             return
         submitted = self.policy_client.submit(
+            plan=plan,
             state=self._policy_state(raw_state),
             anchor=self._raw_anchor(raw_state),
             images=images,
@@ -1128,6 +1147,8 @@ class RolloutCollector(Node):
             phase=self._phase,
             reset_episode=self._reset_policy_on_request,
         )
+        if submitted is None:
+            self.executor.inflight = None
         if submitted is not None:
             if self._log_next_policy_request:
                 print(
@@ -1253,6 +1274,10 @@ class RolloutCollector(Node):
                 values, images = snapshot
                 self._validate_robot_health(values)
                 now_ns = time.monotonic_ns()
+                slot = self._slot_clock.poll(now_ns)
+                if slot is None:
+                    return
+                self._slot_id = slot
                 if self.demonstration and self._recording:
                     base_ns = self._latest["camera.base"][0]
                     previous = self._last_demo_images.get("base")
@@ -1298,10 +1323,10 @@ class RolloutCollector(Node):
                 if self._intervention:
                     if self.coordinator.mode == 'active' and getattr(self, '_input_action', None) is not None:
                         self.coordinator.accept(self._input_action, source=self.config.input_source,
-                                                generation=self.coordinator.generation, slot_id=time.monotonic_ns()*30//1_000_000_000)
+                                                generation=self.coordinator.generation, slot_id=self._slot_id)
                 else:
-                    self._publish_policy(values, 1/self.config.fps)
                     self._submit_policy(raw_state, images)
+                    self._publish_policy(values, 1/self.config.fps)
                 if self.coordinator.command_id != previous:
                     self._track_control(1/self.config.gamepad_control_rate)
                     self._record_frame(raw_state, values, images, now_ns)

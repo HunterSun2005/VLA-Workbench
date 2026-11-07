@@ -214,7 +214,6 @@ class FrankaRolloutPolicyServer:
         from vla.adapters.lerobot.action_runtime import ActionRuntime
         self.action_contract = checkpoint_contract(config.vla_pretrained_path)
         self.action_stride = self.action_contract["statistics"]["contract"]["sampling"]["frame_stride"]
-        self._hold_remaining = 0
         self.policy.action_runtime = ActionRuntime(self.action_contract)
         self.preprocessor, self.postprocessor = make_rlt_ac_pre_post_processors(config)
         self.device = get_safe_torch_device(args.device)
@@ -268,14 +267,13 @@ class FrankaRolloutPolicyServer:
                 raise ValueError(
                     f"RTC deployment task does not match --task: {rtc_task!r} != {self.task!r}"
                 )
-            self.policy.configure_rtc(
-                rtc_config,
-                fps=rtc_fps / self.action_stride,
-                action_queue_size_to_get_new_actions=self.rtc_queue_threshold,
-            )
+            # Only PI05 guidance configuration; execution queues belong to ROS.
+            self.policy._rtc_config = rtc_config
             self.rtc_enabled = True
             self.rtc_execution_horizon = int(rtc_config.execution_horizon)
         self.policy.reset()
+        from vla.control.plan_service import PlanGate
+        self.plan_gate = PlanGate()
         self.actions_stored_as = str(dataset_contract.get("actions_stored_as", ""))
         self.use_relative_actions = bool(
             policy_contract.get("use_relative_actions", True)
@@ -381,6 +379,9 @@ class FrankaRolloutPolicyServer:
     def contract(self) -> dict[str, Any]:
         contract = {
             "checkpoint_fingerprint": self.fingerprint,
+            "plan_horizons": {"vla": self.policy.config.chunk_exec_steps, "rlt": self.policy.config.chunk_length},
+            "frame_stride": self.action_stride,
+            "action_contract": self.action_contract,
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
             "camera_keys": self.camera_keys,
@@ -467,7 +468,6 @@ class FrankaRolloutPolicyServer:
             for key in ("run_uuid", "dataset_uuid"):
                 if header.get(key) != session.run[key]:
                     raise ValueError(f"online {key} mismatch")
-            self._hold_remaining = 0
             result = session.recover(progress_callback) if kind == "recover_online" else session.begin_episode()
             return {"kind": kind, "request_id": request_id, **result, **self.contract}, {}
         if kind == "episode_saved":
@@ -485,7 +485,6 @@ class FrankaRolloutPolicyServer:
                 raise ValueError(
                     "online episode dataset root does not match the policy server"
                 )
-            self._hold_remaining = 0
             metrics = self.online_session.process_saved_episode(
                 episode_id=int(header.get("episode_id", -1)),
                 outcome=str(header.get("outcome", "")),
@@ -501,173 +500,14 @@ class FrankaRolloutPolicyServer:
                 "warmup_steps": warmup_steps,
                 "warmup_remaining": max(0, warmup_steps - warmup_env_steps),
             }, {}
-        if kind != "infer":
-            raise ValueError(f"unsupported request kind: {kind!r}")
-        if getattr(self, "online_session", None) is not None:
-            self.online_session.require_ready()
-        expected_fingerprint = header.get("checkpoint_fingerprint")
-        if (
-            expected_fingerprint is not None
-            and expected_fingerprint != self.fingerprint
-        ):
-            raise ValueError(
-                "collector and server checkpoint fingerprints do not match"
-            )
-        task = str(header.get("task", ""))
-        accepted_tasks = getattr(self, "tasks", (self.task,))
-        if task not in accepted_tasks:
-            raise ValueError(
-                f"rollout task mismatch: server_tasks={accepted_tasks!r}, collector={task!r}"
-            )
-        reset_episode = bool(header.get("reset_episode", False))
-        requested_phase = str(header.get("phase", self.phase))
-        if (getattr(self, "online_session", None) is not None
-                and self.online_session.config.full_episode and requested_phase != "rl"):
-            raise ValueError("full-episode online RLT only accepts phase=rl")
-        phase_before = self.phase
-        if reset_episode:
-            self.policy.reset()
-        managed_mode = header.get("control_mode")
-        if managed_mode is not None:
-            if getattr(self, "online_session", None) is not None:
-                raise ValueError("managed control modes are inference-only")
-            version = int(header.get("mode_version", -1))
-            if managed_mode not in getattr(self, "control_modes", []):
-                raise ValueError("requested control mode is not available")
-            if version < 0 or version < self.mode_version:
-                raise ValueError("stale control mode version")
-            if version == self.mode_version and managed_mode != self.control_mode:
-                raise ValueError("control mode changed without a new version")
-            if version != self.mode_version or reset_episode:
-                self.policy.set_control_mode(managed_mode)
-                self.control_mode, self.mode_version = managed_mode, version
-            requested_phase = "rl" if managed_mode == "rlt" else "vla" if managed_mode == "vla" else requested_phase
-            if managed_mode != "auto":
-                self.phase = requested_phase
-        else:
-            self._set_phase(requested_phase, force=reset_episode)
-        self._infer_count += 1
-        log_every = getattr(self, "log_inference_every", 0)
-        trace_request = log_every > 0 and self._infer_count % log_every == 0
-        if trace_request:
-            print(
-                "Policy inference started "
-                f"id={request_id} requested_phase={requested_phase} "
-                f"reset_episode={reset_episode} phase_before={phase_before} "
-                f"applied_phase={self.phase}",
-                flush=True,
-            )
-
-        state = np.asarray(arrays.get("observation.state"), dtype=np.float32)
-        if state.shape != (self.state_dim,) or not np.isfinite(state).all():
-            raise ValueError(
-                f"observation.state must be finite with shape {(self.state_dim,)}, got {state.shape}"
-            )
-        observation: dict[str, np.ndarray] = {"observation.state": state,
-            "observation.anchor": np.asarray(arrays["observation.anchor"], dtype=np.float64)}
-        for key in self.camera_keys:
-            image = np.asarray(arrays.get(key))
-            expected_shape = tuple(self.camera_shapes_hwc[key])
-            if image.shape != expected_shape or image.dtype != np.uint8:
-                raise ValueError(
-                    f"{key} must be an HWC uint8 RGB image with shape {expected_shape}, "
-                    f"got {image.shape}/{image.dtype}"
-                )
-            observation[key] = image
-        hold_key = (task, managed_mode, getattr(self, 'mode_version', -1), requested_phase)
-        if reset_episode or hold_key != getattr(self, '_hold_key', None):
-            self._hold_remaining = 0
-        self._hold_key = hold_key
-        if getattr(self, '_hold_remaining', 0) > 0:
-            self._hold_remaining -= 1
-            cached_header, cached_actions = self._held_response
-            return {**cached_header, 'request_id':request_id}, {'action':cached_actions['action'].copy()}
-        inference_started = time.perf_counter()
-        action = self._predict_action(
-            observation=observation,
-            policy=self.policy,
-            device=self.device,
-            preprocessor=self.preprocessor,
-            postprocessor=self.postprocessor,
-            use_amp=self.use_amp,
-            task=header.get("task") or self.task,
-            robot_type=self.robot_type,
-        )
-        if hasattr(action, "detach"):
-            action = action.detach().cpu().numpy()
-        action_array = np.asarray(action, dtype=np.float32).reshape(-1)
-        if (
-            action_array.shape != (self.action_dim,)
-            or not np.isfinite(action_array).all()
-        ):
-            raise ValueError(
-                f"policy returned invalid action shape/value: {action_array.shape}"
-            )
-        metadata = self.policy.pop_step_metadata()
-        source_type = (
-            float(metadata.source_type)
-            if metadata is not None
-            else float(self.phase == "rl")
-        )
-        phase_value = (
-            float(metadata.phase) if metadata is not None else float(self.phase == "rl")
-        )
-        if not np.isfinite([source_type, phase_value]).all():
-            raise RuntimeError(
-                f"policy returned non-finite phase metadata for request id={request_id}"
-            )
-        if not 0.0 <= source_type <= 1.0 or not 0.0 <= phase_value <= 1.0:
-            raise RuntimeError(
-                "policy returned phase metadata outside [0, 1]: "
-                f"id={request_id} phase={phase_value} source_type={source_type}"
-            )
-        returned_phase = "rl" if phase_value > 0.5 else "vla"
-        if managed_mode is not None:
-            self.phase = returned_phase
-        if managed_mode != "auto" and returned_phase != requested_phase:
-            raise RuntimeError(
-                "policy metadata phase mismatch: "
-                f"id={request_id} requested={requested_phase} returned={returned_phase}"
-            )
-        if managed_mode != "auto" and requested_phase == "vla" and source_type > 0.5:
-            raise RuntimeError(
-                "policy metadata source mismatch: "
-                f"id={request_id} requested=vla but source_type={source_type}"
-            )
-        if trace_request:
-            action_parts = []
-            for arm_index in range(len(self.action_contract['action_spec']['arms'])):
-                width = self.action_dim // len(self.action_contract['action_spec']['arms'])
-                arm_action = action_array[width * arm_index : width * (arm_index + 1)]
-                action_parts.append(
-                    f"arm{arm_index}_target_head={np.round(arm_action[:3], 4).tolist()} "
-                    f"arm{arm_index}_gripper={float(arm_action[-1]):.4f}"
-                )
-            source = "RLT_ACTOR" if source_type > 0.5 else "VLA"
-            print(
-                "Policy inference completed "
-                f"id={request_id} returned_phase={returned_phase} source={source} "
-                f"inference_ms={(time.perf_counter() - inference_started) * 1000.0:.1f} "
-                + " ".join(action_parts),
-                flush=True,
-            )
-        response = (
-            {
-                "kind": "action",
-                "request_id": request_id,
-                "checkpoint_fingerprint": self.fingerprint,
-                "requested_phase": requested_phase,
-                "source_type": source_type,
-                "phase": phase_value,
-                **({"control_mode": managed_mode, "mode_version": self.mode_version,
-                    "probability": self.policy._ensure_modifier().phase_ctrl.last_probability}
-                   if managed_mode is not None else {}),
-            },
-            {"action": action_array},
-        )
-        self._held_response = response
-        self._hold_remaining = getattr(self, 'action_stride', 1)-1
-        return response
+        from vla.control.plan_service import control_message
+        from vla.adapters.lerobot.plan_inference import infer_plan
+        result = control_message(self, header)
+        if result is not None:
+            return result
+        if kind != 'plan':
+            raise ValueError('only protocol-v2 candidate plans are supported')
+        return infer_plan(self, header, arrays)
 
 
 
@@ -695,58 +535,12 @@ def serve(args: argparse.Namespace) -> None:
         if not socket_path.is_socket():
             raise FileExistsError(f"refusing to replace non-socket path: {socket_path}")
         socket_path.unlink()
-    stop = False
-
-    def request_stop(_signum, _frame) -> None:
-        nonlocal stop
-        stop = True
-
-    signal.signal(signal.SIGINT, request_stop)
-    signal.signal(signal.SIGTERM, request_stop)
-    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    from vla.web.policy_server import serve as serve_concurrent
     try:
-        server.bind(str(socket_path))
-        os.chmod(socket_path, 0o600)
-        server.listen(1)
-        server.settimeout(0.5)
-        print(f"Franka rollout policy server ready: {socket_path}", flush=True)
-        print(f"contract={policy_server.contract}", flush=True)
-        while not stop:
-            try:
-                connection, _ = server.accept()
-            except socket.timeout:
-                continue
-            with connection:
-                connection.settimeout(args.socket_timeout_s)
-                while not stop:
-                    try:
-                        header, arrays = recv_packet(connection)
-                    except (EOFError, ConnectionError, socket.timeout):
-                        break
-                    request_id = int(header.get("request_id", -1))
-                    try:
-                        progress_sender = (
-                            _TrainingProgressSender(connection, request_id)
-                            if header.get("kind") in {"episode_saved", "recover_online"}
-                            else None
-                        )
-                        response, response_arrays = policy_server.handle(
-                            header,
-                            arrays,
-                            progress_callback=progress_sender,
-                        )
-                        send_packet(connection, response, response_arrays)
-                    except Exception as error:
-                        try:
-                            _send_error(connection, request_id, error)
-                        except (BrokenPipeError, ConnectionError, OSError):
-                            break
+        serve_concurrent(policy_server, socket_path)
     finally:
-        server.close()
-        if getattr(policy_server, "online_session", None) is not None:
+        if policy_server.online_session is not None:
             policy_server.online_session.close()
-        if socket_path.is_socket():
-            socket_path.unlink()
 
 
 def main() -> None:

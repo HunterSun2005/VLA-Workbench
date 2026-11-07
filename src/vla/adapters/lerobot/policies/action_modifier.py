@@ -186,6 +186,9 @@ class RLTActionModifier(nn.Module):
             VLA phase:  (B, chunk_exec_steps, action_dim)
             RL phase:   (B, chunk_length, action_dim) in [-1, 1].
         """
+        n = self.chunk_length if self.is_rl_phase else self.chunk_exec_steps
+        self.plan_reference = vla_chunk[:, :n, :].detach().clone()
+        self.plan_context = {}
         phase_val = 1.0 if self.is_rl_phase else 0.0
         source_val = 0.0 if self.online_warmup else phase_val
 
@@ -207,6 +210,7 @@ class RLTActionModifier(nn.Module):
                 raise ValueError("RL phase requires prefix_tokens or precomputed z_rl")
             z_rl = self.rl_token.encode(prefix_tokens)
         state_vec = torch.cat([z_rl, proprio], dim=-1)
+        self.plan_context = {"state_vec": state_vec.detach().clone()}
         ref_flat = flatten_chunk(ref_chunk)
         if not self.vla_ref:
             # Hide the VLA reference from the actor: training ref-dropout

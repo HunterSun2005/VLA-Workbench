@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from vla_rollout_protocol import recv_packet, send_packet
+from vla.control.execution import PlanResponse, PlanRequest
 
 
 class _RemoteTrainingProgress:
@@ -90,7 +91,7 @@ class AsyncPolicyClient:
         self._requests: queue.Queue[
             tuple[dict[str, Any], dict[str, np.ndarray], float] | None
         ] = queue.Queue(1)
-        self._results: queue.Queue[PolicyResult] = queue.Queue()
+        self._results: queue.Queue[PlanResponse] = queue.Queue(1)
         self._error: BaseException | None = None
         self._lock = threading.Lock()
         self._pending = False
@@ -104,6 +105,9 @@ class AsyncPolicyClient:
             target=self._worker, name="franka-policy-client", daemon=True
         )
         self._thread.start()
+        self._controls = queue.Queue(1)
+        self._control_thread = threading.Thread(target=self._control_worker, name='policy-control', daemon=True)
+        self._control_thread.start()
 
     def set_control_mode(self, mode: str) -> None:
         if mode not in self.contract.get("control_modes", []):
@@ -127,139 +131,93 @@ class AsyncPolicyClient:
             raise RuntimeError(f"invalid policy server health response: {header}")
         return header
 
-    def submit(
-        self,
-        *,
-        state: np.ndarray,
-        images: dict[str, np.ndarray],
-        task: str,
-        phase: str,
-        reset_episode: bool = False,
-        anchor: np.ndarray | None = None,
-    ) -> int | None:
+    def submit(self, *, plan, state, images, task, phase, reset_episode=False, anchor=None):
         with self._lock:
             if self._closed:
-                raise RuntimeError("policy client is closed")
+                raise RuntimeError('policy client is closed')
             if self._error is not None:
-                raise RuntimeError(
-                    f"policy client failed: {self._error}"
-                ) from self._error
+                raise RuntimeError(f'policy client failed: {self._error}') from self._error
             if self._pending:
                 return None
-            request_id = self._next_request_id
-            self._next_request_id += 1
             self._pending = True
-            managed = ({"control_mode": self.control_mode, "mode_version": self.mode_version}
-                       if self.control_mode is not None else {})
-            if self.control_mode in ("vla", "rlt"):
-                phase = "rl" if self.control_mode == "rlt" else "vla"
-        arrays = {"observation.state": np.asarray(state, dtype=np.float32), **images}
-        if anchor is not None:
-            arrays["observation.anchor"] = np.asarray(anchor, dtype=np.float64)
-        self._requests.put(
-            (
-                {
-                    "kind": "infer",
-                    **managed,
-                    "request_id": request_id,
-                    "task": task,
-                    "phase": phase,
-                    "reset_episode": reset_episode,
-                    "checkpoint_fingerprint": self.contract["checkpoint_fingerprint"],
-                },
-                arrays,
-                time.monotonic(),
-            )
-        )
-        return request_id
+            self._next_request_id = max(self._next_request_id, plan.request_id+1)
+        header, arrays = plan.packet()
+        header.update(task=task, phase=phase, reset_episode=reset_episode,
+                      checkpoint_fingerprint=self.contract['checkpoint_fingerprint'])
+        if self.control_mode is not None:
+            header.update(control_mode=self.control_mode, mode_version=self.mode_version)
+        arrays.update({'observation.state': np.asarray(state, dtype=np.float32), **images})
+        self._requests.put_nowait((header, arrays, time.monotonic()))
+        return plan.request_id
 
-    def _worker(self) -> None:
+    def _worker(self):
         try:
             while True:
-                request = self._requests.get()
-                if request is None:
+                item = self._requests.get()
+                if item is None:
                     return
-                header, arrays, submitted_at = request
-                # One connection per request avoids reusing a server-side socket
-                # that may have expired while the collector was between episodes.
+                header, arrays, _ = item
                 with self._connect() as connection:
                     send_packet(connection, header, arrays)
-                    response, response_arrays = recv_packet(connection)
-                if response.get("kind") == "error":
-                    raise RuntimeError(
-                        f"policy server {response.get('error_type')}: {response.get('error')}"
-                    )
-                if response.get("kind") != "action":
-                    raise RuntimeError(f"invalid policy server response: {response}")
-                if int(response.get("request_id", -1)) != int(header["request_id"]):
-                    raise RuntimeError(
-                        "policy server response request_id does not match the request"
-                    )
-                if response.get("checkpoint_fingerprint") != self.contract.get(
-                    "checkpoint_fingerprint"
-                ):
-                    raise RuntimeError("policy server checkpoint fingerprint changed")
-                if "control_mode" in header and (
-                    response.get("control_mode") != header["control_mode"]
-                    or response.get("mode_version") != header["mode_version"]
-                ):
-                    raise RuntimeError("policy control mode acknowledgement mismatch")
-                action = np.asarray(response_arrays.get("action"), dtype=np.float32)
-                received_at = time.monotonic()
-                self._results.put(
-                    PolicyResult(
-                        request_id=int(response["request_id"]),
-                        action=action,
-                        requested_phase=str(header["phase"]),
-                        reset_episode=bool(header["reset_episode"]),
-                        phase=float(response["phase"]),
-                        source_type=float(response["source_type"]),
-                        checkpoint_fingerprint=str(response["checkpoint_fingerprint"]),
-                        latency_s=received_at - submitted_at,
-                        received_at=received_at,
-                        control_mode=response.get("control_mode"),
-                        mode_version=int(response.get("mode_version", -1)),
-                        probability=response.get("probability"),
-                    )
-                )
+                    response, values = recv_packet(connection)
                 with self._lock:
-                    self._pending = False
+                    stale = header['request_id'] < self._min_valid_request_id
+                if stale:
+                    with self._lock:
+                        self._pending = False
+                    continue
+                if response.get('kind') != 'plan_result':
+                    raise RuntimeError(f'invalid candidate response: {response}')
+                plan = PlanResponse.from_packet(response, values)
+                if plan.request.identity != PlanRequest.from_packet(header, arrays).identity:
+                    raise ValueError('response identity mismatch')
+                self._results.put_nowait(plan)
         except BaseException as error:
             with self._lock:
                 self._error = error
                 self._pending = False
 
-    def poll_latest(self) -> PolicyResult | None:
-        latest = None
-        while True:
-            try:
-                candidate = self._results.get_nowait()
-                with self._lock:
-                    minimum = self._min_valid_request_id
-                if candidate.request_id >= minimum:
-                    latest = candidate
-                else:
-                    print(
-                        "Discarded stale policy response "
-                        f"id={candidate.request_id} "
-                        f"requested_phase={candidate.requested_phase} "
-                        f"minimum_valid_id={minimum}",
-                        flush=True,
-                    )
-            except queue.Empty:
-                return latest
+    def poll_latest(self):
+        try:
+            candidate = self._results.get_nowait()
+        except queue.Empty:
+            return None
+        with self._lock:
+            self._pending = False
+            return candidate if candidate.request.request_id >= self._min_valid_request_id else None
 
-    def invalidate(self) -> None:
-        """Ignore queued replies and force the next request to use a fresh observation."""
+    def invalidate(self, session_id=None, generation=None):
         with self._lock:
             self._min_valid_request_id = self._next_request_id
-        while self.poll_latest() is not None:
-            pass
+        self.poll_latest()
+        if session_id is not None:
+            message = {'kind': 'invalidate', 'session_id': session_id, 'generation': generation}
+            try:
+                self._controls.get_nowait()
+            except queue.Empty:
+                pass
+            self._controls.put_nowait(message)
+
+    def _control_worker(self):
+        try:
+            while True:
+                message = self._controls.get()
+                if message is None:
+                    return
+                with self._connect() as connection:
+                    send_packet(connection, message)
+                    header, _ = recv_packet(connection)
+                    if header.get('kind') != message['kind']:
+                        raise RuntimeError(f'control message failed: {header}')
+        except BaseException as error:
+            with self._lock:
+                self._error = error
 
     def _wait_for_idle(self, timeout_s: float) -> None:
         deadline = time.monotonic() + timeout_s
         while True:
             self.raise_if_failed()
+            self.poll_latest()
             with self._lock:
                 pending = self._pending
             if not pending:
@@ -402,3 +360,10 @@ class AsyncPolicyClient:
             except queue.Full:
                 pass
         self._thread.join(timeout=self.timeout_s + 1.0)
+
+        try:
+            self._controls.get_nowait()
+        except queue.Empty:
+            pass
+        self._controls.put_nowait(None)
+        self._control_thread.join(timeout=self.timeout_s+1)

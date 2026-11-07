@@ -122,7 +122,7 @@ def test_production_teaching_parquet_replay(models, tmp_path, space, arms, sourc
             if tick == 90:
                 reset(replay, 'policy')
             if tick in rows:
-                replay.accept(decoded[tick], source='policy', generation=replay.generation)
+                replay.accept(decoded[tick], source='policy', generation=replay.generation, slot_id=tick)
             replay.tick(.01)
         assert len(actual) == len(expected) == 150*len(arms)
         np.testing.assert_allclose([x[1] for x in actual], [x[1] for x in expected], atol=1e-5, rtol=0)
@@ -144,7 +144,7 @@ def test_fk_tool_composition_clipping_and_finite_ik(models):
     assert np.isfinite(q).all()
     assert np.all(q >= models['left'].lower_limits) and np.all(q <= models['left'].upper_limits)
     joint, _, out = make_rig(models, 'joint', ('left',), 'human')
-    joint.accept(np.r_[np.full(7, 100.), .5], source='human', generation=joint.generation)
+    joint.accept(np.r_[np.full(7, 100.), .5], source='human', generation=joint.generation, slot_id=0)
     joint.tick()
     np.testing.assert_array_equal(out[-1][1], models['left'].upper_limits)
 
