@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import socket
+from vla.core.lease_metadata import release_owned_streams
 
 
 class WriterLease:
@@ -44,9 +45,7 @@ class WriterLease:
             raise ValueError("writer lease does not cover this root")
 
     def close(self):
-        while self._streams:
-            stream = self._streams.pop()
-            stream.close()
+        release_owned_streams(self._streams)
 
     def __enter__(self):
         return self

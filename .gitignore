@@ -53,3 +53,5 @@ recordings/
 *.log
 *.mcap
 *.bag
+# Stable runtime flock inodes; dependency *.lock files remain tracked.
+.*.rlt-writer.lock

@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from vla.core.lease_metadata import release_owned_streams
 
 
 class HardwareLease:
@@ -40,8 +41,7 @@ class HardwareLease:
 
     def close(self):
         # Never unlink flock files: another process may already be waiting on the inode.
-        while self._streams:
-            self._streams.pop().close()
+        release_owned_streams(self._streams)
 
     def __enter__(self):
         return self

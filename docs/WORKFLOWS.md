@@ -52,3 +52,7 @@ vla-deploy-franka-pi05-rtc --arms single_left --policy-path outputs/sft/task_run
 ## 执行耗尽与保存恢复
 
 策略耗尽进入等待恢复，使用终端 `e`／Web 启用明确恢复；迟到结果不会恢复运动。存储阻塞保留回合，先重试保存或显式丢弃，存储恢复不会启动运动。重启后的 staging 可用 `vla-recover-episode` 检查及恢复。只支持 schema 5、新模型契约和 Replay 4；详见 [协议、数据及验证命令](EXECUTION_RTC_RLT.md)。
+
+## 锁文件报错
+
+运行 `python3 scripts/check_locks.py` 查看真实锁状态。Git index 锁确认废弃后可用 `--clear-stale-index` 保守清理；运行时 `flock` 文件保留是正常设计，不应直接删除。完整说明见 [锁文件诊断与恢复](LOCKS.md)。
