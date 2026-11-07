@@ -10,7 +10,7 @@ from vla.adapters.lerobot.action_runtime import ActionRuntime
 def infer_plan(server, header, arrays, *, sft=False):
     from lerobot.policies.utils import prepare_observation_for_inference
     request = PlanRequest.from_packet(header, arrays)
-    fingerprint = server.fingerprint
+    fingerprint = server.contract.get('model_version', server.fingerprint)
     if request.model_version != fingerprint:
         raise ValueError('wrong plan model version')
     contract = server.contract
@@ -43,21 +43,24 @@ def infer_plan(server, header, arrays, *, sft=False):
         if not sft:
             ctrl = policy._ensure_modifier().phase_ctrl
             phase_snapshot = deepcopy(ctrl.__dict__)
-            if (getattr(server, '_plan_mode', None) != mode or header.get('reset_episode')):
-                if getattr(server, 'online_session', None) is not None:
-                    server.online_session.require_ready()
-                    server._set_phase('rl' if mode == 'rlt' else 'vla', force=True)
-                else:
-                    policy.set_control_mode(mode)
-                server._plan_mode = mode
-        runtime = ActionRuntime(server.action_contract)
-        device = torch.device(server.device)
-        pre = server.pre if sft else server.preprocessor
-        prepared = prepare_observation_for_inference(observation, device, task, server.robot_type)
-        prefix = torch.as_tensor(request.prefix.copy(), device=device, dtype=torch.float32)
-        encoded = runtime.encode(prefix, prepared)
-        precision = torch.autocast('cuda') if getattr(server, 'use_amp', False) and device.type == 'cuda' else nullcontext()
         try:
+            if not sft:
+                if (getattr(server, '_plan_mode', None) != mode or getattr(server, '_plan_generation', None) != (request.session_id, request.generation)
+                        or header.get('reset_episode')):
+                    if getattr(server, 'online_session', None) is not None:
+                        server.online_session.require_ready()
+                        server._set_phase('rl' if mode == 'rlt' else 'vla', force=True)
+                    else:
+                        policy.set_control_mode(mode)
+                    server._plan_mode = mode
+                    server._plan_generation = (request.session_id, request.generation)
+            runtime = ActionRuntime(server.action_contract)
+            device = torch.device(server.device)
+            pre = server.pre if sft else server.preprocessor
+            prepared = prepare_observation_for_inference(observation, device, task, server.robot_type)
+            prefix = torch.as_tensor(request.prefix.copy(), device=device, dtype=torch.float32)
+            encoded = runtime.encode(prefix, prepared)
+            precision = torch.autocast('cuda') if getattr(server, 'use_amp', False) and device.type == 'cuda' else nullcontext()
             with torch.no_grad(), precision:
                 batch = pre(prepared)
                 chunk = policy.predict_action_chunk(batch, inference_delay=request.start_idx,
@@ -74,6 +77,8 @@ def infer_plan(server, header, arrays, *, sft=False):
                         raise ValueError('missing per-action provenance')
                     sources = tuple('actor' if m.source_type > .5 else 'vla' for m in metadata)
                     phases = tuple(int(m.phase > .5) for m in metadata)
+                    if mode == 'vla' and ('actor' in sources or any(phases)):
+                        raise ValueError('VLA mode returned Actor/critical-phase provenance')
                     reference = runtime.decode(mod.plan_reference, prepared)[0].cpu().numpy()
                     context = {k: v.detach().cpu().numpy() for k, v in mod.plan_context.items()}
                 result = PlanResponse(request, absolute, sources, phases, reference, context)

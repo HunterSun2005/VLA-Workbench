@@ -153,27 +153,16 @@ class TestValidateFeatures:
         assert "action" in cfg.output_features
 
 
-def test_action_chunk_queue_and_reset(monkeypatch):
+def test_candidate_chunk_and_reset_do_not_own_execution():
     policy = _make_policy_with_dummy_vla(chunk_length=5)
     batch = _make_batch()
-    predict = policy.predict_action_chunk
-    chunks = []
-
-    def capture(batch):
-        chunk = predict(batch)
-        assert chunk.shape == (1, 5, 12)
-        chunks.append(chunk.detach().clone())
-        return chunk
-
-    monkeypatch.setattr(policy, "predict_action_chunk", capture)
-    actions = torch.stack([policy.select_action(batch) for _ in range(5)], dim=1)
-    assert len(chunks) == 1
-    torch.testing.assert_close(actions, chunks[0])
-    policy.select_action(batch)
-    assert len(chunks) == 2 and len(policy.modifier._action_queue) > 0
+    chunk = policy.predict_action_chunk(batch)
+    assert chunk.shape == (1, 5, 12)
+    assert len(policy.modifier._step_metadata) == 5
+    with pytest.raises(RuntimeError, match='ROS executor'):
+        policy.select_action(batch)
     policy.reset()
-    assert len(policy.modifier._action_queue) == 0
-    # Reset returns to VLA; the episode owner explicitly restores its mode.
+    assert not policy.modifier._step_metadata
+    assert not hasattr(policy.modifier, '_action_queue')
     policy.set_rl_mode()
-    policy.select_action(batch)
-    assert len(chunks) == 3
+    assert policy.predict_action_chunk(batch).shape == (1, 5, 12)

@@ -375,26 +375,8 @@ class RLTPretrainedPolicy(PreTrainedPolicy):
         # Compute chunk (VLA pass-through or RL Actor)
         return self.modifier.compute_chunk(vla_chunk, proprio, prefix_tokens)
 
-    @torch.no_grad()
-    def select_action(
-        self, batch: dict[str, Tensor], **kwargs: Unpack[ActionSelectKwargs]
-    ) -> Tensor:
-        """Return a single-step action, using internal chunk queue.
-
-        When the modifier's action queue is empty a full VLA forward is run,
-        prefix tokens are captured via hook, and the modifier computes a new
-        chunk (VLA pass-through or Actor-refined depending on phase).
-
-        Returns:
-            action: (B, action_dim)
-        """
-        if self.modifier.needs_new_chunk:
-            chunk = self.predict_action_chunk(batch, **kwargs)
-            if self.action_runtime is not None:
-                chunk = self.action_runtime.decode(chunk, batch)
-            self.modifier.enqueue(chunk)
-
-        return self.modifier.pop_action()
+    def select_action(self, batch, **kwargs):
+        raise RuntimeError('single-action inference is unsupported; use protocol-v2 plans with the ROS executor')
 
     # ------------------------------------------------------------------
     # Phase control delegation (duck-typed for recording_loop)

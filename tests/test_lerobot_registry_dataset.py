@@ -9,15 +9,8 @@ from vla.adapters.lerobot.policies.dataset_rlt_ac import ChunkTransitionDataset
 def test_register_loads_chunk_transition_dataset_from_cache_dir(tmp_path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    torch.save(
-        [
-            {
-                "state_vec": torch.zeros(3),
-                "exec_chunk": torch.zeros(2, 1),
-            }
-        ],
-        cache_dir / "chunk_transitions_train.pt",
-    )
+    from tests.rlt.test_cache_manifest_ac import _make_cache
+    _make_cache(cache_dir)
 
     from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
 
@@ -28,5 +21,5 @@ def test_register_loads_chunk_transition_dataset_from_cache_dir(tmp_path):
     assert eval_dataset is None
 
     assert isinstance(dataset, ChunkTransitionDataset)
-    assert len(dataset) == 1
-    assert dataset[0]["state_vec"].shape == (3,)
+    assert len(dataset) == 3
+    assert dataset[0]["state_vec"].shape == (42,)

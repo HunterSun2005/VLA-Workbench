@@ -79,7 +79,7 @@ def test_trainable_steps_deduplicate_overlap_and_batch_gates_activation(tmp_path
     session = session_at(tmp_path)
     session.config.batch_size = 3
     try:
-        records = [ReplayTransitionRecord(i, _transition()) for i in (0, 2)]
+        records = [ReplayTransitionRecord(i, _transition(i)) for i in (0, 2)]
         commit(session, "a", records)
         commit(session, "a", records)
         assert session.replay.trainable_env_steps == 6
@@ -88,7 +88,7 @@ def test_trainable_steps_deduplicate_overlap_and_batch_gates_activation(tmp_path
         commit(session, "b", [ReplayTransitionRecord(10, _transition())])
         session._drain_pending()
         assert not session.is_warmup
-        assert session.scheduler.critic_updates == 15
+        assert session.scheduler.critic_updates == 50
         session._restore_checkpoint(session.replay.active_checkpoint)
         assert not session.is_warmup
     finally:
@@ -149,9 +149,10 @@ def test_offline_cache_applies_human_reference_without_changing_next_proposal():
     from vla.cli.build_transition_cache_v2 import _encoded_to_transitions
     encoded = {i: {"state_vec": torch.zeros(2), "exec_chunk": torch.ones(4, 2),
         "ref_chunk": torch.zeros(4, 2)} for i in range(5)}
-    result = _encoded_to_transitions(encoded, list(range(5)), 4, 4, True, 0,
-        frame_annotations={1: {"is_intervention": 1}, 3: {"collector_policy_id": 0}})
-    assert result[0]["ref_chunk"][:, 0].tolist() == [0, 1, 0, 1]
+    from tests.rlt.execution_fixtures import encoded_anchors, human_rows
+    result = _encoded_to_transitions(encoded_anchors(encoded), list(range(5)), 4, 4, True, 0,
+        frame_annotations=human_rows(5))
+    assert result[0]["ref_chunk"][:, 0].tolist() == [1, 1, 1, 1]
     assert not result[0]["next_ref_chunk"].any()
 
 
@@ -198,6 +199,7 @@ def native_policy():
     policy.actor, policy.critic, policy.target_critic = base.actor, base.critic, base.target_critic
     policy.register_buffer("_critic_step", torch.zeros((), dtype=torch.long))
     object.__setattr__(policy, "_rl_token_policy", None)
+    policy.execution_projection = base.execution_projection
     return policy
 
 

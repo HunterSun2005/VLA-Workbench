@@ -43,8 +43,8 @@ def test_full_episode_trains_only_after_a_full_batch(tmp_path):
                 records=[ReplayTransitionRecord(0, _transition())], utd_ratio=5,
                 checkpoint=session._save_checkpoint())
             session._drain_pending()
-            assert session.scheduler.critic_updates == (0 if episode_id == 0 else 10)
-        assert session.scheduler.actor_updates == 5
+            assert session.scheduler.critic_updates == (0 if episode_id == 0 else 40)
+        assert session.scheduler.actor_updates == 20
         assert session.replay.actor_enabled
         assert session.replay.warmup_env_steps == 0
     finally:
@@ -59,7 +59,7 @@ def test_server_rejects_vla_request_in_full_episode_mode():
         config=SimpleNamespace(full_episode=True))
     server.task, server.phase = "test", "rl"
     with pytest.raises(ValueError, match="only accepts phase=rl"):
-        server.handle({"kind": "infer", "task": "test", "phase": "vla"}, {})
+        server.handle({"kind": "plan", "task": "test", "phase": "vla"}, {})
 
 
 

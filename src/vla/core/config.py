@@ -57,10 +57,17 @@ class DemoAdaptConfig:
 class TrainingConfig:
     gamma: float = 0.99
     beta: float = 1.0
+    prefix_bc_weight: float | None = None
     tau: float = 0.005
     batch_size: int = 256
     utd_ratio: int = 5
     actor_update_interval: int = 2
+
+
+    def __post_init__(self):
+        self.prefix_bc_weight = self.beta if self.prefix_bc_weight is None else self.prefix_bc_weight
+        if self.prefix_bc_weight < 0:
+            raise ValueError('prefix_bc_weight must be nonnegative')
 
 
 @dataclass

@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 class HandoverCacheDataset(Dataset):
     def __init__(self, cache_dir: str | Path, split: str, *, rl_token_dim: int) -> None:
-        self.transitions = ChunkTransitionDataset(cache_dir, split=split)
+        self.transitions = ChunkTransitionDataset(cache_dir, split=split, handover_only=load_cache_manifest(Path(cache_dir)/'cache_manifest.json')['contract']['cache'].get('kind') == HANDOVER_CACHE_KIND)
         self.rl_token_dim = int(rl_token_dim)
 
     def __len__(self) -> int:

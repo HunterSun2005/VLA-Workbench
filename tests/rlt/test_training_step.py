@@ -119,6 +119,7 @@ def test_lerobot_ac_actor_loss_does_not_add_critic_grads(batch):
         tau=0.005,
         actor_update_interval=2,
         beta=1.0,
+        prefix_bc_weight=1.0,
         target_q_clip=100.0,
     )
     policy.actor = ChunkActor(STATE_DIM, CHUNK_DIM, hidden_dim=32, num_layers=2)
@@ -131,6 +132,9 @@ def test_lerobot_ac_actor_loss_does_not_add_critic_grads(batch):
     lerobot_batch["ref_chunk"] = lerobot_batch.pop("ref_chunk_flat").view(-1, C, ACTION_DIM)
     lerobot_batch["next_ref_chunk"] = lerobot_batch.pop("next_ref_flat").view(-1, C, ACTION_DIM)
 
+    from tests.rlt.execution_fixtures import execution_context
+    execution_context(lerobot_batch)
+    policy.execution_projection = lambda mu, anchor: mu.clamp(-1, 1)
     critic_only = copy.deepcopy(policy.critic)
     target_only = copy.deepcopy(policy.target_critic)
     actor_only = copy.deepcopy(policy.actor)

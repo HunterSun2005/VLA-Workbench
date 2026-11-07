@@ -30,6 +30,9 @@ def timed_rows(length=7, *, terminal=True):
             "observed_at_ns": 1_000_000_000 + index * 33_333_333,
             "command_at_ns": 1_001_000_000 + index * 33_333_333,
             "command_id": index, "segment_id": 0,
+            "slot_id": index, "submitted_at_ns": 1_002_000_000+index*33_333_333,
+            "supervision_valid": 1, "observation_valid": 1, "plan_version": 1, "action_index": index,
+            "task_terminal": int(terminal and index == length-1),
             "action_valid": int(index < length - 1),
             "segment_terminal": int(terminal and index == length - 1),
         } for index in range(length)
@@ -84,7 +87,7 @@ def test_run_identity_and_contract_cannot_be_reused(tmp_path):
         bind_run(tmp_path / "a", {"warmup": 2000, "task": "a"}, resume=True)
     with pytest.raises(ValueError, match="legacy"):
         load_run(tmp_path / "old")
-    with pytest.raises(ValueError, match="schema-4"):
+    with pytest.raises(ValueError, match="schema-5"):
         reject_unaligned_offline_dataset({"recording_schema_version": 4})
     weights = tmp_path / "weights"
     weights.mkdir()
@@ -123,7 +126,7 @@ def save_episode(session):
         root, 30, "test", ("observation.images.camera",), 2, 2,
         state_fields=("x", "y"), action_fields=("x", "y"),
         extra_features={**EXTRA_FEATURES, **TIMING_FEATURES},
-        info_metadata={"recording_schema_version": 4, "run_uuid": session.run["run_uuid"], "dataset_uuid": session.run["dataset_uuid"]},
+        info_metadata={"recording_schema_version": 5, "run_uuid": session.run["run_uuid"], "dataset_uuid": session.run["dataset_uuid"]},
     )
     video = writer.video_path(0, "observation.images.camera")
     video.parent.mkdir(parents=True, exist_ok=True)
@@ -163,10 +166,10 @@ def test_saved_episode_is_durable_outbox_and_endpoints_do_not_pollute_stats(tmp_
         assert stats["action"]["max"] == [3.0, 4.0]
         assert session.recover()["online_status"] == "READY"
         assert len(session.replay) == 1
-        assert (session.scheduler.critic_updates, session.scheduler.actor_updates) == (5, 2)
+        assert (session.scheduler.critic_updates, session.scheduler.actor_updates) == (20, 10)
         result = session.process_saved_episode(episode_id=0, outcome="success")
         assert result["duplicate"]
-        assert session.replay.produced_credits == 5
+        assert session.replay.produced_credits == 20
         assert writer.frame_count == 3
     finally:
         session.replay.close()
@@ -197,7 +200,7 @@ def test_actor_failure_locks_session_and_recovery_matches_baseline(tmp_path, mon
         baseline_checkpoint = session.replay.active_checkpoint
         assert session.recover()["online_status"] == "READY"
         recovered = copy.deepcopy(session._model_state())
-        assert (session.scheduler.critic_updates, session.scheduler.actor_updates) == (5, 2)
+        assert (session.scheduler.critic_updates, session.scheduler.actor_updates) == (20, 10)
         # Build the uninterrupted baseline from the same durable pre-training state.
         session.replay._set_state("consumed_credits", "0")
         session.replay._set_state("critic_updates", "0")
@@ -250,7 +253,7 @@ def test_checkpoint_failure_before_or_after_replay_commit_is_recoverable(tmp_pat
         assert len(session.replay) == int(fail_save == 2)
         session._save_checkpoint = original
         assert session.recover()["online_status"] == "READY"
-        assert (session.replay.produced_credits, session.replay.critic_updates, session.replay.actor_updates) == (5, 5, 2)
+        assert (session.replay.produced_credits, session.replay.critic_updates, session.replay.actor_updates) == (20, 20, 10)
     finally:
         session.replay.close()
 
@@ -268,7 +271,7 @@ def test_encoding_failure_then_retry_reconciles_dataset(tmp_path, monkeypatch):
         assert len(session.replay) == 0
         mock_encoding(monkeypatch, session)
         assert session.recover()["online_status"] == "READY"
-        assert session.replay.produced_credits == 5
+        assert session.replay.produced_credits == 20
     finally:
         session.replay.close()
 
@@ -289,7 +292,7 @@ def test_committed_replay_survives_lost_in_memory_mirror(tmp_path, monkeypatch):
         session.replay.commit_episode = original
         assert session.recover()["online_status"] == "READY"
         assert len(session.replay) == 1
-        assert session.replay.actor_updates == 2
+        assert session.replay.actor_updates == 10
     finally:
         session.replay.close()
 
@@ -323,7 +326,7 @@ def test_server_refuses_inference_while_training_faulted(tmp_path):
         server = object.__new__(FrankaRolloutPolicyServer)
         server.online_session = session
         with pytest.raises(RuntimeError, match="FAULTED"):
-            server.handle({"kind": "infer"}, {})
+            server.handle({"kind": "plan"}, {})
         with pytest.raises(ValueError, match="run_uuid"):
             server.handle({"kind": "recover_online", "run_uuid": "other"}, {})
     finally:
@@ -333,45 +336,40 @@ def test_server_refuses_inference_while_training_faulted(tmp_path):
 
 
 @pytest.mark.parametrize('action_stride', [1, 2, 4])
-def test_timed_encoder_assembles_actions_without_crossing_endpoints(action_stride):
-    from tests.rlt.test_online_training import _FakeDataset, _FakeHFDataset, _FakeCapture, _FakePI05, _FakeRLToken
+def test_timed_encoder_assembles_actions_without_crossing_endpoints(action_stride, tmp_path):
+    from tests.rlt.test_execution_learning import recorded_plan, contract
     from vla.core.online_training import encode_saved_episode
-
-    rows = timed_rows(7)
-    class HFDataset(_FakeHFDataset):
-        def __init__(self):
-            super().__init__()
-            for name in TIMING_FEATURES:
-                self.values[name] = [[row[name.removeprefix("complementary_info.")]] for row in rows.values()]
-            self.column_names = list(self.values)
-
-        def __getitem__(self, index):
-            return {"action": [float(index + 1)] * 2}
-
-    dataset = _FakeDataset()
-    dataset.hf_dataset = HFDataset()
+    from vla.core.online_contract import TIMING_FIELDS, durable_json, file_digest
+    rows, events = recorded_plan()
+    plan = events[0][1]
+    plan['request']['frame_stride'] = action_stride
+    expanded = []
+    for i in range(10*action_stride+1):
+        row = dict(rows[min(i//action_stride, 10)])
+        row.update(slot_id=i, action_index=i//action_stride,
+                   observed_at_ns=1_000_000_000+i*33_333_333,
+                   command_at_ns=1_000_100_000+i*33_333_333)
+        expanded.append(row)
+    raw = [{**{'complementary_info.'+k: [row.get(k, 0)] for k in (*TIMING_FIELDS, 'collector_policy_id', 'phase', 'is_intervention')},
+            'action': row['action'], 'observation.anchor': row['anchor']} for row in expanded]
+    audit = tmp_path/'execution'/'episode-000000'
+    durable_json(audit/'events.json', {'schema_version': 5, 'events': events})
+    durable_json(audit/'manifest.json', {'schema_version': 5, 'episode_index': 0,
+                 'files': {'events.json': file_digest(audit/'events.json')}})
+    dataset = SimpleNamespace(root=tmp_path, meta=SimpleNamespace(root=tmp_path), hf_dataset=raw)
     records, steps = encode_saved_episode(
-        dataset=dataset, episode_id=0, episode_start=0, episode_stop=7,
-        episode_success=True, warmup=True, pi05=_FakePI05(), rl_token=_FakeRLToken(),
-        preprocessor=lambda batch: batch, capture=_FakeCapture(), chunk_length=4, stride=2,
-        action_dim=2, proprio_dim=2, batch_size=1, num_workers=0, device="cpu",
-        task_instruction=None, require_timing=True, fps=30, action_stride=action_stride,
-    )
-    assert steps == 6
-    first = records[0].transition
-    last = records[-1].transition
-    if action_stride == 1:
-        assert first['exec_chunk'][:, 0].tolist() == [1, 2, 3, 4]
-        assert last['exec_chunk'][:, 0].tolist() == [3, 4, 5, 6]
-    else:
-        assert len(records) == 1
-        expected = [1, 3, 5, 0] if action_stride == 2 else [1, 5, 0, 0]
-        assert first['exec_chunk'][:, 0].tolist() == expected
-        assert first['actual_steps'].item() == (6 + action_stride - 1)//action_stride
-        assert first['elapsed_steps'].item() == 6
-        assert first['reward_offsets'][first['actual_steps']-1].item() == 5
-    assert last['next_state_vec'][-2:].tolist() == [6, 0]
-    assert last['done'].item() == 1
+        dataset=dataset, episode_id=0, episode_start=0, episode_stop=len(raw),
+        episode_success=True, warmup=False, pi05=None, rl_token=None, preprocessor=None,
+        capture=None, chunk_length=10, stride=1, action_dim=8, proprio_dim=2,
+        batch_size=1, num_workers=0, device='cpu', task_instruction=None,
+        require_timing=True, action_stride=action_stride, execution_contract=contract())
+    item, = [record.transition for record in records]
+    assert item['prefix_mask'].sum() == item['actor_mask'].sum() == 5
+    assert item['interval_slot_ids'].tolist() == list(range(10*action_stride))
+    assert item['reward_seq'].sum() == 1 and item['done'] == 1
+    assert item['reward_offsets'][-1] == pytest.approx(10*action_stride-1, abs=1e-5)
+    np.testing.assert_allclose(item['absolute_exec_chunk'][:5, :7], 0)
+    np.testing.assert_allclose(item['absolute_exec_chunk'][5:, :7], .2)
 
 
 def test_client_restarts_failed_worker_only_after_server_recovery(monkeypatch):
@@ -466,6 +464,7 @@ def test_full_session_start_and_resume_without_gpu_or_robot(tmp_path, monkeypatc
         proprio_dim: int = 2
         rl_token_dim: int = 3
         gamma: float = 0.99
+        prefix_bc_weight: float = 0.3
         beta: float = 0.3
         tau: float = 0.005
         target_q_clip: float = 100

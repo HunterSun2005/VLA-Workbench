@@ -64,6 +64,7 @@ class ChunkACConfig(PreTrainedConfig):
     # --- TD3+BC hyperparams ---
     gamma: float = 0.99
     beta: float = 0.3
+    prefix_bc_weight: float | None = None
     tau: float = 0.005
     utd_ratio: int = 5
     actor_update_interval: int = 2
@@ -116,6 +117,9 @@ class ChunkACConfig(PreTrainedConfig):
         return load_concrete_policy_config(cls, pretrained_name_or_path, **kwargs)
 
     def __post_init__(self) -> None:
+        self.prefix_bc_weight = self.beta if self.prefix_bc_weight is None else self.prefix_bc_weight
+        if self.prefix_bc_weight < 0:
+            raise ValueError('prefix_bc_weight must be nonnegative')
         from pathlib import Path
         import json
         contract_path = Path(self.vla_pretrained_path) / 'config.json'
@@ -124,8 +128,16 @@ class ChunkACConfig(PreTrainedConfig):
             if self.action_contract is not None and source_contract != self.action_contract:
                 raise ValueError('RLT action contract differs from SFT checkpoint')
             self.action_contract = source_contract
+            if source_contract is None or source_contract.get('version') != 2:
+                raise ValueError('A/C requires SFT model action contract v2')
         self.ensure_registered()
         self._apply_cache_contract()
+        if self.action_contract is not None:
+            if self.action_contract.get('version') != 2:
+                raise ValueError('A/C requires model action contract v2')
+            reference_horizon = self.action_contract['statistics']['contract']['sampling']['chunk_length']
+            if not 1 <= self.chunk_length <= reference_horizon:
+                raise ValueError('Actor horizon must fit the reference model sampling horizon')
         apply_rlt_schema_file(self)
         super().__post_init__()
         if self.phase_mode not in ("always_rl", "always_vla", "manual", "learned"):

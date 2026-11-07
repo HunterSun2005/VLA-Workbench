@@ -20,6 +20,8 @@ class VLAPI05Config(PI05Config):
             _, _, self.action_contract = load_model_contract(Path(self.action_contract_path))
         if self.action_contract is None:
             raise ValueError('VLA PI05 requires action_contract_path or a saved action_contract')
+        if self.action_contract.get('version') != 2:
+            raise ValueError('VLA PI05 requires model action contract v2')
         spec = ActionSpec.from_dict(self.action_contract['action_spec'])
         stats = self.action_contract['statistics']
         sampling = SamplingSpec(**stats['contract']['sampling'])

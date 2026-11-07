@@ -198,6 +198,8 @@ class FrankaRolloutPolicyServer:
         self.policy_path = pathlib.Path(args.policy_path).expanduser().resolve()
         self.fingerprint = _checkpoint_fingerprint(self.policy_path)
         config = ChunkACConfig.from_pretrained(self.policy_path)
+        from vla.core.training_contract import validate_training_cache
+        validate_training_cache(config.cache_contract or {})
         config.device = args.device
         if getattr(args, "handover_path", None):
             config.handover_pretrained_path = args.handover_path
@@ -246,7 +248,9 @@ class FrankaRolloutPolicyServer:
         self.fps = float(dataset_contract.get("fps", 0.0))
         if self.fps <= 0:
             raise ValueError("checkpoint cache contract has invalid fps")
-        self.rtc_enabled = False
+        from lerobot.policies.rtc.configuration_rtc import RTCConfig
+        self.policy._rtc_config = RTCConfig(enabled=True)
+        self.rtc_enabled = True
         self.rtc_profile_path: pathlib.Path | None = None
         self.rtc_execution_horizon: int | None = None
         self.rtc_queue_threshold: int | None = None
@@ -379,6 +383,7 @@ class FrankaRolloutPolicyServer:
     def contract(self) -> dict[str, Any]:
         contract = {
             "checkpoint_fingerprint": self.fingerprint,
+            "model_version": self.fingerprint + (":"+str(self.online_session.replay.active_checkpoint) if self.online_session else ""),
             "plan_horizons": {"vla": self.policy.config.chunk_exec_steps, "rlt": self.policy.config.chunk_length},
             "frame_stride": self.action_stride,
             "action_contract": self.action_contract,
@@ -507,6 +512,10 @@ class FrankaRolloutPolicyServer:
             return result
         if kind != 'plan':
             raise ValueError('only protocol-v2 candidate plans are supported')
+        if self.online_session is not None:
+            self.online_session.require_ready()
+            if self.online_session.config.full_episode and header.get('phase') != 'rl':
+                raise ValueError('full-episode online RLT only accepts phase=rl')
         return infer_plan(self, header, arrays)
 
 

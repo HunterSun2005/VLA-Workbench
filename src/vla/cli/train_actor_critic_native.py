@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 
 
-def install_cache_guard(trainer, *, accept_upgrade=False) -> None:
+def install_cache_guard(trainer) -> None:
     boundary = "make_train_eval_datasets"
     original = getattr(getattr(trainer, boundary), "_vla_original", getattr(trainer, boundary))
 
@@ -17,8 +17,7 @@ def install_cache_guard(trainer, *, accept_upgrade=False) -> None:
     def make_dataset(cfg):
         from vla.adapters.lerobot.policies.configuration_rlt_ac import ChunkACConfig
         from vla.adapters.lerobot.policies.cache_manifest import load_cache_manifest
-        from vla.core.training_contract import validate_cache_upgrade, validate_training_cache
-        from vla.core.online_contract import durable_json
+        from vla.core.training_contract import validate_training_cache
 
         if isinstance(cfg.policy, ChunkACConfig):
             manifest_path = Path(cfg.dataset.repo_id).expanduser().resolve() / "cache_manifest.json"
@@ -35,22 +34,9 @@ def install_cache_guard(trainer, *, accept_upgrade=False) -> None:
                     raise ValueError("A/C resume requires a local checkpoint with its cache contract")
                 previous = json.loads(config_path.read_text()).get("cache_contract")
                 if previous is None:
-                    raise ValueError("checkpoint has no verifiable cache contract; cannot upgrade safely")
+                    raise ValueError("checkpoint has no verifiable cache contract; create new training assets")
             if previous is not None and previous != current:
-                if not accept_upgrade:
-                    raise ValueError("use --accept-training-semantics-upgrade with a rebuilt cache")
-                validate_cache_upgrade(previous, current)
-                if checkpoint:
-                    source, destination = Path(checkpoint).resolve(), Path(cfg.output_dir).resolve()
-                    if source.is_relative_to(destination) or destination.is_relative_to(source):
-                        raise ValueError("training semantics upgrade requires a separate output directory")
-                report = {"checkpoint": str(checkpoint), "previous_contract": previous, "contract": current}
-                report_path = Path(cfg.output_dir) / "training_semantics_upgrade.json"
-                if report_path.exists():
-                    if json.loads(report_path.read_text()) != report:
-                        raise ValueError("output directory contains a different training upgrade")
-                else:
-                    durable_json(report_path, report)
+                raise ValueError('checkpoint/cache contract mismatch; asset conversion is not supported')
             cfg.policy.cache_contract = current
             cfg.policy.cache_manifest_path = str(manifest_path)
             cfg.policy._apply_cache_contract()
@@ -114,10 +100,7 @@ def main() -> None:
 
     install_ac_update_hook(lerobot_train)
     install_ac_processor_hook(lerobot_train)
-    flag = "--accept-training-semantics-upgrade"
-    accept_upgrade = flag in sys.argv
-    sys.argv[:] = [arg for arg in sys.argv if arg != flag]
-    install_cache_guard(lerobot_train, accept_upgrade=accept_upgrade)
+    install_cache_guard(lerobot_train)
     if not any(arg.startswith("--dataset.eval_split=") for arg in sys.argv):
         sys.argv.append("--dataset.eval_split=0")
     lerobot_train.main()

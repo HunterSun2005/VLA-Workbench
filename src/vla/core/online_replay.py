@@ -15,7 +15,7 @@ from safetensors.torch import save as save_safetensors
 from vla.core.writer_lock import WriterLease, cleanup_on_init_error
 
 
-ONLINE_REPLAY_FORMAT_VERSION = 3
+ONLINE_REPLAY_FORMAT_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class PersistentReplayBuffer:
         self._connection = sqlite3.connect(self.path)
         if existed:
             if int(self._get_state("format_version")) != ONLINE_REPLAY_FORMAT_VERSION:
-                raise ValueError("unsupported online replay format; run upgrade_rlt_training explicitly")
+                raise ValueError("unsupported online replay format; create a new Replay v4 run")
         else:
             self._create_schema()
         self._connection.execute("PRAGMA journal_mode=WAL")
@@ -250,21 +250,15 @@ class PersistentReplayBuffer:
         anchors = [anchor for anchor, _, _ in payloads]
         if len(anchors) != len(set(anchors)):
             raise ValueError(f"episode {episode_key!r} contains duplicate replay anchors")
+        from vla.core.execution_replay import validate_execution_transition
         covered = set()
         for record in records:
-            steps = record.transition["actual_steps"]
-            length = int(steps.item())
-            if (length <= 0 or length != steps.item()
-                    or length > record.transition["exec_chunk"].shape[0]
-                    or record.anchor_frame < 0):
-                raise ValueError("invalid replay actual_steps")
-            duration = record.transition.get('elapsed_steps', steps).item()
-            if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration != int(duration):
-                raise ValueError('invalid elapsed control steps')
-            elapsed = int(duration)
-            if elapsed < length:
-                raise ValueError('elapsed control steps cannot be shorter than action count')
-            covered.update(range(record.anchor_frame, record.anchor_frame + elapsed))
+            validate_execution_transition(record.transition)
+            ids = record.transition['interval_slot_ids']
+            valid = record.transition['reward_valid_mask'].bool()
+            if ids.shape != valid.shape or (ids[valid] < 0).any():
+                raise ValueError('invalid unique execution interval identities')
+            covered.update(int(v) for v in ids[valid].tolist())
 
         connection = self._connection
         connection.execute("BEGIN IMMEDIATE")
@@ -283,7 +277,7 @@ class PersistentReplayBuffer:
                 "VALUES(?, ?, ?, ?, ?, ?)",
                 (episode_key, episode_id, outcome, int(warmup), len(payloads), episode_digest),
             )
-            produced = self.produced_credits + len(payloads) * utd_ratio
+            produced = self.produced_credits + len(covered) * utd_ratio
             warmup_total = self.warmup_env_steps + (warmup_env_steps if warmup else 0)
             self._set_state("produced_credits", str(produced))
             self._set_state("warmup_env_steps", str(warmup_total))

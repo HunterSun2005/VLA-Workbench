@@ -210,20 +210,32 @@ def _encoded_to_transitions(
     action_stride: int = 1,
 ) -> list[dict[str, Tensor]]:
     transitions: list[dict[str, Tensor]] = []
+    transition_frames = []
     for frame in frame_indices:
         next_frame = frame + chunk_length * action_stride
         if next_frame > episode_last_frame:
             continue
         if next_frame not in encoded:
             raise ValueError(f"missing x_(t+C) anchor for frame {frame} -> {next_frame}")
+        if frame_annotations and 'slot_id' in frame_annotations.get(frame, {}):
+            from vla.actions.windows import window_ends
+            import numpy as np
+            window = [frame_annotations[i] for i in range(frame, next_frame+1)]
+            valid = [bool(row['action_valid'] and row['supervision_valid'] and row['observation_valid'])
+                     and row.get('collector_policy_id') == 0 for row in window[:-1]]
+            ends = window_ends(valid, segments=[row['segment_id'] for row in window[:-1]],
+                               slots=[row['slot_id'] for row in window[:-1]])
+            if ends[0] != len(valid) or not window[-1]['observation_valid']:
+                continue
         current = encoded[frame]
         following = encoded[next_frame]
-        terminal = next_frame == episode_last_frame
+        terminal = bool(frame_annotations[next_frame].get('task_terminal')) if frame_annotations and 'slot_id' in frame_annotations.get(frame, {}) else next_frame == episode_last_frame
         annotation = _chunk_annotation(
             frame_annotations,
             start_frame=frame,
             chunk_length=chunk_length * action_stride,
         )
+        transition_frames.append(frame)
         transitions.append(
             {
                 "state_vec": current["state_vec"],
@@ -250,6 +262,40 @@ def _encoded_to_transitions(
                 "is_critical": torch.tensor(annotation["is_critical"]),
             }
         )
+    for frame, tx in zip(transition_frames, transitions):
+        H = chunk_length
+        tx.update(start_idx=torch.tensor(0), valid_mask=torch.ones(H, dtype=torch.bool),
+                  prefix_mask=torch.zeros(H, dtype=torch.bool), actor_mask=torch.ones(H, dtype=torch.bool),
+                  next_start_idx=torch.tensor(0), next_exec_chunk=torch.zeros_like(tx['exec_chunk']),
+                  next_valid_mask=torch.full((H,), not bool(tx['done']), dtype=torch.bool),
+                  next_prefix_mask=torch.zeros(H, dtype=torch.bool),
+                  next_actor_mask=torch.full((H,), not bool(tx['done']), dtype=torch.bool),
+                  plan_version=torch.tensor(-1), generation=torch.tensor(-1),
+                  termination_reason=tx['done'].long())
+        if 'action_anchor' not in tx:
+            raise ValueError('offline training requires recorded independent action anchors')
+        # The corresponding anchor can be recovered by exact endpoint pairing, not request count.
+        next_frame = frame+H*action_stride
+        if not frame_annotations or 'command_at_ns' not in frame_annotations[frame]:
+            raise ValueError('offline cache requires physical execution interval timestamps')
+        start_ns = int(frame_annotations[frame]['command_at_ns'])
+        endpoint_ns = int(frame_annotations[next_frame]['observed_at_ns'])
+        tx['reward_seq'] = torch.zeros(H*action_stride)
+        if tx['done'] and episode_success:
+            tx['reward_seq'][-1] = 1.
+        tx['reward_valid_mask'] = torch.ones(H*action_stride, dtype=torch.bool)
+        tx['reward_offsets'] = torch.tensor([(int(frame_annotations[i]['command_at_ns'])-start_ns)*30/1e9
+                                           for i in range(frame, next_frame)], dtype=torch.float64)
+        tx['elapsed_steps'] = torch.tensor((endpoint_ns-start_ns)*30/1e9, dtype=torch.float64)
+        tx['endpoint_ns'] = torch.tensor(endpoint_ns)
+        tx['transition_start_ns'] = torch.tensor(start_ns)
+        tx['reward_interval_start_ns'] = torch.tensor([int(frame_annotations[i]['command_at_ns']) for i in range(frame, next_frame)])
+        tx['interval_slot_ids'] = torch.tensor([int(frame_annotations[i]['slot_id']) for i in range(frame, next_frame)])
+        import hashlib
+        for name, value in [('model_version', 'human'), ('session_id', 'offline'), ('episode_id', episode_id)]:
+            tx[name+'_digest'] = torch.tensor(list(hashlib.sha256(str(value).encode()).digest()), dtype=torch.uint8)
+        tx['absolute_vla_reference'] = torch.zeros_like(tx['absolute_exec_chunk'])  # No VLA action was used during human execution.
+        tx['action_sources'] = torch.zeros(H, dtype=torch.int64)
     return transitions
 
 
@@ -289,7 +335,8 @@ def _chunk_annotation(
         )
         human_dominant = human_votes >= len(window) - human_votes
         if human_dominant:
-            source = TRANSITION_SOURCE_HUMAN_OVERRIDE
+            source = (TRANSITION_SOURCE_HUMAN_OVERRIDE if any(float(item.get('is_intervention', 0)) > .5
+                       for item in window) else TRANSITION_SOURCE_DEMO)
         else:
             policy_codes = [code for code in collector_codes if code != COLLECTOR_HUMAN]
             dominant = max(
@@ -303,7 +350,7 @@ def _chunk_annotation(
             )
     anchor = frame_annotations.get(start_frame, {})
     return {
-        "intervention": float(human_dominant),
+        "intervention": float(human_dominant and source == TRANSITION_SOURCE_HUMAN_OVERRIDE),
         "source": source,
         "is_critical": float(float(anchor.get("phase", 1.0)) > 0.5),
     }
@@ -320,7 +367,7 @@ def _annotation_scalar(value: Any, *, key: str, frame_index: int) -> float | int
         value = value[0]
     if key == FRAME_COLLECTOR_KEY:
         result = int(value)
-        if result not in {COLLECTOR_HUMAN, COLLECTOR_PI05, COLLECTOR_RLT_ACTOR}:
+        if result not in {-1, COLLECTOR_HUMAN, COLLECTOR_PI05, COLLECTOR_RLT_ACTOR}:
             raise ValueError(f"unknown collector_policy_id={result} at frame {frame_index}")
         return result
     result = float(value)
@@ -371,12 +418,19 @@ def load_episode_frame_annotations(
         raise ValueError(
             f"rollout annotations require {FRAME_COLLECTOR_KEY!r} when complementary fields are present"
         )
+    from vla.core.online_contract import TIMING_FIELDS
+    timing = {f'complementary_info.{key}' for key in TIMING_FIELDS}
+    if info.get('recording_schema_version') == 5:
+        if not timing <= columns:
+            raise ValueError('schema-5 recording lacks execution timing fields')
+        available |= timing
     selected = hf_dataset.select(range(episode_start, episode_stop))
     annotations: dict[int, dict[str, float | int]] = {}
     names = {
         FRAME_INTERVENTION_KEY: "is_intervention",
         FRAME_PHASE_KEY: "phase",
         FRAME_COLLECTOR_KEY: "collector_policy_id",
+        **{f"complementary_info.{key}": key for key in TIMING_FIELDS},
     }
     for local_index, frame_index in enumerate(range(episode_start, episode_stop)):
         annotations[frame_index] = {
@@ -455,6 +509,7 @@ def _encode_episode(
             if 'observation.anchor' in batch:
                 encoded[raw_index]['action_anchor'] = batch['observation.anchor'][local_index].detach().cpu().clone()
                 encoded[raw_index]['absolute_exec_chunk'] = batch['action'][local_index, :chunk_length, :action_dim].detach().cpu().clone()
+
 
         if (
             device.startswith("cuda")
@@ -542,6 +597,8 @@ def _build_contract(
         )
     sft_config = _load_json(pathlib.Path(config.vla_pretrained_path) / "config.json")
     action_contract = sft_config.get('action_contract')
+    if action_contract is None or action_contract.get('version') != 2:
+        raise ValueError('transition cache requires model action contract v2')
     use_relative_actions = (action_contract['action_spec']['representation'] == 'chunk_relative'
                             if action_contract else bool(sft_config.get('use_relative_actions', False)))
     if action_contract:
@@ -549,6 +606,8 @@ def _build_contract(
         ActionSpec.from_dict(action_contract['action_spec']).require_compatible(
             ActionSpec.from_dict(dataset_info['action_spec']), training=False)
         sampling = action_contract['statistics']['contract']['sampling']
+        from vla.actions.metadata import require_recording_source
+        require_recording_source(action_contract, dataset_info.get('recording_contract'))
     sft_preprocessor = _load_json(
         pathlib.Path(config.vla_pretrained_path) / "policy_preprocessor.json"
     )
@@ -817,6 +876,17 @@ def main() -> None:
                     episode_id=episode_id,
                     frame_annotations=frame_annotations,
                 )
+                if any(row.get('collector_policy_id', -1) in (1, 2) for row in frame_annotations.values()):
+                    from vla.core.execution_replay import encode_execution_dataset
+                    from vla.core.online_training import resolve_state_indices
+                    records, _ = encode_execution_dataset(
+                        dataset=dataset, episode_id=episode_id, episode_start=episode_start,
+                        episode_stop=episode_stop, contract=config.action_contract, success=episode_success,
+                        pi05=policy._pi05, rl_token=policy.rl_token, preprocessor=preprocessor,
+                        capture=capture, chunk_length=args.chunk_length, proprio_dim=config.proprio_dim,
+                        state_indices=resolve_state_indices(dataset, getattr(config, 'state_names', None), config.proprio_dim),
+                        task=args.task_instruction, device=args.device)
+                    transitions.extend(record.transition for record in records)
                 if not transitions:
                     manifest["skipped_episodes"][split].append(episode_id)
                 else:

@@ -29,7 +29,8 @@ STATE_DIM = 5
 
 
 def _transition(value: float = 0.0) -> dict[str, torch.Tensor]:
-    return {
+    from tests.rlt.execution_fixtures import execution_context
+    return execution_context({
         "state_vec": torch.full((STATE_DIM,), value),
         "exec_chunk": torch.zeros(C, ACTION_DIM),
         "ref_chunk": torch.zeros(C, ACTION_DIM),
@@ -42,7 +43,7 @@ def _transition(value: float = 0.0) -> dict[str, torch.Tensor]:
         "source": torch.tensor(1),
         "episode_id": torch.tensor(int(value)),
         "is_critical": torch.tensor(1.0),
-    }
+    }, start_slot=int(value))
 
 
 def _replay(tmp_path, *, resume=False, capacity=10):
@@ -91,7 +92,7 @@ def test_persistent_replay_is_idempotent_and_restores_progress(tmp_path):
         utd_ratio=5,
     )
     assert len(replay) == 1
-    assert replay.produced_credits == 10
+    assert replay.produced_credits == 40
     assert replay.warmup_env_steps == 4
     replay.checkpoint_progress(
         checkpoint="checkpoint-a",
@@ -129,10 +130,10 @@ def test_critical_specs_use_stride_and_one_terminal_window():
 
 class _MustNotRun(torch.nn.Module):
     def forward(self, *args, **kwargs):
-        raise AssertionError("warmup must not run the RL token or Actor")
+        raise AssertionError("warmup must not run Actor")
 
     def encode(self, *args, **kwargs):
-        raise AssertionError("warmup must not run the RL token or Actor")
+        return torch.zeros(args[0].shape[0], 3)
 
 
 def test_online_warmup_keeps_critical_phase_but_executes_vla():
@@ -313,6 +314,8 @@ class _Policy(torch.nn.Module):
             device="cpu",
             gamma=0.99,
             beta=0.3,
+            prefix_bc_weight=0.3,
+            action_contract=None,
             tau=0.005,
             chunk_length=C,
             target_q_clip=100.0,
@@ -323,10 +326,15 @@ class _Policy(torch.nn.Module):
         self.register_buffer("_critic_step", torch.zeros((), dtype=torch.long))
 
     @staticmethod
+    def execution_projection(mu, anchor):
+        return mu.clamp(-1, 1)
+
+    @staticmethod
     def _coerce_batch(batch):
         result = dict(batch)
         result["exec_chunk_flat"] = result["exec_chunk"].flatten(start_dim=-2)
         result["ref_chunk_flat"] = result["ref_chunk"].flatten(start_dim=-2)
+        result["next_exec_chunk_flat"] = result["next_exec_chunk"].flatten(start_dim=-2)
         result["next_ref_flat"] = result["next_ref_chunk"].flatten(start_dim=-2)
         return result
 
@@ -363,8 +371,8 @@ def test_utd_credits_produce_exact_critic_actor_counts(tmp_path):
         utd_ratio=5,
     )
     first = scheduler.drain()
-    assert first["critic_updates"] == 5
-    assert first["actor_updates"] == 2
+    assert first["critic_updates"] == 20
+    assert first["actor_updates"] == 10
     replay.commit_episode(
         episode_key="ep1",
         episode_id=1,
@@ -375,10 +383,10 @@ def test_utd_credits_produce_exact_critic_actor_counts(tmp_path):
         utd_ratio=5,
     )
     second = scheduler.drain()
-    assert second["critic_updates"] == 5
-    assert second["actor_updates"] == 3
-    assert scheduler.critic_updates == 10
-    assert scheduler.actor_updates == 5
+    assert second["critic_updates"] == 20
+    assert second["actor_updates"] == 10
+    assert scheduler.critic_updates == 40
+    assert scheduler.actor_updates == 20
     replay.close()
 
 
@@ -458,25 +466,10 @@ def test_actor_reuses_even_critic_batch_after_target_update(tmp_path, monkeypatc
 
     scheduler.drain()
 
-    assert events == [
-        "critic_loss",
-        "critic_step",
-        "target_update",
-        "critic_loss",
-        "critic_step",
-        "target_update",
-        "actor_loss_same_batch",
-        "actor_step",
-        "critic_loss",
-        "critic_step",
-        "target_update",
-        "critic_loss",
-        "critic_step",
-        "target_update",
-        "actor_loss_same_batch",
-        "actor_step",
-        "critic_loss",
-        "critic_step",
-        "target_update",
-    ]
+    expected = []
+    for step in range(1, 21):
+        expected.extend(['critic_loss', 'critic_step', 'target_update'])
+        if step % 2 == 0:
+            expected.extend(['actor_loss_same_batch', 'actor_step'])
+    assert events == expected
     replay.close()

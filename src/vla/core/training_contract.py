@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 
-TRAINING_SEMANTICS_VERSION = 2
+TRAINING_SEMANTICS_VERSION = 3
 REFERENCE_POLICY = "per_frame_human_execution_else_vla_v2"
 
 
@@ -16,22 +16,7 @@ def validate_training_cache(contract):
 
 
 def validate_cache_upgrade(previous, current):
-    validate_training_cache(current)
-    if previous == current:
-        return
-    old_cache = previous.get("cache", {})
-    if (old_cache.get("training_semantics_version") not in (None, 1)
-            or old_cache.get("annotation_policy", {}).get("ref_chunk") != "checkpoint_vla_proposal"):
-        raise ValueError("unsupported previous cache supervision contract")
-
-    def without_semantics(contract):
-        result = copy.deepcopy(contract)
-        cache = result.get("cache", {})
-        cache.pop("training_semantics_version", None)
-        cache.get("annotation_policy", {}).pop("ref_chunk", None)
-        return result
-    if without_semantics(previous) != without_semantics(current):
-        raise ValueError("cache upgrade changes data/model contract, not only supervision semantics")
+    raise ValueError('training asset conversion is not supported; create a new schema-5 run')
 
 
 def supervision_reference(exec_chunk, ref_chunk, annotations, start_frame, actual_steps=None, action_stride=1):

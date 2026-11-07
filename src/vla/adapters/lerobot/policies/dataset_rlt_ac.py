@@ -43,11 +43,11 @@ class _MetaShim:
 class ChunkTransitionDataset(Dataset):
     """Lazy dataset over manifest-indexed episode shards.
 
-    Legacy ``chunk_transitions_{split}.pt`` caches remain readable, but new
-    training must use the manifest format to carry robot/checkpoint contracts.
+    Execution caches require training semantics v3; handover-only caches carry labels.
     """
 
-    def __init__(self, cache_dir: str | pathlib.Path, split: str = "train"):
+    def __init__(self, cache_dir: str | pathlib.Path, split: str = "train", *, handover_only=False):
+        self.handover_only = handover_only
         self.cache_dir = pathlib.Path(cache_dir).expanduser().resolve()
         self.split = split
         self._legacy_transitions: list[dict[str, torch.Tensor]] | None = None
@@ -61,7 +61,7 @@ class ChunkTransitionDataset(Dataset):
         if manifest_path.is_file():
             self._init_manifest_cache(manifest_path)
         else:
-            self._init_legacy_cache()
+            raise ValueError('legacy Replay is not supported; build a new execution cache')
         # Local transition indices already form contiguous episode ranges.
         self.episodes = list(range(self.num_episodes))
         self.absolute_to_relative_idx = None
@@ -73,6 +73,13 @@ class ChunkTransitionDataset(Dataset):
         shards = manifest.get("shards", {}).get(self.split)
         if not isinstance(shards, list) or not shards:
             raise ValueError(f"transition cache split {self.split!r} is empty")
+        from vla.core.training_contract import validate_training_cache
+        if self.handover_only:
+            from vla.cli.build_handover_cache import HANDOVER_CACHE_KIND
+            if manifest['contract']['cache'].get('kind') != HANDOVER_CACHE_KIND:
+                raise ValueError('expected handover label cache')
+        else:
+            validate_training_cache(manifest['contract'])
         self.manifest = manifest
         self._shards = shards
         total = 0
@@ -108,37 +115,6 @@ class ChunkTransitionDataset(Dataset):
             features=raw_features,
         )
 
-    def _init_legacy_cache(self) -> None:
-        path = self.cache_dir / f"chunk_transitions_{self.split}.pt"
-        if not path.is_file():
-            raise FileNotFoundError(
-                f"no {CACHE_MANIFEST_NAME} or legacy transition cache at {path}"
-            )
-        warnings.warn(
-            f"loading legacy transition cache without a schema/checkpoint contract: {path}",
-            stacklevel=2,
-        )
-        transitions = torch.load(path, weights_only=False, map_location="cpu")
-        if not isinstance(transitions, list) or not transitions:
-            raise ValueError(f"empty or invalid legacy cache at {path}")
-        self.manifest = None
-        self._legacy_transitions = transitions
-        self.num_frames = len(transitions)
-        self.num_episodes = 1
-        self.fps = 30.0
-        sample = transitions[0]
-        self.features = {
-            key: {"shape": tuple(value.shape), "dtype": str(value.dtype)}
-            for key, value in sample.items()
-            if isinstance(value, torch.Tensor)
-        }
-        self.meta = _MetaShim(
-            stats={},
-            episodes=_EpisodeIndexShim([0], [self.num_frames]),
-            fps=self.fps,
-            features={},
-        )
-
     def _load_shard(self, shard_index: int) -> list[dict[str, torch.Tensor]]:
         cached = self._cached_shards.get(shard_index)
         if cached is None:
@@ -148,6 +124,10 @@ class ChunkTransitionDataset(Dataset):
                 self._shards[shard_index]["transitions"]
             ):
                 raise ValueError(f"transition shard content does not match manifest: {path}")
+            from vla.core.execution_replay import validate_execution_transition
+            if not self.handover_only:
+                for transition in value:
+                    validate_execution_transition(transition)
             self._cached_shards[shard_index] = value
             cached = value
         return cached

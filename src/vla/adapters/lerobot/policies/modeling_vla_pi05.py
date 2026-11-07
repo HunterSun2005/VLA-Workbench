@@ -8,6 +8,9 @@ class VLAPI05Policy(PI05Policy):
     config_class = VLAPI05Config
     name = 'vla_pi05'
 
+    def select_action(self, batch, **kwargs):
+        raise RuntimeError('single-action inference is unsupported; use protocol-v2 plans with the ROS executor')
+
     def forward(self, batch, reduction='mean'):
         images, image_masks = self._preprocess_images(batch)
         actions = self.prepare_action(batch)

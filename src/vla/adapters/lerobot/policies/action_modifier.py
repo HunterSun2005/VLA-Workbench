@@ -146,7 +146,6 @@ class RLTActionModifier(nn.Module):
         self._cc_log_count = 0  # throttle for the compute_chunk ref diagnostic
         self.action_dim = action_dim
         self.proprio_dim = proprio_dim
-        self._action_queue: deque[Tensor] = deque()
         self._step_metadata: deque[RLTStepMetadata] = deque()
 
     # ------------------------------------------------------------------
@@ -156,10 +155,6 @@ class RLTActionModifier(nn.Module):
     @property
     def is_rl_phase(self) -> bool:
         return self.phase_ctrl.is_critical
-
-    @property
-    def needs_new_chunk(self) -> bool:
-        return len(self._action_queue) == 0
 
     # ------------------------------------------------------------------
     # Core logic
@@ -189,6 +184,10 @@ class RLTActionModifier(nn.Module):
         n = self.chunk_length if self.is_rl_phase else self.chunk_exec_steps
         self.plan_reference = vla_chunk[:, :n, :].detach().clone()
         self.plan_context = {}
+        if prefix_tokens is not None or z_rl is not None:
+            if z_rl is None:
+                z_rl = self.rl_token.encode(prefix_tokens)
+            self.plan_context = {'state_vec': torch.cat([z_rl, proprio], dim=-1).detach().clone()}
         phase_val = 1.0 if self.is_rl_phase else 0.0
         source_val = 0.0 if self.online_warmup else phase_val
 
@@ -242,20 +241,9 @@ class RLTActionModifier(nn.Module):
 
     def _enqueue_metadata(self, phase: float, source: float, count: int) -> None:
         """Enqueue metadata entries for every step in the upcoming chunk."""
+        self._step_metadata.clear()
         for _ in range(count):
             self._step_metadata.append(RLTStepMetadata(phase=phase, source_type=source))
-
-    def enqueue(self, chunk: Tensor) -> None:
-        """Enqueue chunk steps into the action queue.
-
-        Args:
-            chunk: (B, C, action_dim).
-        """
-        self._action_queue.extend(chunk.transpose(0, 1))
-
-    def pop_action(self) -> Tensor:
-        """Pop and return the next single-step action from the queue."""
-        return self._action_queue.popleft()
 
     def pop_step_metadata(self) -> RLTStepMetadata | None:
         """Pop and return the next step's metadata, or None if empty."""
@@ -284,12 +272,10 @@ class RLTActionModifier(nn.Module):
             self.phase_ctrl.trigger_critical()
 
     def interrupt_chunk(self) -> None:
-        """Clear both action and metadata queues (e.g. on phase switch)."""
-        self._action_queue.clear()
+        """Discard candidate provenance on a control boundary."""
         self._step_metadata.clear()
 
     def reset(self) -> None:
-        """Reset queues and phase controller to initial state."""
-        self._action_queue.clear()
+        """Reset candidate provenance and the classifier state."""
         self._step_metadata.clear()
         self.phase_ctrl.reset()

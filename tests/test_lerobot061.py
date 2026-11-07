@@ -219,6 +219,7 @@ def test_public_make_policy_constructs_real_custom_classes(kind, monkeypatch):
     assert policy.config.type == kind
     assert next(policy.parameters()).device.type == "cpu"
     if kind == "rlt_ac":
+        monkeypatch.setattr(policy, "execution_projection", lambda mu, anchor: mu.clamp(-1, 1))
         from accelerate import Accelerator
         from lerobot.scripts.lerobot_train import update_policy
         from lerobot.utils.logging_utils import MetricsTracker, AverageMeter

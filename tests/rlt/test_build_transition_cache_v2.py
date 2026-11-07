@@ -7,6 +7,8 @@ import pytest
 import torch
 from torch.utils.data import Dataset
 
+from tests.rlt.execution_fixtures import human_rows, encoded_anchors
+
 from vla.cli.build_transition_cache_v2 import (
     _encoded_to_transitions,
     _encode_episode,
@@ -28,7 +30,8 @@ def test_cache_transition_uses_expert_action_and_c_step_bootstrap() -> None:
     }
 
     transitions = _encoded_to_transitions(
-        encoded,
+        encoded_anchors(encoded),
+        frame_annotations=human_rows(5),
         frame_indices=list(range(5)),
         episode_last_frame=4,
         chunk_length=2,
@@ -40,7 +43,7 @@ def test_cache_transition_uses_expert_action_and_c_step_bootstrap() -> None:
     assert transitions[0]["state_vec"].item() == 0
     assert transitions[0]["next_state_vec"].item() == 2
     assert transitions[0]["exec_chunk"][0, 0].item() == 100
-    assert transitions[0]["ref_chunk"][0, 0].item() == 200
+    assert transitions[0]["ref_chunk"][0, 0].item() == 100
     assert transitions[-1]["done"].item() == 1
     assert torch.equal(transitions[-1]["reward_seq"], torch.tensor([0.0, 1.0]))
 
@@ -54,7 +57,7 @@ def test_cache_transition_failure_has_no_reward() -> None:
         }
         for frame in range(3)
     }
-    transitions = _encoded_to_transitions(encoded, [0, 1, 2], 2, 2, False, 0)
+    transitions = _encoded_to_transitions(encoded_anchors(encoded), [0, 1, 2], 2, 2, False, 0, human_rows(3))
     assert len(transitions) == 1
     assert transitions[0]["reward_seq"].sum().item() == 0
 
@@ -67,6 +70,7 @@ def test_encode_episode_keeps_dataset_action_separate_from_vla_reference() -> No
         def __getitem__(self, index: int) -> dict:
             return {
                 "observation.state": torch.tensor([float(index)]),
+                "observation.anchor": torch.zeros(1),
                 "action": torch.full((4, 1), 10.0 + index),
                 "task": "synthetic task",
             }
@@ -95,6 +99,7 @@ def test_encode_episode_keeps_dataset_action_separate_from_vla_reference() -> No
         preprocessor=lambda batch: batch,
         capture=capture,
         dataset=SyntheticDataset(),
+        frame_annotations=human_rows(5),
         frame_indices=[0, 1, 2, 3, 4],
         episode_last_frame=4,
         chunk_length=2,
@@ -110,7 +115,7 @@ def test_encode_episode_keeps_dataset_action_separate_from_vla_reference() -> No
     )
 
     assert transitions[0]["exec_chunk"][0, 0].item() == 10.0
-    assert transitions[0]["ref_chunk"][0, 0].item() == 99.0
+    assert transitions[0]["ref_chunk"][0, 0].item() == 10.0
     assert transitions[0]["next_state_vec"][-1].item() == 2.0
 
 

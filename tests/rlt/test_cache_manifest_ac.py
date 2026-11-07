@@ -44,12 +44,13 @@ def _contract(tmp_path: Path) -> dict:
             "active_camera_indices": [1],
             "num_per_camera": 256,
         },
-        "cache": {"chunk_length": 4},
+        "cache": {"chunk_length": 4, **__import__("tests.rlt.execution_fixtures", fromlist=["semantics"]).semantics()},
     }
 
 
 def _transition(value: float) -> dict[str, torch.Tensor]:
-    return {
+    from tests.rlt.execution_fixtures import execution_context
+    return execution_context({
         "state_vec": torch.full((42,), value),
         "exec_chunk": torch.full((4, 10), value),
         "ref_chunk": torch.full((4, 10), value),
@@ -58,7 +59,7 @@ def _transition(value: float) -> dict[str, torch.Tensor]:
         "next_ref_chunk": torch.full((4, 10), value + 1),
         "done": torch.tensor(0.0),
         "actual_steps": torch.tensor(4),
-    }
+    })
 
 
 def _make_cache(root: Path) -> Path:

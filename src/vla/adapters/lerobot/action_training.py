@@ -29,10 +29,16 @@ def install_action_training(trainer):
                 raise ValueError('training dataset changed since action statistics were computed')
             if tuple(info['features']['action']['names']) != spec.action_fields:
                 raise ValueError('dataset action names disagree with action contract')
-            from vla.actions.metadata import validate_mixture
+            from vla.actions.metadata import require_recording_source
             recording = info.get('recording_contract') or info.get('processing', {}).get('source_contract', {}).get('recording_contract')
-            if recording:
-                validate_mixture([recording], allow_derived=bool(contract.get('sources', {}).get('allow_derived', False)))
+            require_recording_source(contract, recording)
+            if info.get('recording_schema_version') != 5:
+                raise ValueError('training requires schema-5 recordings')
+            if cfg.policy.type == 'rlt_token':
+                cfg.policy.training_data_fingerprint = dataset_fingerprint(root)
+            sampling = contract['statistics']['contract']['sampling']
+            if cfg.policy.type in ('vla_pi05', 'rlt_token') and sampling['chunk_length'] != cfg.policy.chunk_size:
+                raise ValueError('reference model sampling does not match statistics')
             if 'observation.anchor' not in info['features']:
                 raise ValueError('training dataset lacks independent raw anchors')
         result = original_datasets(cfg)

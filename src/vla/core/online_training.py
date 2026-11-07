@@ -434,7 +434,17 @@ def encode_saved_episode(
     require_timing: bool = False,
     require_full_episode: bool = False,
     action_stride: int = 1,
+    execution_contract: dict | None = None,
 ) -> tuple[list[ReplayTransitionRecord], int]:
+    if require_timing:
+        if execution_contract is None or execution_contract.get('version') != 2:
+            raise ValueError('online execution requires model contract v2')
+        from vla.core.execution_replay import encode_execution_dataset
+        return encode_execution_dataset(dataset=dataset, episode_id=episode_id,
+            episode_start=episode_start, episode_stop=episode_stop, contract=execution_contract,
+            success=episode_success, pi05=pi05, rl_token=rl_token, preprocessor=preprocessor,
+            capture=capture, chunk_length=chunk_length, proprio_dim=proprio_dim,
+            state_indices=state_indices, task=task_instruction, device=device)
     if type(action_stride) is not int or action_stride < 1:
         raise ValueError('action_stride must be positive')
     if action_stride != 1 and not require_timing:
@@ -654,6 +664,7 @@ class OnlineUpdateScheduler:
                     gamma=self.policy.config.gamma,
                     C=self.policy.config.chunk_length,
                     target_q_clip=self.policy.config.target_q_clip,
+                    projection=self.policy.execution_projection,
                 )
                 if not torch.isfinite(value).all():
                     raise RuntimeError("non-finite online Critic loss")
@@ -708,6 +719,7 @@ class OnlineUpdateScheduler:
             "actor_updates": actor_count,
             "mean_critic_loss": critic_total / max(updates, 1),
             "mean_actor_loss": actor_total / max(actor_count, 1),
+            **getattr(self.policy, "loss_metrics", {}),
         }
 
 
@@ -780,6 +792,7 @@ class OnlineRLTSession:
             "rl_token_dim": policy.config.rl_token_dim,
             "gamma": policy.config.gamma,
             "beta": policy.config.beta,
+            "prefix_bc_weight": policy.config.prefix_bc_weight,
             "tau": policy.config.tau,
             "utd_ratio": config.utd_ratio,
             "actor_update_interval": policy.config.actor_update_interval,
@@ -1135,6 +1148,7 @@ class OnlineRLTSession:
             state_indices=state_indices,
             fps=self.fps,
             require_timing=True,
+            execution_contract=self.policy.config.action_contract,
             require_full_episode=self.config.full_episode,
             action_stride=(self.policy.config.action_contract["statistics"]["contract"]["sampling"]["frame_stride"]
                            if getattr(self.policy.config, 'action_contract', None) else 1),
@@ -1271,7 +1285,7 @@ class OnlineRLTSession:
             path / "training_state.pt", map_location="cpu", weights_only=False
         )
         if state.get("training_semantics_version") != TRAINING_SEMANTICS_VERSION:
-            raise ValueError("checkpoint training semantics require explicit upgrade")
+            raise ValueError("legacy checkpoint training semantics are unsupported; create a new run")
         if state.get("actor_enabled") != self.replay.actor_enabled:
             raise ValueError("checkpoint/replay Actor readiness mismatch")
         counters = (

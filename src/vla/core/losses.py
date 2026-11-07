@@ -32,6 +32,43 @@ def _action_mask(batch: dict[str, torch.Tensor], ref: torch.Tensor) -> torch.Ten
     return _valid_steps(steps.to(ref.device), B, C).repeat_interleave(ref.shape[1] // C, dim=1)
 
 
+def execution_masks(batch, ref, *, next_state=False):
+    prefix = 'next_' if next_state else ''
+    keys = {prefix+name for name in ('valid_mask', 'prefix_mask', 'actor_mask')}
+    if not keys & batch.keys():
+        valid = _action_mask(batch, ref) if not next_state else torch.ones_like(ref, dtype=torch.bool)
+        return valid, torch.zeros_like(valid), valid
+    if not keys <= batch.keys():
+        raise ValueError('incomplete execution masks')
+    masks = []
+    for name in ('valid_mask', 'prefix_mask', 'actor_mask'):
+        mask = batch[prefix+name].to(ref.device)
+        if mask.ndim != 2 or mask.shape[0] != ref.shape[0] or ref.shape[1] % mask.shape[1]:
+            raise ValueError('invalid execution mask shape')
+        if not ((mask == 0) | (mask == 1)).all():
+            raise ValueError('execution masks must be binary')
+        masks.append(mask.bool().repeat_interleave(ref.shape[1]//mask.shape[1], dim=1))
+    valid, committed, actor = masks
+    if (committed & actor).any() or not torch.equal(committed | actor, valid):
+        raise ValueError('prefix and Actor masks must partition valid execution')
+    return valid, committed, actor
+
+
+def assembled_action(mu, batch, *, next_state=False, projection=None):
+    valid, prefix, actor = execution_masks(batch, mu, next_state=next_state)
+    name = 'next_exec_chunk_flat' if next_state else 'exec_chunk_flat'
+    executed = batch.get(name)
+    if prefix.any() and executed is None:
+        raise ValueError('committed prefix requires actual execution context')
+    if executed is None:
+        executed = torch.zeros_like(mu)
+    if executed.shape != mu.shape:
+        raise ValueError('execution context shape mismatch')
+    projected = (projection(mu, batch['next_action_anchor' if next_state else 'action_anchor'])
+                 if projection is not None else mu.clamp(-1, 1))
+    return torch.where(prefix, executed.detach(), torch.where(actor, projected, torch.zeros_like(mu)))
+
+
 def discounted_chunk_return(
     reward_seq: torch.Tensor, gamma: float, actual_steps: torch.Tensor | None = None,
 ) -> torch.Tensor:
@@ -61,6 +98,7 @@ def critic_loss(
     gamma: float,
     C: int,
     target_q_clip: float | None = 100.0,
+    projection=None,
 ) -> torch.Tensor:
     """TD3-style chunk-level TD loss with correct truncated-chunk handling.
 
@@ -78,13 +116,13 @@ def critic_loss(
     physical_timing = 'reward_offsets' in batch or 'elapsed_steps' in batch
     if physical_timing and (actual_steps is None or not {'reward_offsets', 'elapsed_steps'} <= batch.keys()):
         raise ValueError('physical timing requires reward_offsets, elapsed_steps and actual_steps')
-    if reward_seq.ndim != 2 or reward_seq.shape[1] != C:
+    if reward_seq.ndim != 2 or (not physical_timing and reward_seq.shape[1] != C):
         raise ValueError('reward chunk dimensions do not match chunk length')
 
     with torch.no_grad():
         # Use deterministic mean for target action (TD3-style), clamped to [-1,1]
         mu_next, _ = actor.forward(x_next, ref_next)
-        mu_next = mu_next.clamp(-1.0, 1.0)
+        mu_next = assembled_action(mu_next, batch, next_state=True, projection=projection)
         q_next = target_critic.min_q(x_next, mu_next)
         if target_q_clip is not None and target_q_clip > 0:
             q_next = q_next.clamp(-target_q_clip, target_q_clip)
@@ -92,14 +130,15 @@ def critic_loss(
             offsets = batch['reward_offsets'].to(reward_seq.device)
             elapsed = batch['elapsed_steps'].to(reward_seq.device)
             actual_steps = actual_steps.to(reward_seq.device)
-            mask = _valid_steps(actual_steps.to(reward_seq.device), reward_seq.shape[0], C)
+            mask = (batch['reward_valid_mask'].to(reward_seq.device).bool() if 'reward_valid_mask' in batch
+                    else _valid_steps(actual_steps.to(reward_seq.device), reward_seq.shape[0], C))
             if (offsets.shape != reward_seq.shape or elapsed.shape != actual_steps.shape
                     or offsets.dtype == torch.bool or elapsed.dtype == torch.bool
                     or offsets.is_complex() or elapsed.is_complex()):
                 raise ValueError('invalid physical reward timing dimensions')
-            if not torch.isfinite(offsets).all() or not torch.isfinite(elapsed).all() or (elapsed < actual_steps).any() or (elapsed != elapsed.floor()).any():
+            if not torch.isfinite(offsets).all() or not torch.isfinite(elapsed).all() or (elapsed <= 0).any():
                 raise ValueError('invalid elapsed control steps')
-            if ((offsets < 0) | (offsets != offsets.floor()) | ((offsets >= elapsed[:, None]) & mask)).any():
+            if ((offsets < 0) | ((offsets >= elapsed[:, None]) & mask)).any():
                 raise ValueError('invalid reward control-frame offset')
             r = (reward_seq.masked_fill(~mask, 0) * gamma ** offsets).sum(1, keepdim=True)
         else:
@@ -111,33 +150,33 @@ def critic_loss(
         else:
             bootstrap_exp = torch.full_like(done.unsqueeze(-1), C, dtype=torch.float32)
         bootstrap = (gamma ** bootstrap_exp) * (1.0 - done.unsqueeze(-1)) * q_next
-        target = r + bootstrap
+        target = (r + bootstrap).to(a.dtype)
 
-    q1, q2 = critic(x, a)
+    valid, _, _ = execution_masks(batch, a)
+    q1, q2 = critic(x, a.masked_fill(~valid, 0))
     return F.mse_loss(q1, target) + F.mse_loss(q2, target)
 
 
-def actor_loss(
-    actor: ChunkActor,
-    critic: TwinCritic,
-    batch: dict[str, torch.Tensor],
-    beta: float,
-) -> torch.Tensor:
-    """Q-maximization + BC regularization toward VLA reference.
+def actor_loss(actor, critic, batch, beta, prefix_bc_weight=None, *, projection=None, metrics=None):
+    """Q gradients only reach the effective suffix; prefix BC trains raw output.
 
-    Uses deterministic mean (not noisy samples) for stable optimization.
-    BC term is the per-sample squared distance summed across action dims, then
-    averaged over the batch — matching the paper's β-scaling convention. This
-    differs from mean-MSE by a factor of C*D_flat.
+    Both BC terms sum action dimensions then average the batch. No mask-count
+    rescaling: a one-action suffix has exactly one action's regularization.
     """
-    x = batch["state_vec"]
-    ref = batch["ref_chunk_flat"]
-    mask = _action_mask(batch, ref)
+    prefix_bc_weight = beta if prefix_bc_weight is None else prefix_bc_weight
+    if beta < 0 or prefix_bc_weight < 0:
+        raise ValueError('BC weights must be nonnegative')
+    x, ref = batch['state_vec'], batch['ref_chunk_flat']
+    valid, prefix, suffix = execution_masks(batch, ref)
     mu, _ = actor.forward(x, ref, training=True)
     if mu.shape != ref.shape:
-        raise ValueError("Actor output and reference chunk dimensions do not match")
-    q = critic.min_q(x, mu.clamp(-1.0, 1.0).masked_fill(~mask, 0))
-    # Keep a restoring BC gradient even when the deployed action is saturated.
-    error = (mu - ref.clamp(-1.0, 1.0)).masked_fill(~mask, 0)
-    bc_reg = error.square().sum(dim=-1).mean()
-    return -q.mean() + beta * bc_reg
+        raise ValueError('Actor output and reference chunk dimensions do not match')
+    q = critic.min_q(x, assembled_action(mu, batch, projection=projection))
+    suffix_bc = ((mu-ref.clamp(-1, 1)).masked_fill(~suffix, 0)).square().sum(-1).mean()
+    target = batch.get('exec_chunk_flat', ref).detach()
+    prefix_bc = ((mu-target).masked_fill(~prefix, 0)).square().sum(-1).mean()
+    if metrics is not None:
+        metrics.update(bc_suffix=float(suffix_bc.detach()), bc_prefix=float(prefix_bc.detach()),
+                       prefix_bc_weight=float(prefix_bc_weight), beta=float(beta),
+                       prefix_dims=int(prefix.sum()), actor_dims=int(suffix.sum()), valid_dims=int(valid.sum()))
+    return -q.mean()+beta*suffix_bc+prefix_bc_weight*prefix_bc

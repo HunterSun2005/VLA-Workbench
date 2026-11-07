@@ -71,7 +71,7 @@ class RLTAlgorithm:
         grad_clip: float = 1.0,
     ) -> float:
         """Single actor gradient step with gradient clipping."""
-        loss = actor_loss(self.policy.actor, self.critic, batch, beta)
+        loss = actor_loss(self.policy.actor, self.critic, batch, beta, self.config.training.prefix_bc_weight)
         actor_optimizer.zero_grad()
         loss.backward()
         if grad_clip > 0:
