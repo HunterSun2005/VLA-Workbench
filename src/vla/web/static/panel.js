@@ -8,7 +8,8 @@ function sessionRunning(){
  if(current?.status?.final)return false;
  return Boolean(active?.alive)||['starting','standby','active','recording','saving','fault'].includes(current?.status?.state);
 }
-const configLocked=()=>creating||sessionRunning();
+let checking=false, confirming=false, startBaseline=null, confirmTimer=null;
+const configLocked=()=>creating||checking||confirming||sessionStage.locked||sessionRunning();
 function restoreSessionConfig(saved){
  for(const [key,value] of Object.entries(saved)){
   const el=form.elements[key];if(!el)continue;
@@ -23,8 +24,8 @@ function lockSetup(){
  const locked=configLocked();$('start').disabled=locked||pending;$('preflight').disabled=locked;$('datasetDefault').disabled=locked;
  for(const el of form.elements)if(el.name)el.disabled=locked||workflow==='deploy'&&el.name==='action_space';
  const owner=active?.alive&&active.session_id!==current?.session_id?active.config:current?.config||active?.config;
- $('collectTab').disabled=creating||sessionRunning()&&owner?.workflow!=='collect';
- $('deployTab').disabled=creating||sessionRunning()&&owner?.workflow!=='deploy';
+ $('collectTab').disabled=creating||checking||confirming||sessionStage.phase==='checking'||(sessionRunning()||sessionStage.phase==='finished')&&owner?.workflow!=='collect';
+ $('deployTab').disabled=creating||checking||confirming||sessionStage.phase==='checking'||(sessionRunning()||sessionStage.phase==='finished')&&owner?.workflow!=='deploy';
 }
 function chartPalette(){const css=getComputedStyle(document.documentElement),value=name=>css.getPropertyValue(name).trim();return {axis:value('--axis'),grid:value('--grid'),series:Array.from({length:7},(_,i)=>value(`--series-${i}`))};}
 let chartTheme=chartPalette();
@@ -83,16 +84,61 @@ function showPreflight(result, checkedWorkflow){
   const list=document.createElement('ol');for(const message of items){const item=document.createElement('li');item.textContent=message;list.append(item);}panel.append(list);
   const hint=document.createElement('p');hint.className='hint';hint.textContent=checkedWorkflow==='deploy'?'修正以上配置后重新检查。若只需遥操作采集，请切换到「数据采集」，无需填写模型或 tokenizer。':'修正以上配置后重新检查；续采需选择字段一致的数据集，新格式采集请使用新目录。';panel.append(hint);
  }
- panel.scrollIntoView({behavior:'smooth',block:'center'});
+ panel.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'});
 }
 form.addEventListener('input',clearPreflight);form.addEventListener('change',clearPreflight);
-async function api(path,data){const response=await fetch(path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json','X-VLA-Token':token}:{},body:data?JSON.stringify(data):undefined});let result=await response.json();if(!response.ok)throw new Error(result.detail||response.statusText);return result;}
+async function api(path,data){const response=await fetch(path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json','X-VLA-Token':token}:{},body:data?JSON.stringify(data):undefined});let result=await response.json();if(!response.ok){const failure=new Error(result.detail||response.statusText);failure.status=response.status;throw failure;}return result;}
 function config(){const data={workflow,mode:'vla',device:'cuda'};for(const element of form.elements){if(element.name)data[element.name]=element.type==='checkbox'?element.checked:element.value;}if(data.workflow==='deploy'){data.side_camera_serial='';data.schema='full';if(data.policy_kind==='sft')data.mode='vla';}if(data.arms==='dual'||data.source==='gello')data.schema='full';if(window.readWorkspaceBounds)data.workspace_bounds=readWorkspaceBounds(data);if(window.readCameraSerials)data.camera_serials=readCameraSerials(data);return data;}
-function configureView(){const deploy=workflow==='deploy';$('sourceLabel').textContent=deploy?'人工接管输入源':'遥操作输入源';$('collectTab').classList.toggle('selected',selectedPage==='collect');$('deployTab').classList.toggle('selected',selectedPage==='deploy');$('processingTab').classList.toggle('selected',selectedPage==='processing');$('modelFields').hidden=!deploy;$('policy').hidden=!deploy;$('schemaField').hidden=deploy;$('sideCameraField').hidden=deploy;form.elements.schema.options[0].textContent=`完整状态 · ${form.elements.arms.value==='dual'?'100':'50'}D`;form.elements.action_space.disabled=deploy;$('configPathLabel').textContent=deploy?'部署 YAML':'采集 YAML（控制、运动与记录参数）';updateDatasetPath();lockSetup();window.dispatchEvent(new CustomEvent('vla-config-change'));}
+function configureView(){const deploy=workflow==='deploy';$('sourceLabel').textContent=deploy?'人工接管输入源':'遥操作输入源';$('collectTab').classList.toggle('selected',selectedPage==='collect');$('deployTab').classList.toggle('selected',selectedPage==='deploy');$('processingTab').classList.toggle('selected',selectedPage==='processing');$('modelFields').hidden=!deploy;$('deployCameraHint').hidden=!deploy;$('policy').hidden=!deploy;$('schemaField').hidden=deploy;$('sideCameraField').hidden=deploy;form.elements.schema.options[0].textContent=`完整状态 · ${form.elements.arms.value==='dual'?'100':'50'}D`;form.elements.action_space.disabled=deploy;$('configPathLabel').textContent=deploy?'部署 YAML':'采集 YAML（控制、运动与记录参数）';updateDatasetPath();lockSetup();window.dispatchEvent(new CustomEvent('vla-config-change'));}
 function showPage(page){if(page!==selectedPage)clearPreflight();selectedPage=page;const processing=page==='processing';$('livePanel').hidden=processing;$('processingPanel').hidden=!processing;if(processing)stopCameras();else{workflow=page;if(session&&!current?.status?.final&&current?.status?.state!=='stopped')cameras(current?.config||active?.config);}configureView();window.dispatchEvent(new CustomEvent('vla-page-change',{detail:page}));}
 $('collectTab').onclick=()=>showPage('collect');$('deployTab').onclick=()=>showPage('deploy');$('processingTab').onclick=()=>showPage('processing');form.elements.arms.onchange=configureView;form.elements.source.onchange=configureView;form.elements.policy_kind.onchange=configureView;
-$('preflight').onclick=async()=>{clearPreflight();try{error('');await window.prepareHardware?.();const data=config(),result=await api('/api/preflight',data);showPreflight(result,data.workflow);}catch(e){showPreflight({ok:false,errors:[e.message]},workflow);}};
-form.onsubmit=async event=>{event.preventDefault();if(creating||pending)return;creating=true;lockSetup();window.dispatchEvent(new CustomEvent('vla-live-status'));try{error('');clearPreflight();await window.prepareHardware?.();const data=config(),check=await api('/api/preflight',data);showPreflight(check,data.workflow);if(!check.ok)return;active={...await api('/api/sessions',data),alive:true};$('start').disabled=true;error('');}catch(e){error(e.message);}finally{creating=false;lockSetup();window.dispatchEvent(new CustomEvent('vla-live-status'));}};
+function requestStatus(text=''){$('requestStatus').textContent=text;$('requestStatus').hidden=!text;}
+function refreshLocks(){lockSetup();window.dispatchEvent(new CustomEvent('vla-live-status'));}
+// A dropped POST can still be executing on the server. Idle/old-final snapshots
+// cannot prove it failed; keep the draft locked until a new session is observed.
+function resolveCreation(message){
+ if(!confirming||!message.session_id||message.session_id===startBaseline)return;
+ confirming=false;clearTimeout(confirmTimer);requestStatus('');setIssue('start-unknown','');
+}
+async function confirmCreation(){
+ clearTimeout(confirmTimer);
+ try{const message=await api('/api/state');render(message);}catch(e){setIssue('start-unknown','正在确认启动结果：'+e.message);}
+ if(confirming)confirmTimer=setTimeout(confirmCreation,1500);
+ refreshLocks();
+}
+$('preflight').onclick=async()=>{
+ if(configLocked())return;
+ checking=true;clearPreflight();requestStatus('正在检查配置…');refreshLocks();
+ try{error('');await window.prepareHardware?.();const data=config(),result=await api('/api/preflight',data);showPreflight(result,data.workflow);}
+ catch(e){showPreflight({ok:false,errors:[e.message]},workflow);}
+ finally{checking=false;requestStatus('');refreshLocks();}
+};
+form.onsubmit=async event=>{
+ event.preventDefault();if(configLocked()||pending)return;
+ creating=true;startBaseline=sessionStage.id;requestStatus('正在检查配置…');refreshLocks();let submitted=false;
+ try{
+  error('');clearPreflight();await window.prepareHardware?.();const data=config(),check=await api('/api/preflight',data);showPreflight(check,data.workflow);if(!check.ok)return;
+  // Another tab may have started a session while this check was in flight.
+  if(sessionStage.phase!=='configure'||sessionRunning())return;
+  requestStatus('正在提交启动请求…');submitted=true;
+  const record=await api('/api/sessions',data);
+  active={...record,alive:true};sessionStage.identify(record.session_id,record.config||data);
+  // A fast runner can have delivered its final state before the POST reply.
+  if(current?.session_id!==record.session_id){
+   sessionStage.set('running');$('state').textContent='启动中';
+  }
+  error('');
+ }catch(e){
+  error(e.message);
+  if(submitted&&(!e.status||e.status>=500)){
+   confirming=true;requestStatus('启动结果尚未确认，正在查询现有会话…');
+   await confirmCreation();
+  }else if(submitted&&e.status===409){
+   // A conflict may mean another client already owns the session.
+   try{render(await api('/api/state'));}catch{confirming=true;await confirmCreation();}
+  }
+ }finally{creating=false;if(!confirming)requestStatus('');refreshLocks();}
+};
 async function command(operation,args={}){if(pending||!current?.session_id)return;pending=true;awaitingCommandId=crypto.randomUUID();freshness();error('');try{await api('/api/commands',{session_id:current.session_id,revision:current.revision,command_id:awaitingCommandId,operation,args});}catch(e){awaitingCommandId=null;pending=false;freshness();error(e.message);}}
 document.querySelectorAll('[data-op]').forEach(button=>button.onclick=()=>{const op=button.dataset.op;if(op==='discard'&&!confirm('丢弃当前未保存回合？'))return;command(op,{outcome:button.dataset.outcome||'success'});});
 document.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>command('mode',{mode:button.dataset.mode}));
@@ -103,8 +149,13 @@ function rebuildPlots(){for(const p of plots)p.plot.destroy();plots=[];$('plots'
 function draw(){if(selectedPage==='processing'||paused||!rows.length)return;const end=rows[rows.length-1].time,begin=end-Number($('window').value),visible=rows.filter(x=>x.time>=begin);for(const p of plots){p.plot.setData([visible.map(x=>x.time),...p.ds.map(d=>visible.map(x=>x.values[d.key]??null))],false);p.plot.setScale('x',{min:begin,max:end});}}
 $('hideAll').onclick=()=>{signalsCustomized=true;selected=[];localStorage.setItem('vla.signals','[]');rebuildSignals();};$('defaults').onclick=()=>{signalsCustomized=false;selected=null;localStorage.removeItem('vla.signals');rebuildSignals();};$('freeze').onclick=()=>{paused=!paused;$('freeze').textContent=paused?'恢复跟随':'暂停图表';draw();};try{const saved=localStorage.getItem('vla.window');if(['10','60','300'].includes(saved))$('window').value=saved;}catch{}$('window').onchange=()=>{localStorage.setItem('vla.window',$('window').value);draw();};
 new ResizeObserver(()=>{for(const p of plots)p.plot.setSize({width:Math.max(250,p.container.clientWidth-12),height:175});}).observe($('plots'));
-function render(message){current=message;if(Object.hasOwn(message,'active'))active=message.active;lastReceive=performance.now();const s=message.status||{};
- if(message.session_id&&session!==message.session_id){issueMessages.clear();seenFailedCommands.clear();drawIssues();render.lastState=null;session=message.session_id;awaitingCommandId=null;pending=false;$('sessionConfig').open=false;rows=[];epoch=Date.now()/1000-message.now;descriptors=[];if(!s.final&&s.state!=='stopped')cameras(message.config||active?.config);else stopCameras();if(message.config){restoreSessionConfig(message.config);configureView();}}
+function render(message){
+ if(sessionStage.ignores(message)||((creating||confirming)&&message.session_id===startBaseline))return;
+ resolveCreation(message);
+ // Do not let a queued snapshot from the previous session undo a successful create.
+ if(active?.alive&&active.session_id!==session&&message.session_id!==active.session_id&&message.active?.session_id!==active.session_id)return;
+ current=message;if(Object.hasOwn(message,'active'))active=message.active;lastReceive=performance.now();const s=message.status||{};
+ if(message.session_id&&session!==message.session_id){issueMessages.clear();seenFailedCommands.clear();drawIssues();render.lastState=null;session=message.session_id;awaitingCommandId=null;pending=false;rows=[];epoch=Date.now()/1000-message.now;descriptors=[];if(!s.final&&s.state!=='stopped')cameras(message.config||active?.config);else stopCameras();if(message.config){restoreSessionConfig(message.config);configureView();}}
 
  $('state').textContent=labels[s.state]||s.state;$('episode').textContent=s.episode??'—';$('frames').textContent=`${s.frames??'—'} / ${s.elapsed_s?.toFixed(1)??'—'}s`;$('source').textContent=({pose_return:'恢复姿态',waiting:'等待新动作',idle:'待命',human:'HUMAN',gamepad:'GAMEPAD'}[s.actual_source]||s.actual_source?.toUpperCase()||'—');
  $('modeState').textContent=s.switch_pending?'等待新策略动作':s.requested_mode?`已选择 ${s.requested_mode.toUpperCase()}`:'—';$('probability').textContent=s.probability==null?'—':s.probability.toFixed(3);$('actionContract').textContent=s.action_space?`${s.action_space.toUpperCase()} · ${s.training_representation||'absolute'} · ROS ${s.controller_state||''}`:'动作契约：等待会话';$('latency').textContent=`${s.inference_ms?.toFixed(0)??'—'} ms / ${s.rtc?'ON':'OFF'}`;
@@ -113,9 +164,10 @@ function render(message){current=message;if(Object.hasOwn(message,'active'))acti
  if(s.subtask)annotation.textContent+=` · 阶段 ${s.subtask.index+1}/${s.subtask.total}：${s.subtask.name}`;
  $('armStatus').replaceChildren();for(const [arm,value] of Object.entries(s.arms||{})){const badge=document.createElement('span');badge.textContent=`${arm==='left'?'左臂':'右臂'} · ${value.source} · ${value.speed==='fast'?'Fast':value.speed==='normal'?'Normal':value.speed==='fixed'?'固定':'不可用'}${value.speed_scale==null?'':` ${value.speed_scale.toFixed(2)}×`}${value.transition?' · 过渡中':''}`;$('armStatus').append(badge);}
  const commands=message.commands||[];const ack=commands.find(x=>x.command_id===awaitingCommandId);if(ack&&ack.status!=='accepted')awaitingCommandId=null;pending=Boolean(awaitingCommandId)||commands.some(x=>x.status==='accepted');renderIssues(message);
+ if(s.final||s.state==='stopped'){awaitingCommandId=null;pending=false;}
  $('events').textContent=[...commands.map(x=>`${x.operation}: ${x.status}${x.error?' — '+x.error:''}`),...(s.events||[])].join('\n')||'暂无命令';
- if((s.state==='stopped'||s.final)&&render.lastState!=='stopped'){stopCameras();$('sessionConfig').open=true;}render.lastState=s.state;
- lockSetup();
+ if((s.state==='stopped'||s.final)&&render.lastState!=='stopped'){stopCameras();}render.lastState=s.state;
+ sessionStage.observe(message);lockSetup();
  if(s.signals&&JSON.stringify(s.signals)!==JSON.stringify(descriptors)){descriptors=s.signals;rebuildSignals();}
  for(const sample of message.samples||[]){const time=epoch+sample.time;if(!rows.length||time>rows.at(-1).time)rows.push({time,values:sample.values});}if(rows.length>6000)rows.splice(0,rows.length-6000);draw();freshness();window.dispatchEvent(new CustomEvent('vla-live-status'));}
 function operationBlock(op,s){
@@ -133,7 +185,7 @@ function operationBlock(op,s){
 }
 function freshness(){
  const elapsed=(performance.now()-lastReceive)/1000,s=current?.status||{},isLive=connected&&elapsed<.5&&s.updated_at!=null&&current.now-s.updated_at+elapsed<.5&&!s.final;
- $('connection').textContent=connected?'已连接':'连接中断 · 自动重连';$('dot').classList.toggle('live',connected);$('freshness').textContent=isLive?'实时更新':s.final?'会话已结束':'数据过期 / 等待';
+ $('connection').textContent=connected?'已连接':sessionStage.phase==='checking'?'正在确认会话':'连接中断 · 自动重连';$('dot').classList.toggle('live',connected);$('freshness').textContent=isLive?'实时更新':s.final?'会话已结束':'数据过期 / 等待';
  for(const b of document.querySelectorAll('[data-op]')){
   const startupStop=connected&&elapsed<.5&&s.state==='starting'&&b.dataset.op==='stop';
   const reason=!(isLive||startupStop)?'等待实时会话连接':pending?'正在执行上一条命令':b.dataset.outcome==='failure'&&!(s.outcomes||[]).includes('failure')?'此采集后端不支持失败标签':operationBlock(b.dataset.op,s);
@@ -147,5 +199,7 @@ function freshness(){
  }
  for(const card of document.querySelectorAll('.camera')){if(!card.querySelector('img').getAttribute('src')){card.classList.add('stale');card.querySelector('.age').textContent='预览暂停 · 遥测继续更新';continue;}const frame=current?.cameras?.[card.dataset.role];const age=frame?current.now-frame.captured_at+elapsed:Infinity;card.classList.toggle('stale',!connected||age>.5||age<0);card.querySelector('.age').textContent=Number.isFinite(age)?`${age>.5||!connected?'画面过期':'LIVE'} · ${(age*1000).toFixed(0)} ms · 服务端预览 ${age<=.5&&connected?(frame?.fps?.toFixed(1)??'—'):'—'} FPS`:'等待相机 / 无画面';}
 }
-async function connect(){try{const boot=await api('/api/bootstrap');token=boot.token;demo=boot.demo;active=boot.active;datasetDefaults=boot.dataset_defaults||{};$('datasetBase').textContent=`相对路径基准：${boot.workspace_root}`;$('demo').hidden=!demo;if(!form.elements.model_python.value)form.elements.model_python.value=boot.defaults.model_python;if(active?.config&&!session)restoreSessionConfig(active.config);configureView();socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/live`,['vla',token]);socket.onopen=()=>{connected=true;setIssue('web-connection','');};socket.onmessage=event=>render(JSON.parse(event.data));socket.onclose=()=>{connected=false;freshness();setTimeout(connect,1200);};socket.onerror=()=>socket.close();}catch(e){connected=false;setIssue('web-connection',`Web 连接失败：${e.message}`);setTimeout(connect,1500);}}
+async function connect(){try{const boot=await api('/api/bootstrap');token=boot.token;demo=boot.demo;active=boot.active;datasetDefaults=boot.dataset_defaults||{};$('datasetBase').textContent=`相对路径基准：${boot.workspace_root}`;$('demo').hidden=!demo;if(!form.elements.model_python.value)form.elements.model_python.value=boot.defaults.model_python;if(active?.config&&!session&&!sessionStage.dismissed.has(active.session_id))restoreSessionConfig(active.config);sessionStage.bootstrap(active);if(active?.alive&&!session)$('state').textContent='启动中';configureView();socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/live`,['vla',token]);socket.onopen=()=>{connected=true;setIssue('web-connection','');};socket.onmessage=event=>render(JSON.parse(event.data));socket.onclose=()=>{connected=false;freshness();setTimeout(connect,1200);};socket.onerror=()=>socket.close();}catch(e){connected=false;setIssue('web-connection',`Web 连接失败：${e.message}`);setTimeout(connect,1500);}}
+const sessionStage=new SessionStage();
+window.addEventListener('vla-layout-change',()=>{for(const p of plots)p.plot.setSize({width:Math.max(250,p.container.clientWidth-12),height:175});});
 configureView();setInterval(freshness,250);connect();

@@ -17,7 +17,7 @@
   }catch(e){fail(e.message);}finally{loading=false;loaded=true;update();}
  }
  function update(){
-  panel.hidden=selectedPage!=='collect';
+  panel.hidden=selectedPage!=='collect'||sessionStage.phase!=='running';
   const s=current?.status||{},c=current?.config||active?.config||config(),op=s.pose_operation;
   const moving=op?.state==='moving',live=connected&&!pending&&!s.final&&performance.now()-lastReceive<500&&current?.now-s.updated_at<.5;
   const supported=(s.available_commands||[]).includes('pose_capture')||moving;

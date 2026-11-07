@@ -1,7 +1,7 @@
 /* Passive discovery and editable, per-arm profiles. No device control here. */
 'use strict';
 (()=>{
- const panel=$('hardwareSetup'),mode=$('hardwareMode'),fields=$('hardwareFields');
+ const panel=$('hardwareSetup'),mode=$('hardwareMode'),fields=$('hardwareFields'),cameraFields=$('deployCameraFields');
  const side=$('sideCamera');
  let profiles=null,inventory={serials:[],cameras:[],warnings:[]},drafts={},shown=null,saving=false,sessionProfile=null,profileSession=null,profileSequence=0,wasRunning=false,restoredMode=null,shownView=null;
  const labels={LEFT_ROBOT_IP:'左臂 IP',RIGHT_ROBOT_IP:'右臂 IP',LEFT_ROBOTIQ_PORT:'左夹爪串口',RIGHT_ROBOTIQ_PORT:'右夹爪串口',LEFT_GELLO_SERIAL_ID:'左 GELLO 串口',RIGHT_GELLO_SERIAL_ID:'右 GELLO 串口',BASE_CAMERA_SERIAL:'Base 全局相机',LEFT_WRIST_CAMERA_SERIAL:'左腕相机',RIGHT_WRIST_CAMERA_SERIAL:'右腕相机',GELLO_CONFIG:'GELLO 校准 YAML',ROBOT_CONFIG:'机械臂 YAML',GRIPPER_CONFIG:'夹爪 YAML'};
@@ -40,12 +40,12 @@
  function lock(){
   const disabled=running()||saving;
   side.disabled=disabled;$('sideCameraRefresh').disabled=disabled;
-  panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=disabled);
+  document.querySelectorAll('#hardwareSetup button,#hardwareSetup input,#hardwareSetup select,#deployCameraFields input,#deployCameraFields select').forEach(el=>el.disabled=disabled);
   // The named path is locked independently of the helper controls.
   if(usesROS())form.elements.ros_config.readOnly=mode.value==='preset';else form.elements.ros_config.readOnly=false;
  }
  function renderFields(){
-  fields.replaceChildren();
+  fields.replaceChildren();cameraFields.replaceChildren();
   const values=displayedValues();if(!values)return;
   for(const group of [['Franka 与夹爪 · 左臂',k=>k.startsWith('LEFT_')&&!k.includes('CAMERA')&&!isGello(k)],['Franka 与夹爪 · 右臂',k=>k.startsWith('RIGHT_')&&!k.includes('CAMERA')&&!isGello(k)],['相机角色',k=>k.includes('CAMERA')],['Franka 与夹爪 · 启动配置',k=>k.endsWith('_CONFIG')&&!isGello(k)],['GELLO 输入 · 串口与校准',isGello]]){
    const keys=Object.keys(values).filter(key=>visibleKey(key)&&group[1](key));if(!keys.length)continue;
@@ -67,7 +67,7 @@
     if(key.endsWith('_CAMERA_SERIAL')){const info=document.createElement('small');info.id='hardware-camera-status-'+key;info.className='camera-binding-status';info.setAttribute('role','status');label.append(info);}
     detail.append(label);
    }
-   fields.append(detail);
+   (group[0]==='相机角色'?cameraFields:fields).append(detail);
   }
   notice();lock();
  }
@@ -78,7 +78,7 @@
   if(id&&id!==restoredMode){restoredMode=id;mode.value=path&&!generated(path)?'custom':'preset';}
   if(path&&!generated(path))mode.value='custom';
   $('hardwareEditor').hidden=mode.value==='custom'&&!(sessionRunning()&&sessionProfile);
-  $('hardwareNotice').hidden=$('hardwareEditor').hidden;
+  $('hardwareNotice').hidden=$('hardwareEditor').hidden;cameraFields.hidden=$('hardwareEditor').hidden;
   if(mode.value==='custom')$('hardwareStatus').textContent='请在下方「环境与 ROS 配置」填写 JSON 路径；不会覆盖该文件。';
   const arms=form.elements.arms.value,viewKey=`${arms}|${form.elements.source.value}|${workflow}`;if(profiles&&shownView!==viewKey){shown=arms;shownView=viewKey;renderFields();}
   lock();
@@ -87,10 +87,10 @@
  async function syncSessionProfile(){
   const id=current?.session_id||active?.session_id;
   if(!id||!sessionRunning()||!usesROS()||profileSession===id)return;
-  profileSession=id;sessionProfile=null;fields.replaceChildren();const seq=++profileSequence;
+  profileSession=id;sessionProfile=null;fields.replaceChildren();cameraFields.replaceChildren();const seq=++profileSequence;
   $('hardwareStatus').textContent='正在读取当前会话实际使用的硬件配置…';
-  try{const result=await api('/api/hardware/session');if(seq!==profileSequence)return;if(!result){$('hardwareStatus').textContent='当前会话未指定 ROS 硬件配置（模拟模式允许）';return;}if(result.session_id!==id)return;sessionProfile=result;drafts[result.arms]={...(profiles?.[result.arms]?.defaults||{}),...result.values};renderFields();$('hardwareEditor').hidden=false;changed();$('hardwareStatus').textContent='当前会话实际使用的硬件配置（只读，来自启动快照）';}
-  catch(e){if(seq===profileSequence){fields.replaceChildren();$('hardwareStatus').textContent='无法读取当前会话硬件配置：'+e.message;}}
+  try{const result=await api('/api/hardware/session');if(seq!==profileSequence)return;if(!result){$('hardwareStatus').textContent='当前会话未指定 ROS 硬件配置（模拟模式允许）';return;}if(result.session_id!==id)return;sessionProfile=result;drafts[result.arms]={...(profiles?.[result.arms]?.defaults||{}),...result.values};renderFields();$('hardwareEditor').hidden=false;cameraFields.hidden=false;changed();$('hardwareStatus').textContent='当前会话实际使用的硬件配置（只读，来自启动快照）';}
+  catch(e){if(seq===profileSequence){fields.replaceChildren();cameraFields.replaceChildren();$('hardwareStatus').textContent='无法读取当前会话硬件配置：'+e.message;}}
  }
  const ready=api('/api/hardware').then(result=>{
   profiles=result.profiles;inventory=result.inventory;renderSide();
