@@ -197,17 +197,27 @@ class RolloutCollector(Node):
         self._subtask_index = 0
         self._episode_task_index = 0
         self._last_demo_images: dict[str, int] = {}
-        self._extra_features = (
-            {"complementary_info.phase": EXTRA_FEATURES["complementary_info.phase"]}
-            if demonstration else dict(EXTRA_FEATURES)
-        )
+        from vla.core.online_contract import TIMING_FEATURES
+        self._extra_features = {**EXTRA_FEATURES, **TIMING_FEATURES}
+        self._journal = None
+        self._pending_events = []
+        self._pending_images = None
+        self._awaiting_record = None
+        self._saving = False
+        self._storage_blocked = False
+        self._pending_storage_error = None
         if config.subtasks:
             self._extra_features["complementary_info.subtask_index"] = {
                 "dtype": "int64", "shape": [1], "names": ["subtask_index"],
                 "info": {"codebook": {str(i): name for i, name in enumerate(config.subtasks)}},
             }
+        self._sensor_keys = tuple([f'camera.{c.name}' for c in config.cameras] +
+            [f'{a.name}.{kind}' for a in config.arms for kind in ('measured_joint', 'robot_state', 'gripper_state')])
+        self._sensor_sequences = {}
         for key, dim, dtype in [
             ("observation.anchor", config.action_dim, "float64"),
+            ("action.candidate", config.action_dim, "float64"),
+            ("observation.sensor_frames", len(self._sensor_keys)*3, "int64"),
             ("command.joint", 8 * len(config.arms), "float64"),
             ("command.fk_tcp", 10 * len(config.arms), "float64"),
             ("command.identity", 4, "int64"),
@@ -275,7 +285,7 @@ class RolloutCollector(Node):
             "action_spec": config.action_spec.to_dict(),
             "actions_stored_as": "absolute",
             "action_recording_point": "accepted_before_tracking",
-            "recording_schema_version": 4 if self.require_online else 3,
+            "recording_schema_version": 5,
             **({key: run[key] for key in ("run_uuid", "dataset_uuid")} if self.require_online else {}),
             "rlt_episode_metadata_fields": {
                 "rl_intervals": "RL frame intervals with episode outcome.",
@@ -283,6 +293,8 @@ class RolloutCollector(Node):
             },
         }
         from vla.datacollection.gripper_contract import ROS_GRIPPER_RECORDING_VERSION
+        metadata['sensor_frame_layout'] = {'keys': list(self._sensor_keys), 'fields': ['frame_id', 'received_at_ns', 'age_ns'],
+                                           'time_source': 'host_monotonic_capture_or_receive'}
         metadata["gripper_recording_version"] = ROS_GRIPPER_RECORDING_VERSION
         metadata["action_gripper_source"] = "command_goal_or_latched_hold"
         if demonstration:
@@ -322,6 +334,31 @@ class RolloutCollector(Node):
             fingerprint({k: str(v) for k, v in asdict(config).items()
                          if k not in ('dataset_root', 'task', 'tasks', 'socket_path', 'joy_socket_path')})).to_dict()
         metadata['tool_definition'] = tool
+        controller_parameters = self._controller_parameters()
+        control_parameters = {k: asdict(config)[k] for k in (
+            'fps', 'gamepad_control_rate', 'control_discontinuity_timeout_s', 'joint_limit_margin',
+            'max_linear_velocity', 'max_angular_velocity', 'velocity_tracking_tau_s',
+            'target_smoothing_alpha', 'velocity_smoothing', 'smooth_angular_velocity', 'damping',
+            'max_joint_speed', 'gamepad_position_gain', 'gamepad_orientation_gain', 'gamepad_max_angular_speed',
+            'gamepad_xy_speed', 'gamepad_z_speed', 'gamepad_joint7_speed', 'gamepad_gripper_speed')}
+        metadata['recording_contract']['control_fingerprint'] = fingerprint({
+            'python': control_parameters, 'cpp': controller_parameters,
+            'execution': {'version': 2, 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots}})
+        metadata['effective_controller_parameters'] = controller_parameters
+        metadata['execution_projection'] = {
+            'lower': np.concatenate([self.servos[a.name].model.lower_limits if config.action_space == 'joint'
+                                     else np.asarray(a.workspace_min) for a in config.arms]).tolist(),
+            'upper': np.concatenate([self.servos[a.name].model.upper_limits if config.action_space == 'joint'
+                                     else np.asarray(a.workspace_max) for a in config.arms]).tolist()}
+        if self.policy_client is not None:
+            from vla.actions.metadata import require_recording_source
+            require_recording_source(self.policy_client.contract['action_contract'], metadata['recording_contract'])
+            if self.policy_client.contract['action_contract']['execution_projection'] != metadata['execution_projection']:
+                raise ValueError('model/deployment execution projection mismatch')
+        self._effective_metadata = metadata
+        from rcl_interfaces.msg import ParameterEvent
+        self._parameter_subscription = self.create_subscription(ParameterEvent, '/parameter_events',
+                                                                self._parameter_changed, 10)
         self.writer = V30DatasetWriter(
             config.dataset_root,
             config.fps,
@@ -352,9 +389,10 @@ class RolloutCollector(Node):
             execution = ExecutionContract(config.action_spec, horizons,
                 metadata['recording_contract']['control_fingerprint'],
                 metadata['recording_contract']['kinematics_fingerprint'],
-                metadata['recording_contract']['tool_fingerprint'], frame_stride=model['frame_stride'])
+                metadata['recording_contract']['tool_fingerprint'], frame_stride=model['frame_stride'],
+                inference_slots=config.inference_slots, guard_slots=config.installation_guard_slots)
             self.executor = Executor(execution, session_id=uuid.uuid4().hex,
-                                     model_version=model['checkpoint_fingerprint'], epoch_ns=epoch,
+                                     model_version=model.get('model_version', model['checkpoint_fingerprint']), epoch_ns=epoch,
                                      project=self.coordinator.project)
         self._start_cameras()
 
@@ -451,6 +489,44 @@ class RolloutCollector(Node):
         if mismatches:
             raise ValueError("policy rollout contract mismatch: " + "; ".join(mismatches))
 
+    def _controller_parameters(self):
+        names = ['k_gains', 'd_gains', 'k_alpha', 'gello_deadband', 'gello_filter_alpha',
+                 'initial_alignment_speed_factor', 'max_gello_velocity', 'max_delta_tau_per_ms']
+        result = {}
+        for arm in self.config.arms:
+            for node, keys in [(f'/{arm.name}/joint_impedance_controller', names),
+                               (f'/{arm.name}/controller_manager', ['update_rate'])]:
+                client = self.create_client(GetParameters, node+'/get_parameters')
+                if not client.wait_for_service(timeout_sec=30):
+                    raise RuntimeError(f'effective controller parameters unavailable: {node}')
+                request = GetParameters.Request()
+                request.names = keys
+                future = client.call_async(request)
+                rclpy.spin_until_future_complete(self, future, timeout_sec=30)
+                response = future.result()
+                if response is None or len(response.values) != len(keys):
+                    raise ValueError('incomplete effective controller parameters')
+                values = {k: parameter_value_to_python(v) for k, v in zip(keys, response.values)}
+                if any(v is None for v in values.values()):
+                    raise ValueError('controller parameter is undeclared')
+                if 'update_rate' in values and values['update_rate'] != 1000:
+                    raise ValueError('controller manager must run at 1000 Hz')
+                result[node] = values
+                self.destroy_client(client)
+        return result
+
+    def _parameter_changed(self, event):
+        controllers = self._effective_metadata['effective_controller_parameters']
+        watched = set(controllers) | {a.robot_state_publisher.rstrip('/') for a in self.config.arms}
+        if event.node not in watched:
+            return
+        expected = controllers.get(event.node, {})
+        for parameter in (*event.changed_parameters, *event.deleted_parameters, *event.new_parameters):
+            if parameter.name == 'robot_description' or (parameter.name in expected and
+                    parameter_value_to_python(parameter.value) != expected[parameter.name]):
+                self._latch_fault(RuntimeError('effective execution parameters changed; start a new session'))
+                return
+
     def _load_kinematic_model(self, arm: ArmConfig):
         service_name = f"{arm.robot_state_publisher.rstrip('/')}/get_parameters"
         client = self.create_client(GetParameters, service_name)
@@ -541,6 +617,7 @@ class RolloutCollector(Node):
     def _store_latest(self, key: str, value: object, timestamp_ns: int | None = None) -> None:
         with self._lock:
             self._latest[key] = (timestamp_ns or time.monotonic_ns(), value)
+            self._sensor_sequences[key] = self._sensor_sequences.get(key, 0)+1
 
     def _camera_callback(self, role: str, timestamp_ns: int, rgb: np.ndarray) -> None:
         prepared = prepare_image(rgb, self.config.image_size)
@@ -790,7 +867,14 @@ class RolloutCollector(Node):
         self._last_command_snapshot = None
         self._input_action = None
         self._last_gripper_goal.clear()
-        self._pending_frame = None
+        self._awaiting_record = None
+        if self._pending_frame is not None and self._journal is not None:
+            try:
+                self._journal_frame(self._pending_frame)
+                self._pending_frame = None
+            except RuntimeError as error:
+                self._storage_blocked = True
+                self._fault_reason = str(error)
         self._segment_id += 1
 
     def _track_control(self, dt):
@@ -805,6 +889,14 @@ class RolloutCollector(Node):
                   for arm, value in self.coordinator.submitted.items()},
             source=source, phase=(self._execution_record.phase if command.source == 'policy' and self._execution_record
                                   else float(self._phase == 'rl')), published_at_ns=time.monotonic_ns())
+        if self._journal is not None and self._recording:
+            self._journal_event(('submission', command.generation, command.command_id,
+                                 self._last_command_snapshot.published_at_ns,
+                                 self.coordinator.submitted, self.coordinator.diagnostics))
+
+    def _sensor_frame_snapshot(self, now_ns):
+        return np.asarray([[self._sensor_sequences.get(key, 0), self._latest[key][0],
+                            now_ns-self._latest[key][0]] for key in self._sensor_keys], dtype=np.int64).reshape(-1)
 
     def _record_frame(
         self,
@@ -812,6 +904,7 @@ class RolloutCollector(Node):
         values: dict[str, object],
         images: dict[str, np.ndarray],
         now_ns: int,
+        sensor_frames=None,
     ) -> None:
         snapshot = self._last_command_snapshot
         if not self._recording or snapshot is None or self.coordinator.accepted is None:
@@ -819,8 +912,6 @@ class RolloutCollector(Node):
         if self.demonstration and now_ns - snapshot.published_at_ns > int(self.config.control_discontinuity_timeout_s * 1e9):
             raise RuntimeError("demonstration command stream is stale")
         action = self._actual_action(values, snapshot)
-        for key, writer in self._video_writers.items():
-            writer.write(images[key])
         self._states.append(raw_state)
         self._actions.append(action)
         command = self.coordinator.accepted
@@ -839,25 +930,43 @@ class RolloutCollector(Node):
         self._annotations['command.identity'].append([
             command.generation, command.command_id, command.accepted_at_ns, command.observed_at_ns])
         self._annotations['command.source'].append([snapshot.source])
-        if self.require_online:
-            for name, value in {'observed_at_ns': now_ns, 'command_at_ns': command.accepted_at_ns,
-                                'command_id': command.command_id, 'segment_id': self._segment_id,
-                                'action_valid': 0, 'segment_terminal': 0}.items():
-                self._annotations['complementary_info.'+name].append([value])
-            self._pending_frame = len(self._states)-1
+        record = self._execution_record
+        for name, value in {'slot_id': self._slot_id, 'submitted_at_ns': snapshot.published_at_ns,
+                            'supervision_valid': int(snapshot.source >= 0), 'observation_valid': 1,
+                            'plan_version': record.plan_version if record else -1,
+                            'action_index': record.action_index if record else -1,
+                            'observed_at_ns': now_ns, 'command_at_ns': command.accepted_at_ns,
+                            'command_id': command.command_id, 'segment_id': self._segment_id,
+                            'action_valid': 0, 'segment_terminal': 0, 'task_terminal': 0}.items():
+            self._annotations['complementary_info.'+name].append([value])
+        self._pending_frame = len(self._states)-1
+        self._pending_images = {key: image.copy() for key, image in images.items()}
+        self._annotations['action.candidate'].append(
+            self._execution_record.candidate if self._execution_record else self.coordinator.candidate)
+        self._annotations['observation.sensor_frames'].append(
+            self._sensor_frame_snapshot(now_ns) if sensor_frames is None else sensor_frames)
         diagnostics = [self.coordinator.diagnostics.get(a.name, {}) for a in self.config.arms]
         self._annotations['diagnostic.controller'].append(np.concatenate([
             [d.get('generation', -1), d.get('command_id', -1), d.get('received_at_ns', -1)] for d in diagnostics]))
         self._annotations['diagnostic.filtered_joint'].append(np.concatenate([
             d.get('filtered_joints', np.zeros(7)) for d in diagnostics]))
         self._annotations["complementary_info.phase"].append([snapshot.phase])
-        if not self.demonstration:
-            self._annotations["complementary_info.is_intervention"].append(
-                [float(snapshot.source == COLLECTOR_HUMAN)])
-            self._annotations["complementary_info.collector_policy_id"].append([snapshot.source])
+        self._annotations["complementary_info.is_intervention"].append(
+            [float(snapshot.source == COLLECTOR_HUMAN and not self.demonstration)])
+        self._annotations["complementary_info.collector_policy_id"].append([snapshot.source])
         if self.config.subtasks:
             self._annotations["complementary_info.subtask_index"].append([self._subtask_index])
         self._frame_times.append(now_ns)
+        if self.executor is not None and self._journal is not None:
+            from dataclasses import replace
+            if self._execution_record is not None:
+                self._journal_event(('execution', replace(self._execution_record,
+                    accepted_at_ns=command.accepted_at_ns, submitted_at_ns=snapshot.published_at_ns,
+                    outcome='submitted', diagnostics=tuple((a.name, diagnostics[i].get('command_id', -1))
+                        for i, a in enumerate(self.config.arms)))))
+            context = self.executor.execution_context(self._slot_id, self._annotations['observation.anchor'][-1])
+            if context is not None:
+                self._journal_event(('execution_context', context))
 
     def set_control_mode(self, mode: str) -> None:
         """Called on the coordinator thread, between command ticks."""
@@ -880,6 +989,7 @@ class RolloutCollector(Node):
         result = self.policy_client.poll_latest()
         if result is not None and self.executor.install(result, time.monotonic_ns()):
             self._web_switch_pending = False
+            self._plan_latency_ms = (time.monotonic_ns()-result.request.observed_at_ns)/1e6
 
     def _publish_policy(self, values, dt):
         if self.coordinator.mode != 'active':
@@ -1077,6 +1187,9 @@ class RolloutCollector(Node):
 
     def _gamepad_tick(self):
         with self._lock:
+            if self._pending_storage_error is not None:
+                error, self._pending_storage_error = self._pending_storage_error, None
+                self._storage_stop(error)
             now_ns = time.monotonic_ns()
             if self._tracking_clock.poll(now_ns) is None:
                 return
@@ -1104,8 +1217,18 @@ class RolloutCollector(Node):
                             raise RuntimeError(f'input stream interrupted: {problem}')
                         self._publish_gamepad(values, dt)
                 self._track_control(dt)
+                if self._awaiting_record is not None:
+                    raw, values, images, observed, command_id, sensors = self._awaiting_record
+                    if self.coordinator.command_id != command_id:
+                        raise RuntimeError('accepted slot was replaced before submission was recorded')
+                    self._record_frame(raw, values, images, observed, sensor_frames=sensors)
+                    self._awaiting_record = None
             except (KeyError, ValueError, RuntimeError, np.linalg.LinAlgError) as error:
-                self._latch_fault(error)
+                from vla.datacollection.episode_journal import StorageBlocked
+                if isinstance(error, StorageBlocked):
+                    self._storage_stop(error)
+                else:
+                    self._latch_fault(error)
 
     def _publish_gello(self):
         joints, grippers = {}, {}
@@ -1212,6 +1335,10 @@ class RolloutCollector(Node):
     def _latch_fault(self, error: BaseException) -> None:
         if self._faulted:
             return
+        if self._journal is not None:
+            from vla.datacollection.episode_journal import freeze
+            self._pending_events.append(freeze(('control_failure', self._slot_id,
+                self._execution_record, self.coordinator.partial_submission, str(error))))
         self._faulted = True
         self._teleop_enabled = False
         self._fault_reason = f"{type(error).__name__}: {error}"
@@ -1233,36 +1360,18 @@ class RolloutCollector(Node):
         self._last_command_snapshot = None
         self._last_applied_control = None
         self._reset_servo_tracking()
-        episode_index = self.writer.next_episode_index()
-        cleanup_errors = []
-        for writer in self._video_writers.values():
-            try:
-                writer.abort()
-            except BaseException as cleanup_error:
-                cleanup_errors.append(str(cleanup_error))
-        self._video_writers = {}
-        try:
-            self.writer.discard_uncommitted_files(episode_index)
-        except BaseException as cleanup_error:
-            cleanup_errors.append(str(cleanup_error))
-        self._states = []
-        self._actions = []
-        self._annotations = {key: [] for key in self._extra_features}
-        details = traceback.format_exc()
-        print(
-            "\nROLLOUT FAULT LATCHED; commands disabled until collector restart: "
-            f"{self._fault_reason}\n{details}",
-            file=sys.stderr,
-            flush=True,
-        )
-        if cleanup_errors:
-            print(f"Fault cleanup errors: {cleanup_errors}", file=sys.stderr, flush=True)
+        # Preserve durable segments and the in-memory tail. Only explicit discard deletes them.
+        print(f'ROLLOUT FAULT; motion disabled, episode retained: {self._fault_reason}',
+              file=sys.stderr, flush=True)
 
     def _tick(self) -> None:
         with self._lock:
-            if self._faulted:
+            if self._faulted or self._saving or self._storage_blocked:
                 return
             try:
+                if self._journal is not None:
+                    self._journal.check()
+                self._drain_execution_events()
                 if self.policy_client is not None:
                     self.policy_client.raise_if_failed()
                 failures = self._camera_failures()
@@ -1289,7 +1398,6 @@ class RolloutCollector(Node):
                     if any(stamps[name] <= old for name, old in self._last_demo_images.items()):
                         return
                     self._last_demo_images = stamps
-                    now_ns = base_ns
                 raw_state = self._raw_state(values, now_ns)
                 if not (self._recording or self._teleop_enabled):
                     return
@@ -1310,8 +1418,9 @@ class RolloutCollector(Node):
                     outcome = self._pending_finish
                     self._pending_finish = None
                     self._record_frame(raw_state, values, images, now_ns)
-                    if self.require_online and self._states:
+                    if self._states:
                         self._annotations['complementary_info.segment_terminal'][-1] = [int(self._phase == 'rl')]
+                        self._annotations['complementary_info.task_terminal'][-1] = [1]
                     self._at_boundary = True
                     try:
                         self.finish_episode(outcome)
@@ -1328,14 +1437,20 @@ class RolloutCollector(Node):
                     self._submit_policy(raw_state, images)
                     self._publish_policy(values, 1/self.config.fps)
                 if self.coordinator.command_id != previous:
-                    self._track_control(1/self.config.gamepad_control_rate)
-                    self._record_frame(raw_state, values, images, now_ns)
+                    if self._awaiting_record is not None:
+                        raise RuntimeError('tracking missed an accepted execution slot')
+                    self._awaiting_record = (raw_state, values, images, now_ns, self.coordinator.command_id,
+                                             self._sensor_frame_snapshot(now_ns))
             except (KeyError, ValueError, RuntimeError, np.linalg.LinAlgError) as error:
-                self._skip_reasons[f"control error: {error}"] += 1
-                self._latch_fault(error)
+                from vla.datacollection.episode_journal import StorageBlocked
+                if isinstance(error, StorageBlocked):
+                    self._storage_stop(error)
+                else:
+                    self._skip_reasons[f"control error: {error}"] += 1
+                    self._latch_fault(error)
 
     def _complete_interval(self, now_ns):
-        if not self.require_online or self._pending_frame is None:
+        if self._pending_frame is None:
             return
         index = self._pending_frame
         observed = self._annotations['complementary_info.observed_at_ns'][index][0]
@@ -1345,7 +1460,54 @@ class RolloutCollector(Node):
             self._annotations['complementary_info.action_valid'][index] = [1]
         else:
             self._segment_id += 1
+        self._journal_frame(index)
         self._pending_frame = None
+
+    def _journal_frame(self, index):
+        if self._journal is None:
+            return
+        columns = {'observation.state': self._states[index], 'action': self._actions[index],
+                   **{key: np.asarray(values[index]) for key, values in self._annotations.items()}}
+        self._journal.submit(columns, self._pending_images)
+        self._pending_images = None
+
+    def _journal_event(self, event):
+        from vla.datacollection.episode_journal import freeze
+        try:
+            self._journal.event(event)
+        except RuntimeError:
+            self._pending_events.append(freeze(event))
+            raise
+
+    def _drain_execution_events(self):
+        if self._journal is not None:
+            while self._pending_events:
+                self._journal.event(self._pending_events[0])
+                del self._pending_events[0]
+        if self.executor is None:
+            return
+        if self._journal is not None:
+            while self.executor.events:
+                self._journal.event(self.executor.events[0])
+                del self.executor.events[0]
+        else:
+            self.executor.events.clear()
+
+    def _storage_stop(self, error):
+        if threading.current_thread() is getattr(self, '_save_worker', None):
+            # The worker never mutates the motion owner. Saving starts after revocation.
+            with self._lock:
+                self._pending_storage_error = error
+                self._storage_blocked = True
+            return
+        self._storage_blocked = True
+        self._fault_reason = f'storage blocked: {error}'
+        self._teleop_enabled = False
+        self._control_boundary(reason=self._fault_reason)
+        if self.executor is not None:
+            from vla.control.execution import ExecutionState
+            self.executor.state = ExecutionState.STORAGE
+        self._stop_grippers_at_measured_position()
 
     def _online_save_tick(self):
         if self._pending_online_save is None or self.coordinator.mode != 'standby':
@@ -1366,7 +1528,7 @@ class RolloutCollector(Node):
 
     def start_episode(self) -> None:
         with self._lock:
-            if self._recording or self._processing:
+            if self._recording or self._processing or self._saving or self._storage_blocked:
                 return
             if self._faulted:
                 print(
@@ -1387,17 +1549,19 @@ class RolloutCollector(Node):
                 return
             if self.require_online:
                 self._episode_identity = self.policy_client.begin_episode()
+                self.executor.model_version = self.policy_client.contract['model_version']
             episode_index = self.writer.next_episode_index()
-            self.writer.discard_uncommitted_files(episode_index)
-            self._video_writers = {
-                camera.feature_key: AsyncVideoWriter(
-                    self.writer.video_path(episode_index, camera.feature_key),
-                    width=self.config.image_size[1],
-                    height=self.config.image_size[0],
-                    fps=self.config.fps,
-                )
-                for camera in self.config.cameras
-            }
+            import uuid
+            from vla.datacollection.episode_journal import EpisodeJournal
+            staging = self.config.dataset_root/'staging'
+            if staging.exists() and any(not (p/'published.json').is_file() for p in staging.iterdir() if p.is_dir()):
+                raise RuntimeError('unpublished staging data exists; recover or explicitly discard it before a new episode')
+            self._journal_id = uuid.uuid4().hex
+            self._journal = EpisodeJournal(staging/self._journal_id,
+                identity={**self._episode_identity, 'journal_id': self._journal_id, 'episode_index': episode_index,
+                          'task': self.config.tasks[self._episode_task_index],
+                          'execution_contract': self.executor.contract.to_dict() if self.executor else None}, fps=self.config.fps)
+            self._video_writers = {}
             self._states = []
             self._actions = []
             self._annotations = {key: [] for key in self._extra_features}
@@ -1444,128 +1608,176 @@ class RolloutCollector(Node):
         if np.asarray(states).shape != (len(actions), 50 * len(self.config.arms)) or not np.isfinite(states).all():
             raise ValueError('invalid measured state stream')
 
-    def finish_episode(self, outcome: str | None, *, discard: bool = False) -> None:
+    def finish_episode(self, outcome, *, discard=False):
         with self._lock:
-            if self.require_online and self._recording and not discard and not self._at_boundary:
+            if self.demonstration and outcome != 'success':
+                discard = True
+            if (not discard and outcome == 'success' and self.config.subtasks
+                    and self._subtask_index != len(self.config.subtasks)-1):
+                return
+            if self._saving:
+                return
+            if self._recording and not discard and not self._at_boundary:
                 self._pending_finish = outcome
                 return
-            if not self._recording:
+            if not self._recording and not self._storage_blocked and not self._states:
                 return
-            if self.demonstration and outcome != "success":
-                discard = True
-            if (not discard and outcome == "success" and self.config.subtasks
-                    and self._subtask_index != len(self.config.subtasks) - 1):
-                print("成功保存需要完成最后阶段；完成当前阶段后执行下一阶段操作。", flush=True)
-                return
-            should_save = (
-                not discard
-                and outcome in {"success", "failure"}
-                and len(self._states) >= MIN_EPISODE_FRAMES
-            )
-            if should_save:
-                try:
-                    self._validate_recorded_episode(
-                        np.asarray(self._states),
-                        np.asarray(self._actions),
-                        arm_count=len(self.config.arms),
-                        workspace_bounds=[
-                            (np.asarray(arm.workspace_min), np.asarray(arm.workspace_max))
-                            for arm in self.config.arms
-                        ],
-                        maximum_gripper_width=schema.ROBOTIQ_MAX_OPENING_WIDTH_M,
-                    )
-                except (ValueError, np.linalg.LinAlgError) as error:
-                    self._latch_fault(error)
-                    return
-            self._stop_grippers_at_measured_position()
             self._recording = False
             self._teleop_enabled = False
             self._intervention = False
-            self._gamepad_targets = {}
-            self._invalidate_policy()
-            self._policy_action = None
-            self._latest_policy_result = None
-            self._last_command_snapshot = None
-            self._last_applied_control = None
-            self._reset_servo_tracking()
-            self._reset_policy_on_request = True
-            self._control_boundary(reason="episode end")
-            episode_index = self.writer.next_episode_index()
-            if discard or outcome not in {"success", "failure"} or len(self._states) < MIN_EPISODE_FRAMES:
-                for writer in self._video_writers.values():
-                    writer.abort()
-                self.writer.discard_uncommitted_files(episode_index)
-                print(f"Discarded rollout episode {episode_index}", flush=True)
-            else:
+            self._stop_grippers_at_measured_position()
+            self._control_boundary(reason='episode end; storage work pending')
+            self._saving = True
+        def save():
+            try:
+                self._finish_episode_worker(outcome, discard=discard)
+            except BaseException as error:
+                self._storage_stop(error)
+            finally:
+                self._saving = False
+        self._save_worker = threading.Thread(target=save, name='episode-commit', daemon=True)
+        self._save_worker.start()
+
+    def _finish_episode_worker(self, outcome: str | None, *, discard: bool = False) -> None:
+        if self.demonstration and outcome != "success":
+            discard = True
+        if (not discard and outcome == "success" and self.config.subtasks
+                and self._subtask_index != len(self.config.subtasks) - 1):
+            print("成功保存需要完成最后阶段；完成当前阶段后执行下一阶段操作。", flush=True)
+            return
+        should_save = (
+            not discard
+            and outcome in {"success", "failure"}
+            and len(self._states) >= MIN_EPISODE_FRAMES
+        )
+        if should_save:
+            try:
+                self._validate_recorded_episode(
+                    np.asarray(self._states),
+                    np.asarray(self._actions),
+                    arm_count=len(self.config.arms),
+                    workspace_bounds=[
+                        (np.asarray(arm.workspace_min), np.asarray(arm.workspace_max))
+                        for arm in self.config.arms
+                    ],
+                    maximum_gripper_width=schema.ROBOTIQ_MAX_OPENING_WIDTH_M,
+                )
+            except (ValueError, np.linalg.LinAlgError) as error:
+                self._storage_stop(error)
+                return
+        episode_index = self.writer.journal_episode_index(self._journal_id)
+        if episode_index < self.writer.next_episode_index():
+            # Episode row is the commit point; never rewrite committed media on retry.
+            from vla.core.online_contract import durable_json
+            self.writer._rebuild_metadata()
+            durable_json(self._journal.path/'published.json', {'episode_index': episode_index})
+            if self.require_online:
+                self._processing = True
+                self._pending_online_save = (episode_index, outcome)
+            self._clear_saved_episode()
+            return
+        if not discard and (outcome not in {'success', 'failure'} or len(self._states) < MIN_EPISODE_FRAMES):
+            self._storage_stop(RuntimeError('episode retained; choose an outcome or explicitly discard'))
+            return
+        if discard:
+            if self._journal is not None:
                 try:
-                    for writer in self._video_writers.values():
-                        writer.close()
-                    collector_values = [COLLECTOR_HUMAN] * len(self._states) if self.demonstration else [
-                        int(value[0])
-                        for value in self._annotations[
-                            "complementary_info.collector_policy_id"
-                        ]
+                    self._journal.close()
+                except RuntimeError:
+                    pass
+                import shutil
+                shutil.rmtree(self._journal.path)
+                self._journal = None
+            self.writer.discard_uncommitted_files(episode_index)
+            print(f"Discarded rollout episode {episode_index}", flush=True)
+        else:
+            try:
+                if self._journal.error is not None:
+                    self._journal.retry()
+                if self._pending_frame is not None:
+                    self._journal_frame(self._pending_frame)
+                    self._pending_frame = None
+                self._drain_execution_events()
+                self._journal.close()
+                from vla.datacollection.episode_journal import materialize, publish_audit
+                columns, image_stats, recovery = materialize(self._journal.path, self.writer)
+                if recovery.frames != len(self._states):
+                    raise RuntimeError('durable row count differs from collected row count')
+                collector_values = [COLLECTOR_HUMAN] * len(self._states) if self.demonstration else [
+                    int(value[0])
+                    for value in self._annotations[
+                        "complementary_info.collector_policy_id"
                     ]
-                    phase_values = [
-                        float(value[0])
-                        for value in self._annotations["complementary_info.phase"]
+                ]
+                phase_values = [
+                    float(value[0])
+                    for value in self._annotations["complementary_info.phase"]
+                ]
+                rl_intervals = self._intervals(
+                    phase_values, lambda value: float(value) > 0.5
+                )
+                for interval in rl_intervals:
+                    interval["outcome"] = outcome
+                metadata = {
+                    **self._episode_identity,
+                    "journal_id": self._journal_id,
+                    "episode_success": outcome,
+                    "rl_intervals": rl_intervals,
+                    "human_intervention_intervals": self._intervals(
+                        collector_values,
+                        lambda value: int(value) == COLLECTOR_HUMAN,
+                    ),
+                }
+                if self.demonstration:
+                    metadata["collection_source"] = "human_demonstration"
+                    metadata["critical_intervals"] = rl_intervals
+                    # Demonstrations are not policy interventions.
+                    metadata["human_intervention_intervals"] = []
+                if self.config.subtasks:
+                    indices = [int(value[0]) for value in self._annotations["complementary_info.subtask_index"]]
+                    metadata["subtask_intervals"] = [
+                        {**interval, "subtask_index": index, "name": name}
+                        for index, name in enumerate(self.config.subtasks)
+                        for interval in self._intervals(indices, lambda value, i=index: value == i)
                     ]
-                    rl_intervals = self._intervals(
-                        phase_values, lambda value: float(value) > 0.5
-                    )
-                    for interval in rl_intervals:
-                        interval["outcome"] = outcome
-                    metadata = {
-                        **self._episode_identity,
-                        "episode_success": outcome,
-                        "rl_intervals": rl_intervals,
-                        "human_intervention_intervals": self._intervals(
-                            collector_values,
-                            lambda value: int(value) == COLLECTOR_HUMAN,
-                        ),
-                    }
-                    if self.demonstration:
-                        metadata["collection_source"] = "human_demonstration"
-                        metadata["critical_intervals"] = rl_intervals
-                        # Demonstrations are not policy interventions.
-                        metadata["human_intervention_intervals"] = []
-                    if self.config.subtasks:
-                        indices = [int(value[0]) for value in self._annotations["complementary_info.subtask_index"]]
-                        metadata["subtask_intervals"] = [
-                            {**interval, "subtask_index": index, "name": name}
-                            for index, name in enumerate(self.config.subtasks)
-                            for interval in self._intervals(indices, lambda value, i=index: value == i)
-                        ]
-                    image_stats = {
-                        key: writer.image_stats.as_dict()
-                        for key, writer in self._video_writers.items()
-                    }
-                    saved = self.writer.save_episode(
-                        np.asarray(self._states),
-                        np.asarray(self._actions),
-                        image_stats,
-                        frame_features={
-                            key: np.asarray(values)
-                            for key, values in self._annotations.items()
-                        },
-                        extra_episode_metadata=metadata,
-                        task=self.config.tasks[self._episode_task_index],
-                    )
-                    if self.require_online:
-                        self._processing = True
-                        self._pending_online_save = (saved, outcome)
-                    print(
-                        f"Saved rollout episode {saved}: outcome={outcome}, "
-                        f"frames={len(self._states)}",
-                        flush=True,
-                    )
-                except (OSError, RuntimeError, ValueError) as error:
-                    self._latch_fault(error)
-                    return
-            self._video_writers = {}
-            self._states = []
-            self._actions = []
-            self._annotations = {key: [] for key in self._extra_features}
+                publish_audit(self._journal.path, self.config.dataset_root/'execution'/f'episode-{episode_index:06d}',
+                              episode_index=episode_index)
+                saved = self.writer.save_episode(
+                    np.asarray(self._states),
+                    np.asarray(self._actions),
+                    image_stats,
+                    frame_features={
+                        key: np.asarray(values)
+                        for key, values in self._annotations.items()
+                    },
+                    extra_episode_metadata=metadata,
+                    task=self.config.tasks[self._episode_task_index],
+                )
+                from vla.core.online_contract import durable_json
+                durable_json(self._journal.path/'published.json', {'episode_index': saved})
+                if self.require_online:
+                    self._processing = True
+                    self._pending_online_save = (saved, outcome)
+                print(
+                    f"Saved rollout episode {saved}: outcome={outcome}, "
+                    f"frames={len(self._states)}",
+                    flush=True,
+                )
+            except (OSError, RuntimeError, ValueError) as error:
+                self._storage_stop(error)
+                return
+        self._clear_saved_episode()
+
+    def _clear_saved_episode(self):
+        self._video_writers = {}
+        self._journal = None
+        self._pending_events = []
+        self._storage_blocked = False
+        self._pending_storage_error = None
+        self._states = []
+        self._actions = []
+        self._annotations = {key: [] for key in self._extra_features}
+
 
     def toggle_intervention(self) -> None:
         with self._lock:
@@ -1650,6 +1862,13 @@ class RolloutCollector(Node):
 
     def recover_fault(self):
         with self._lock:
+            if self._storage_blocked:
+                if self._saving:
+                    raise RuntimeError('save is still in progress')
+                # Recovery leaves motion disabled; save retries the retained records.
+                if self._journal is not None and self._journal.error is not None:
+                    self._journal.retry()
+                return True
             if self._recording or self._video_writers:
                 raise RuntimeError('finish storage cleanup before recovery')
             if self.require_online:
@@ -1663,6 +1882,15 @@ class RolloutCollector(Node):
             self._control_boundary(reason='explicit fault recovery')
             self._recovery_pending = True
             return True
+
+    def resume_policy(self):
+        with self._lock:
+            if not self._waiting_resume or self._storage_blocked or self._faulted or self._intervention:
+                raise RuntimeError('manual policy resume is unavailable in the current state')
+            self._observe_control()
+            self.coordinator._fresh()
+            self._control_boundary('policy', reason='explicit user resume')
+            self._reset_policy_on_request = True
 
     def toggle_phase(self) -> None:
         with self._lock:
@@ -1699,7 +1927,7 @@ class RolloutCollector(Node):
             )
 
     def discard_latest(self) -> None:
-        if self._recording:
+        if self._recording or self._journal is not None:
             self.finish_episode(None, discard=True)
         else:
             removed = self.writer.discard_latest_episode()
@@ -1709,13 +1937,18 @@ class RolloutCollector(Node):
         with self._lock:
             if self._closed:
                 return
-            if self._recording:
-                self.finish_episode(None, discard=True)
-            else:
-                self._stop_grippers_at_measured_position()
-                self._control_boundary(reason="session close")
+            self._recording = False
+            self._stop_grippers_at_measured_position()
+            self._control_boundary(reason='session close; retain staging')
             self._teleop_enabled = False
             self._closed = True
+        if getattr(self, '_save_worker', None) is not None:
+            self._save_worker.join()
+        if self._journal is not None:
+            try:
+                self._journal.close()
+            except RuntimeError:
+                pass  # Recover only the durable matching prefix after restart.
         if self.policy_client is not None:
             self.policy_client.close()
         for camera in reversed(tuple(self._cameras.values())):

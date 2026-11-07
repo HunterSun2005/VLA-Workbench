@@ -9,10 +9,17 @@ from pathlib import Path
 import uuid
 from typing import Any
 
-RECORDING_SCHEMA_VERSION = 4
-RUN_FORMAT_VERSION = 2
+RECORDING_SCHEMA_VERSION = 5
+RUN_FORMAT_VERSION = 3
 RUN_MANIFEST = "meta/online_run.json"
 TIMING_FIELDS = {
+    "slot_id": "int64",
+    "submitted_at_ns": "int64",
+    "supervision_valid": "int64",
+    "observation_valid": "int64",
+    "plan_version": "int64",
+    "action_index": "int64",
+    "task_terminal": "int64",
     "observed_at_ns": "int64",
     "command_at_ns": "int64",
     "command_id": "int64",
@@ -115,5 +122,5 @@ def bind_run(root: Path, contract: dict[str, Any], *, resume: bool) -> dict[str,
 
 
 def reject_unaligned_offline_dataset(info: dict[str, Any]) -> None:
-    if int(info.get("recording_schema_version", 0)) >= RECORDING_SCHEMA_VERSION:
-        raise ValueError("schema-4 rollout requires segment-aware online encoding; this offline tool is not supported")
+    if info.get('recording_schema_version') != RECORDING_SCHEMA_VERSION:
+        raise ValueError('only schema-5 recordings are accepted; create new data')

@@ -260,7 +260,8 @@ class Executor:
         self.plan_version += 1
         request = PlanRequest(self.session_id, self.episode_id, self.generation, self.request_id,
                               observation_id, self.plan_version, self.model_version, self.contract.digest,
-                              start, boundary, self.control_clock.deadline(boundary-self.contract.guard_slots),
+                              start, boundary, min(self.control_clock.deadline(boundary-self.contract.guard_slots),
+                                  observed_at_ns + self.contract.inference_slots*1_000_000_000//self.contract.control_hz),
                               observed_at_ns, horizon, r, anchor, np.asarray(prefix))
         self.request_id += 1
         # Freeze both values and provenance until the response's immutable boundary.
@@ -272,6 +273,7 @@ class Executor:
         return request
 
     def install(self, response, now_ns):
+        self.events.append(('candidate', response))
         request = response.request
         expected = self.inflight
         reason = None
@@ -332,3 +334,26 @@ class Executor:
             self.state = ExecutionState.POLICY
         self.current = ExecutionRecord(slot, self.generation, plan, index, candidate, action, source, phase, now_ns)
         return self.current
+
+    def execution_context(self, slot, anchor):
+        """Capture the real next-state commitment for later constrained bootstrap."""
+        r = self.contract.frame_stride
+        H = self.contract.horizons.get('rlt', self.contract.horizons.get('actor'))
+        if H is None or slot % r or self.current is None or self.current.slot_id != slot:
+            return None
+        boundary = max(slot+self.contract.freeze_steps*r, self.locked_until,
+                       self.inflight.replace_slot if self.inflight else 0)
+        d = (boundary-slot)//r
+        if d >= H:
+            return None
+        prefix = []
+        for s in range(slot, boundary, r):
+            if s == slot:
+                prefix.append(self.current.accepted)
+            elif s in self.queue:
+                prefix.append(self.queue[s][0])
+            else:
+                return None
+        return {'slot_id': slot, 'generation': self.generation, 'model_version': self.model_version,
+                'horizon': H, 'start_idx': d, 'prefix': immutable_array(prefix),
+                'anchor': immutable_array(anchor)}

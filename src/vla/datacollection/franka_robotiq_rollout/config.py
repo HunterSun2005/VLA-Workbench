@@ -118,6 +118,8 @@ class RolloutConfig:
     gamepad_profile: str | None = None
     subtasks: tuple[str, ...] = ()
     tasks: tuple[str, ...] = ()
+    inference_slots: int = 4
+    installation_guard_slots: int = 1
 
     @property
     def policy_state_dim(self) -> int:
@@ -492,7 +494,14 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         ):
             if value not in {-1.0, 1.0}:
                 raise ValueError(f"{arm.name}.gamepad.{label} must be -1.0 or 1.0")
+    inference_slots = control.get('inference_slots', 4)
+    guard_slots = control.get('installation_guard_slots', 1)
+    if any(type(v) is not int or v < 1 for v in (inference_slots, guard_slots)):
+        raise ValueError('inference and installation budgets must be positive control-slot counts')
+    if fps != 30 or positive['gamepad_control_rate'] != 100:
+        raise ValueError('execution contract requires 30 Hz actions and 100 Hz tracking')
     return RolloutConfig(
+        inference_slots=inference_slots, installation_guard_slots=guard_slots,
         backend=backend,
         action_space=str(raw.get("action_space", "tcp")),
         input_source=str(raw.get("input_source", "gamepad")),

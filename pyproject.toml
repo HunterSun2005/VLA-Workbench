@@ -32,6 +32,7 @@ test = ["pytest>=8.1", "pytest-timeout>=2.4"]
 dev = ["vla[lerobot,test]", "ruff>=0.6"]
 
 [project.scripts]
+vla-recover-episode = "vla.cli.recover_episode:main"
 vla-action-contract = "vla.cli.action_contract:main"
 vla-web = "vla.web.app:main"
 vla-serve-franka-sft = "vla.cli.serve_franka_sft:main"

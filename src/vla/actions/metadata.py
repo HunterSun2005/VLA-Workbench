@@ -26,7 +26,7 @@ class RecordingContract:
 
     def to_dict(self):
         return {**self.__dict__, 'action_spec': self.action_spec.to_dict(),
-                'version': 1, 'backend': 'ros2_joint_impedance',
+                'version': 2, 'backend': 'ros2_joint_impedance',
                 'recording_point': 'accepted_before_tracking' if self.derived_from is None else 'derived'}
 
 
@@ -49,7 +49,7 @@ def validate_mixture(contracts, *, allow_derived=False):
 
 def save_model_contract(path, *, spec, sampling, statistics, data_fingerprint, sources):
     validate_statistics(statistics, spec, sampling, data_fingerprint)
-    value = {'version': 1, 'action_spec': spec.to_dict(), 'statistics': statistics,
+    value = {'version': 2, 'action_spec': spec.to_dict(), 'statistics': statistics,
              'sources': sources}
     Path(path).write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
     return value
@@ -57,7 +57,7 @@ def save_model_contract(path, *, spec, sampling, statistics, data_fingerprint, s
 
 def load_model_contract(path):
     value = json.loads(Path(path).read_text())
-    if value.get('version') != 1:
+    if value.get('version') != 2:
         raise ValueError('missing or unsupported checkpoint action contract')
     spec = ActionSpec.from_dict(value['action_spec'])
     stats = value['statistics']
@@ -77,10 +77,19 @@ def checkpoint_contract(root):
     value = config.get('action_contract')
     if value is None:
         return load_model_contract(root/'action_contract.json')[2]
-    if value.get('version') != 1:
+    if value.get('version') != 2:
         raise ValueError('missing or unsupported checkpoint action contract')
     spec = ActionSpec.from_dict(value['action_spec'])
     stats = value['statistics']
     sampling = SamplingSpec(**stats['contract']['sampling'])
     validate_statistics(stats, spec, sampling, stats['contract']['data_fingerprint'])
     return value
+
+
+def require_recording_source(model_contract, actual):
+    if model_contract.get('version') != 2 or actual is None or actual.get('version') != 2:
+        raise ValueError('new model and recording source contracts are required')
+    sources = model_contract.get('sources', {}).get('sources', [])
+    if not sources:
+        raise ValueError('model contract has no declared recording sources')
+    validate_mixture([*sources, actual], allow_derived=bool(model_contract['sources'].get('allow_derived', False)))

@@ -21,8 +21,8 @@ def main():
         parser.error('output exists; choose a new contract path')
     info = load_info(args.dataset)
     source = info.get('recording_contract') or info.get('processing', {}).get('source_contract', {}).get('recording_contract')
-    if not source or source.get('version') != 1 or source.get('backend') != 'ros2_joint_impedance':
-        raise ValueError('missing native ROS action contract; legacy data needs explicit verified conversion')
+    if not source or source.get('version') != 2 or source.get('backend') != 'ros2_joint_impedance':
+        raise ValueError('missing native ROS action contract; only schema-5 source recordings are supported')
     spec = replace(ActionSpec.from_dict(info['action_spec']), representation=args.representation)
     sampling = SamplingSpec(args.chunk_length, args.frame_stride)
     sources = validate_mixture([source], allow_derived=args.allow_derived)
@@ -31,6 +31,7 @@ def main():
     value = save_model_contract(args.output, spec=spec, sampling=sampling, statistics=stats,
                         data_fingerprint=stats['contract']['data_fingerprint'], sources=sources)
     import json
+    value["execution_projection"] = info["execution_projection"]
     value["state_fields"] = info["features"]["observation.state"]["names"]
     args.output.write_text(json.dumps(value, indent=2) + "\n")
     print(args.output)

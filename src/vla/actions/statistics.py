@@ -5,6 +5,7 @@ from tempfile import TemporaryFile
 import numpy as np
 from .spec import ActionSpec, fingerprint
 from .transforms import DeltaActions
+from .windows import window_ends
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,7 @@ class SamplingSpec:
 def statistics_contract(spec: ActionSpec, sampling: SamplingSpec, data_fingerprint: str):
     if not data_fingerprint:
         raise ValueError('statistics require a dataset content fingerprint')
-    return {'version': 1, 'action_spec': spec.to_dict(), 'sampling': asdict(sampling),
+    return {'version': 2, 'action_spec': spec.to_dict(), 'sampling': asdict(sampling),
             'data_fingerprint': data_fingerprint, 'padding': 'exclude', 'quantiles': [0.01, 0.99]}
 
 
@@ -34,11 +35,12 @@ def _training_samples(episodes, spec, sampling):
         targets, anchors, valid = np.asarray(targets), np.asarray(anchors), np.asarray(valid, dtype=bool)
         if targets.ndim != 2 or targets.shape != anchors.shape or valid.shape != (len(targets),):
             raise ValueError('episode targets, anchors and mask do not align')
+        ends = window_ends(valid)
         for start in range(0, len(targets), sampling.start_stride):
             if not valid[start]:
                 continue
             # Bound even a very long requested horizon; do not construct padding.
-            length = min(sampling.chunk_length, (len(targets)-1-start)//sampling.frame_stride+1)
+            length = min(sampling.chunk_length, (ends[start]-1-start)//sampling.frame_stride+1)
             for offset in range(0, length, _TRANSFORM_ROWS):
                 indices = start + np.arange(offset, min(offset+_TRANSFORM_ROWS, length)) * sampling.frame_stride
                 indices = indices[valid[indices]]

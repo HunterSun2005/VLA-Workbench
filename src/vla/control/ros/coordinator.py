@@ -131,6 +131,7 @@ class ControlCoordinator:
             if slot_id == self._last_slot:
                 return self.accepted
             command_id = slot_id + 1
+            self.candidate = immutable_array(validate_array(target, self.spec))
             target = self.project(target)
             self.accepted = AcceptedCommand(self.spec, target, source, command_id, generation,
                                             min(m.observed_at_ns for m in self._measurements.values()), now)

@@ -116,6 +116,8 @@ class BaseBackend:
                 if problems:
                     raise RuntimeError('; '.join(problems))
                 self.enabled = True
+                if getattr(c, '_waiting_resume', False):
+                    c.resume_policy()
         elif op == 'next_task':
             if active:
                 raise RuntimeError('task selection requires standby')
@@ -129,13 +131,13 @@ class BaseBackend:
                 raise RuntimeError('start rejected; see session log')
             self.record_started = time.monotonic()
         elif op in ('save','discard'):
-            if not active:
+            if not active and not getattr(c, '_storage_blocked', False) and not getattr(c, '_states', []):
                 raise RuntimeError('no active episode')
             if op == 'save' and self.config.workflow == 'collect' and args.get('outcome','success') != 'success':
                 raise ValueError('this demonstration backend supports success/save or discard')
             before = c.writer.episode_count
             c.finish_episode(args.get('outcome','success') if op == 'save' else None, discard=op == 'discard')
-            if getattr(c, '_pending_finish', None) is not None:
+            if getattr(c, '_pending_finish', None) is not None or getattr(c, '_saving', False):
                 return
             if op == 'save' and c.writer.episode_count <= before:
                 raise RuntimeError('episode not saved; inspect minimum frame count, stage or storage error')
@@ -177,9 +179,9 @@ class BaseBackend:
     def collector_status(self):
         c = self.collector
         active = c.episode_active if hasattr(c,'episode_active') else c._recording
-        result = c._latest_policy_result
+        result = getattr(c, '_execution_record', None)
         human = c._intervention
-        actual = (c.config.input_source if human else 'waiting' if result is None else 'rlt' if result.phase > .5 else 'vla') if active else 'idle'
+        actual = (c.config.input_source if human else 'waiting' if result is None else 'rlt' if result.source == 'actor' else 'vla' if result.source == 'vla' else 'holding') if active else 'idle'
         setup = getattr(c,'_setup_teleop',None)
         controls = getattr(c,'_gamepad_controls',None) if active else setup
         arms = {a: {'source': actual, 'speed': 'fast' if getattr(c, '_high_speed', {}).get(a, False) else 'normal', 'speed_scale': getattr(c, '_speed_scale', {}).get(a, 1.)} for a in self.arms}
@@ -195,14 +197,17 @@ class BaseBackend:
             ops.append('critical')
             if getattr(c.config, 'subtasks', ()):
                 ops.append('next_subtask')
-        return {'state': 'fault' if c._faulted else 'recording' if active else 'active' if self.enabled else 'standby',
+        return {'execution_state': (c.executor.state.value if getattr(c, 'executor', None) else
+                                   'human' if human else 'standby'),
+                'state': 'storage_blocked' if getattr(c, '_storage_blocked', False) else
+                'waiting_resume' if getattr(c, '_waiting_resume', False) else 'fault' if c._faulted else 'recording' if active else 'active' if self.enabled else 'standby',
                 'enabled': self.enabled, 'recording': active, 'episode': c.writer.episode_count,
                 'frames': len(c._states), 'elapsed_s': time.monotonic()-self.record_started if active and self.record_started else 0.,
-                'saving': bool(getattr(c,'_processing',False) or getattr(c,'_pending_finish',None) is not None), 'error': c._fault_reason,
+                'saving': bool(getattr(c,'_saving', False) or getattr(c,'_processing',False) or getattr(c,'_pending_finish',None) is not None), 'error': c._fault_reason,
                 'requested_mode': self.mode, 'actual_source': actual,
                 'switch_pending': bool(getattr(c,'_web_switch_pending',False)),
                 'probability': getattr(result,'probability',None),
-                'inference_ms': result.latency_s*1000 if result else None,
+                'inference_ms': getattr(c, '_plan_latency_ms', None),
                 'arms': arms, 'available_commands': ops, 'modes': self.config.modes(),
                 'outcomes': ['success','failure'] if self.config.workflow == 'deploy' else ['success'],
                 'critical': c._phase == 'rl' if self.config.workflow == 'collect' else None,

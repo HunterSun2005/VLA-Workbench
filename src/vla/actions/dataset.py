@@ -53,6 +53,8 @@ def dataset_statistics(root, spec, sampling, *, temporary_directory=None):
     import pyarrow.parquet as pq
     from vla.dataset_metadata import load_info
     info = load_info(root)
+    if info.get('recording_schema_version') != 5:
+        raise ValueError('action statistics require schema-5 recordings')
     recorded = ActionSpec.from_dict(info['action_spec'])
     spec.require_compatible(recorded, training=False)
     def episodes():
@@ -76,7 +78,9 @@ def dataset_statistics(root, spec, sampling, *, temporary_directory=None):
         available = set().union(*schemas.values())
         order = 'frame_index' if 'frame_index' in available else 'index' if 'index' in available else None
         columns = ['episode_index', 'action', 'observation.anchor',
-                   'complementary_info.segment_id', 'complementary_info.action_valid']
+                   'complementary_info.segment_id', 'complementary_info.action_valid',
+                   'complementary_info.supervision_valid', 'complementary_info.observation_valid',
+                   'complementary_info.slot_id']
         if order:
             columns.append(order)
         for episode in sorted(by_episode):
@@ -85,15 +89,19 @@ def dataset_statistics(root, spec, sampling, *, temporary_directory=None):
                                for path in by_episode[episode]], ignore_index=True)
             if order and order in table:
                 table = table.sort_values(order, kind='stable')
-            if 'complementary_info.segment_id' in table:
-                table['_segment'] = np.stack(table['complementary_info.segment_id']).reshape(-1)
-            else:
-                table['_segment'] = 0
-            for _, group in table.groupby('_segment', sort=False):
-                actions = np.stack(group['action'])
-                anchors = np.stack(group['observation.anchor'])
-                valid = (np.stack(group['complementary_info.action_valid']).reshape(-1).astype(bool)
-                         if 'complementary_info.action_valid' in group else np.ones(len(group), bool))
-                yield actions, anchors, valid
+            from .windows import window_ends
+            required = columns[:]
+            if not set(required) <= set(table):
+                raise ValueError('missing schema-5 execution metadata')
+            segment = np.stack(table['complementary_info.segment_id']).reshape(-1)
+            slots = np.stack(table['complementary_info.slot_id']).reshape(-1)
+            valid = np.ones(len(table), bool)
+            for name in ('action_valid', 'supervision_valid', 'observation_valid'):
+                valid &= np.stack(table['complementary_info.'+name]).reshape(-1).astype(bool)
+            # Split at segment/slot boundaries; use the same first-invalid rule as readers.
+            cuts = np.r_[0, np.flatnonzero((np.diff(segment) != 0) | (np.diff(slots) != 1))+1, len(table)]
+            actions, anchors = np.stack(table['action']), np.stack(table['observation.anchor'])
+            for begin, end in zip(cuts[:-1], cuts[1:]):
+                yield actions[begin:end], anchors[begin:end], valid[begin:end]
     return compute_statistics(episodes(), spec, sampling, dataset_fingerprint(root),
                               temporary_directory=temporary_directory)

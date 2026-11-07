@@ -347,6 +347,16 @@ class V30DatasetWriter:
     def next_episode_index(self) -> int:
         return self.episode_count
 
+    def journal_episode_index(self, journal_id):
+        rows = self._read_episode_rows()
+        if journal_id and 'journal_id' in rows:
+            matches = rows[rows['journal_id'] == journal_id]
+            if len(matches) > 1:
+                raise ValueError('duplicate committed journal identity')
+            if len(matches):
+                return int(matches.iloc[0]['episode_index'])
+        return self.next_episode_index()
+
     def _recover_temporary_files(self) -> None:
         for path in self.root.rglob("*.tmp"):
             path.unlink(missing_ok=True)
@@ -566,6 +576,16 @@ class V30DatasetWriter:
         extra_episode_metadata: dict[str, Any] | None = None,
         task: str | None = None,
     ) -> int:
+        journal_id = (extra_episode_metadata or {}).get('journal_id')
+        if journal_id:
+            existing = self._read_episode_rows()
+            if 'journal_id' in existing:
+                matches = existing[existing['journal_id'] == journal_id]
+                if len(matches):
+                    if len(matches) != 1 or int(matches.iloc[0]['length']) != len(states):
+                        raise ValueError('conflicting retry for committed episode identity')
+                    self._rebuild_metadata()
+                    return int(matches.iloc[0]['episode_index'])
         episode_index = self.next_episode_index()
         length = len(states)
         if length < 1:
@@ -615,7 +635,8 @@ class V30DatasetWriter:
             for key in ("run_uuid", "dataset_uuid"):
                 if row.get(key) != run[key]:
                     raise ValueError(f"online episode {key} mismatch")
-            files = [self.data_path(episode_index), *(self.video_path(episode_index, key) for key in self.camera_keys)]
+            files = [self.data_path(episode_index), *(self.video_path(episode_index, key) for key in self.camera_keys),
+                     *sorted((self.root/'execution'/f'episode-{episode_index:06d}').glob('*.json'))]
             for path in files:
                 with path.open("rb") as stream:
                     os.fsync(stream.fileno())
@@ -630,6 +651,11 @@ class V30DatasetWriter:
             for stat_name, value in stats.items():
                 row[f"stats/{feature}/{stat_name}"] = _jsonable(np.asarray(value))
         rows = self._read_episode_rows()
+        # The episode row is the commit point for every collection route.
+        for path in [self.data_path(episode_index), *(self.video_path(episode_index, key) for key in self.camera_keys)]:
+            with path.open('rb') as stream:
+                os.fsync(stream.fileno())
+            _sync_directory(path.parent)
         rows = pd.concat([rows, pd.DataFrame([row])], ignore_index=True)
         self._write_episode_rows(rows)
         self._rebuild_metadata()

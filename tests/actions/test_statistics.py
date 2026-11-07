@@ -17,6 +17,8 @@ def expanded_reference(episodes, spec, sampling):
             if valid[start]:
                 for index in range(start, min(len(targets), start+sampling.chunk_length*sampling.frame_stride),
                                    sampling.frame_stride):
+                    if not valid[start:index+1].all():
+                        break
                     if valid[index]:
                         values.append(DeltaActions(spec)(targets[index], anchors[start]))
     values = np.asarray(values)
@@ -97,9 +99,12 @@ def test_projected_episode_reads_preserve_shuffled_shards_and_segments(tmp_path,
         'complementary_info.segment_id': [[0]]*5+[[1]]*3+[[0]]*4+[[1]]*4,
         'complementary_info.action_valid': [[int(i not in (2, 7, 9))] for i in range(16)],
         'observation.state': [[0.]*100]*16, 'observation.images.base': ['unused']*16})
+    rows['complementary_info.supervision_valid'] = [[1]]*len(rows)
+    rows['complementary_info.observation_valid'] = [[1]]*len(rows)
+    rows['complementary_info.slot_id'] = [[i] for i in range(len(rows))]
     (tmp_path/'meta').mkdir()
     (tmp_path/'data').mkdir()
-    (tmp_path/'meta/info.json').write_text(json.dumps({'action_spec': ActionSpec('joint').to_dict()}))
+    (tmp_path/'meta/info.json').write_text(json.dumps({'action_spec': ActionSpec('joint').to_dict(), 'recording_schema_version': 5}))
     rows.iloc[::2].iloc[::-1].to_parquet(tmp_path/'data/a.parquet', index=False)
     rows.iloc[1::2].iloc[::-1].to_parquet(tmp_path/'data/b.parquet', index=False)
     original = pq.read_table

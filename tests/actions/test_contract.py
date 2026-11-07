@@ -62,6 +62,8 @@ def test_statistics_masks_episode_boundaries_and_cache(length, stride):
     for t, a, v in episodes:
         for start in np.flatnonzero(v):
             for i in range(start, min(len(t), start+length*stride), stride):
+                if not v[start:i+1].all():
+                    break
                 if v[i]:
                     expected.append(DeltaActions(spec)(t[i], a[start]))
     np.testing.assert_allclose(stats['q99'], np.quantile(expected, .99, axis=0))

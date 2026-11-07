@@ -36,7 +36,7 @@ def test_vla_policy_config_sampler_and_serialization(tmp_path):
     spec = ActionSpec('joint', representation='chunk_relative')
     values = sample(spec)
     stats = compute_statistics([(values, values, np.ones(7, bool))], spec, SamplingSpec(3, 2), 'data')
-    contract = {'version': 1, 'action_spec': spec.to_dict(), 'statistics': stats, 'sources': []}
+    contract = {'version': 2, 'action_spec': spec.to_dict(), 'statistics': stats, 'sources': []}
     config = VLAPI05Config(chunk_size=3, n_action_steps=3, action_contract=contract)
     assert config.action_delta_indices == [0, 2, 4]
     config.save_pretrained(tmp_path)
@@ -67,7 +67,9 @@ def test_training_masks_episode_padding_and_invalid_segments():
     from vla.adapters.lerobot.action_dataset import ActionDataset
     table = Dataset.from_dict({'episode_index':[0,0,0,0,1,1],
         'complementary_info.action_valid':[1,0,1,1,1,1],
-        'complementary_info.segment_id':[0,0,1,1,2,2]})
+        'complementary_info.segment_id':[0,0,1,1,2,2],
+        'complementary_info.supervision_valid':[1]*6, 'complementary_info.observation_valid':[1]*6,
+        'complementary_info.slot_id':list(range(6))})
     class Raw:
         hf_dataset=table
         def __getitem__(self,i):
@@ -115,9 +117,12 @@ def test_statistics_and_training_share_segment_starts_across_parquet_shards(tmp_
     rows = pd.DataFrame({'episode_index': [0]*6, 'frame_index': list(range(6)),
         'complementary_info.segment_id': [[0]]*3+[[1]]*3,
         'action': list(raw), 'observation.anchor': list(np.zeros_like(raw))})
+    for key in ('action_valid', 'supervision_valid', 'observation_valid'):
+        rows['complementary_info.'+key] = [[1]]*len(rows)
+    rows['complementary_info.slot_id'] = [[i] for i in range(len(rows))]
     (tmp_path/'meta').mkdir()
     (tmp_path/'data').mkdir()
-    (tmp_path/'meta/info.json').write_text(json.dumps({'action_spec': ActionSpec('joint').to_dict()}))
+    (tmp_path/'meta/info.json').write_text(json.dumps({'action_spec': ActionSpec('joint').to_dict(), 'recording_schema_version': 5}))
     rows.iloc[:2].to_parquet(tmp_path/'data/a.parquet')
     rows.iloc[2:].to_parquet(tmp_path/'data/b.parquet')
     stats = dataset_statistics(tmp_path, spec, SamplingSpec(2, start_stride=2))
