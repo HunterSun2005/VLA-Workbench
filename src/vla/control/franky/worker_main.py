@@ -11,10 +11,17 @@ from .worker import FrankyWorker, FrankyWorkerServer, check_binding
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument("--socket-path", required=True, type=Path)
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--socket-path", type=Path)
+    parser.add_argument("--check-only", action="store_true",
+                        help="check tracker API and loaded libfranka without opening hardware")
     args = parser.parse_args()
-    check_binding()
+    if not args.check_only and (args.config is None or args.socket_path is None):
+        parser.error("--config and --socket-path are required unless --check-only is used")
+    fingerprint = check_binding()
+    if args.check_only:
+        print(json.dumps(fingerprint, indent=2, sort_keys=True))
+        return
     config = json.loads(args.config.read_text(encoding="utf-8"))
     worker = FrankyWorker(
         config["arms"],

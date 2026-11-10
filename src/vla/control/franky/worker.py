@@ -21,46 +21,7 @@ from scipy.spatial.transform import Rotation
 
 from vla.core.hardware_lease import HardwareLease
 from .ipc import decode_packet, encode_packet
-
-
-def check_binding() -> dict[str, str]:
-    """Validate the selected interpreter before opening an arm connection."""
-    try:
-        import franky
-    except Exception as error:
-        raise RuntimeError(f"Franky binding unavailable: {error}") from error
-    required = ("Robot", "RealtimeConfig", "CartesianImpedanceTracker", "Affine")
-    missing = [name for name in required if not hasattr(franky, name)]
-    if missing:
-        raise RuntimeError("Franky binding lacks required API: " + ", ".join(missing))
-    version = getattr(franky, "__version__", "unknown")
-    libfranka = (getattr(franky, "libfranka_version", None)
-                 or getattr(franky, "__libfranka_version__", None))
-    if callable(libfranka):
-        try:
-            libfranka = libfranka()
-        except Exception:
-            libfranka = None
-    try:
-        import importlib.metadata
-        for distribution in ("franky-control", "franky"):
-            try:
-                version = importlib.metadata.version(distribution)
-                break
-            except importlib.metadata.PackageNotFoundError:
-                continue
-    except Exception:
-        pass
-    result = {"franky": str(version)}
-    if libfranka:
-        result["libfranka"] = str(libfranka)
-    binding_file = getattr(franky, "__file__", None)
-    if binding_file:
-        try:
-            result["binding"] = str(Path(binding_file).resolve())
-        except OSError:
-            result["binding"] = str(binding_file)
-    return result
+from .binding import check_binding
 
 
 @dataclass
