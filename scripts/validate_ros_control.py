@@ -218,7 +218,7 @@ class Session:
         self.c.transition('human')
         self.wait(lambda: self.c.mode == 'active')
 
-    def run_for(self, seconds, *, commands=True, record=False):
+    def run_for(self, seconds, *, commands=True, record=False, tcp_offset=None):
         end = time.monotonic()+seconds
         if not hasattr(self, 'slot_clock'):
             epoch = time.monotonic_ns()
@@ -232,6 +232,14 @@ class Session:
                     if commands and slot is not None:
                         goals = {a: self.last_seen[a][1]+.004*np.sin(now_ns/1e9*2) for a in self.models}
                         target = self.c.gello_target(goals, {a:.45 for a in self.models})
+                        if tcp_offset is not None:
+                            assert self.c.spec.space == 'tcp'
+                            tcp = {}
+                            for arm in self.models:
+                                m = self.c._measurements[arm]
+                                p, r = self.servos[arm].forward_tcp(m.joints, m.tool_position, m.tool_rotation)
+                                tcp[arm] = (p + tcp_offset, r, .45)
+                            target = self.c.gamepad_target(tcp, .01)
                         accepted = self.c.accept(target, source=self.c.owner, generation=self.c.generation, slot_id=slot)
                         if record:
                             self.accept_times.append(accepted.accepted_at_ns)
@@ -252,8 +260,21 @@ class Session:
 
     def faults(self):
         checks = []
-        self.coordinator('tcp'); self.run_for(.15)
+        self.coordinator('tcp'); self.run_for(1.5, tcp_offset=np.array([.004, 0., 0.]))
         assert self.c.mode == 'active'; checks.append('tcp production bridge')
+        for arm in self.models:
+            m = self.c._measurements[arm]
+            measured, _ = self.servos[arm].forward_tcp(m.joints, m.tool_position, m.tool_rotation)
+            filtered, _ = self.servos[arm].forward_tcp(self.diag[arm][3], m.tool_position, m.tool_rotation)
+            assert np.linalg.norm(filtered - measured - [.004, 0., 0.]) < .001
+        checks.append('stationary arm receives accumulated TCP target through C++ filter')
+        self.c.transition(); self.wait(lambda: self.c.mode == 'standby')
+        self.spin(.65)
+        assert self.c.mode == 'standby'
+        for arm in self.models:
+            assert self.diag[arm][1:3] == (0, False)
+            np.testing.assert_allclose(self.diag[arm][3], Q)
+        checks.append('standby retains reset target without unowned command heartbeat')
         self.coordinator()
         self.run_for(.1)
         old = self.c.generation
@@ -313,6 +334,8 @@ class Session:
         assert self.c.mode=='fault' and self.c.accepted is None
         self.c.publish = original; checks.append('partial publish revokes both arms')
         self.c.transition('human'); self.wait(lambda:self.c.mode=='active')
+        # Sustain the production Cartesian tracker during the timed acceptance.
+        self.coordinator('tcp')
         return checks
 
     def resources(self):
@@ -385,7 +408,7 @@ def main():
         raise
     finally:
         if session: session.close()
-        rclpy.shutdown(); lease.close()
+        rclpy.try_shutdown(); lease.close()
         for arm in ('left','right'):
             path=directory/f'{arm}-updates.bin'
             if path.exists() and 'end_ns' in report:

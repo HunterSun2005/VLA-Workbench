@@ -165,7 +165,7 @@ class CommandSnapshot:
     published_at_ns: int
 
 
-from vla.control.ros.cartesian_servo import CartesianServo
+from vla.control.ros.cartesian_servo import CARTESIAN_TRACKING, CartesianServo
 
 
 class RolloutCollector(Node):
@@ -241,14 +241,6 @@ class RolloutCollector(Node):
         self._reset_policy_on_request = True
         self._intervention = False
         self._gamepad_targets: dict[str, GamepadTarget] = {}
-        # Keep the torque controller at a fixed measured pose while the Web
-        # session is still in configuration/standby.  This does not acquire a
-        # coordinator owner or enable user motion; it only prevents the raw
-        # effort controller from losing its last joint target before the first
-        # explicit control transition.
-        self._standby_hold_generation: int | None = None
-        self._standby_hold_command_id = 0
-        self._standby_hold_joints: dict[str, np.ndarray] = {}
         self._high_speed = {a.name: False for a in config.arms}
         self._speed_scale = {a.name: 1. for a in config.arms}
         self._previous_buttons = {}
@@ -347,9 +339,11 @@ class RolloutCollector(Node):
             'max_linear_velocity', 'max_angular_velocity', 'velocity_tracking_tau_s',
             'target_smoothing_alpha', 'velocity_smoothing', 'smooth_angular_velocity', 'damping',
             'max_joint_speed', 'gamepad_position_gain', 'gamepad_orientation_gain', 'gamepad_max_angular_speed',
-            'gamepad_xy_speed', 'gamepad_z_speed', 'gamepad_joint7_speed', 'gamepad_gripper_speed')}
+            'gamepad_xy_speed', 'gamepad_z_speed', 'gamepad_joint7_speed', 'gamepad_gripper_speed',
+            'policy_gripper_speed')}
         metadata['recording_contract']['control_fingerprint'] = fingerprint({
             'python': control_parameters, 'cpp': controller_parameters,
+            'cartesian_tracking': CARTESIAN_TRACKING,
             'execution': {'version': 2, 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots}})
         metadata['effective_controller_parameters'] = controller_parameters
         metadata['execution_projection'] = {
@@ -404,17 +398,6 @@ class RolloutCollector(Node):
             self._slot_clock = self._execution.control_clock
             self._tracking_clock = self._execution.tracking_clock
         self._start_cameras()
-
-        # Reset the managed controller before the first standby heartbeat.  The
-        # tool-definition wait above guarantees fresh robot measurements in a
-        # real session; the guard keeps lightweight test doubles unchanged.
-        required_measurements = tuple(
-            f'{arm.name}.{field}'
-            for arm in self.config.arms
-            for field in ('robot_state', 'measured_joint', 'gripper_state')
-        )
-        if all(key in self._latest for key in required_measurements):
-            self._control_boundary(reason='startup standby hold')
 
         # Poll fresh base frames frequently; demonstrations must not duplicate
         # one camera exposure just because the 30 Hz timer and camera drift.
@@ -891,9 +874,6 @@ class RolloutCollector(Node):
         self._input_action = None
         self._last_gripper_goal.clear()
         self._awaiting_record = None
-        self._standby_hold_generation = None
-        self._standby_hold_command_id = 0
-        self._standby_hold_joints = {}
         if self._pending_frame is not None and self._journal is not None:
             try:
                 self._journal_frame(self._pending_frame)
@@ -1201,7 +1181,7 @@ class RolloutCollector(Node):
                 gripper_motion,
             )
             commands[arm.name] = (target.position, target.rotation, target.gripper)
-        action = self.coordinator.gamepad_target(commands, 1.0 / self.config.fps)
+        action = self.coordinator.gamepad_target(commands, dt)
         self._input_action = action
         now = time.monotonic()
         if active_inputs and now - self._last_gamepad_input_log >= 0.5:
@@ -1267,8 +1247,6 @@ class RolloutCollector(Node):
                 if self._faulted:
                     return
                 if not (self._recording or self._teleop_enabled):
-                    if self.coordinator.mode == 'standby':
-                        self._publish_standby_hold()
                     return
                 if self.coordinator.mode != 'active':
                     return
@@ -1304,49 +1282,16 @@ class RolloutCollector(Node):
             joints[arm.name] = self._measured_joints(arm, q[1])
             grippers[arm.name] = schema.gripper_action(g[1])
         action = self.coordinator.gello_target(joints, grippers)
+        # Enable/pause latches measured gripper positions at zero speed. Restore
+        # absolute-goal speed only after reset acknowledgement and valid input
+        # for every arm, before the first GELLO goal can be submitted.
+        for arm in self.config.arms:
+            self._publish_gripper_speed(arm, self.config.policy_gripper_speed)
         self._input_action = action
 
     def _republish_arm_hold(self):
         # Tracking and controller heartbeat run independently at 100 Hz.
         return
-
-    def _publish_standby_hold(self) -> None:
-        """Publish a fixed measured-joint target without taking control ownership.
-
-        The FR3 effort controller needs a valid target to provide its stiff
-        torque hold.  During Web configuration there is no gamepad/policy owner
-        yet, so the coordinator intentionally remains in standby.  This small
-        heartbeat keeps the controller initialized and is revoked by every
-        control boundary before a new owner is enabled.
-        """
-        generation = self.coordinator.generation
-        if generation != self._standby_hold_generation:
-            self._standby_hold_generation = generation
-            self._standby_hold_command_id = 0
-            self._standby_hold_joints = {}
-        if not self._standby_hold_joints:
-            targets: dict[str, np.ndarray] = {}
-            for arm in self.config.arms:
-                item = self._latest.get(f'{arm.name}.measured_joint')
-                if item is None:
-                    return
-                if time.monotonic_ns() - item[0] > int(self.config.gamepad_state_timeout_s * 1e9):
-                    return
-                targets[arm.name] = self._measured_joints(arm, item[1])
-            self._standby_hold_joints = targets
-        self._standby_hold_command_id += 1
-        now = self.get_clock().now().to_msg()
-        for arm in self.config.arms:
-            self._publish_sequence += 1
-            message = joint_command(
-                self.servos[arm.name].model.joint_names,
-                self._standby_hold_joints[arm.name],
-                generation,
-                self._standby_hold_command_id,
-                self._publish_sequence,
-                now,
-            )
-            self._joint_publishers[arm.name].publish(message)
 
     def _initialize_episode_hold(self, values):
         self._control_boundary(self.config.input_source if self._intervention else 'policy', reason='episode start')
@@ -1968,9 +1913,9 @@ class RolloutCollector(Node):
             self._control_boundary(self.config.input_source if self._intervention else 'policy', reason='takeover/return')
             self._manual_requested = self._intervention
             requested = "active" if self._intervention else "inactive"
-            next_source = "gamepad" if self._intervention else "policy"
+            next_source = self.config.input_source if self._intervention else "policy"
             print(
-                f"Requested gamepad intervention={requested}; "
+                f"Requested {self.config.input_source} intervention={requested}; "
                 f"waiting for first {next_source} command",
                 flush=True,
             )

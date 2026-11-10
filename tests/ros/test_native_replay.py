@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import pytest
+from scipy.spatial.transform import Rotation
 
 pytest.importorskip('PyKDL', reason='requires isolated ROS Python 3.10 (scripts/test_ros.sh)')
 import PyKDL
@@ -169,3 +170,83 @@ def test_negative_control_detects_changed_history_and_wrong_anchor(models):
     wrong = origin.copy(); wrong[0] += .03
     restored = AbsoluteActions(spec)(delta, wrong)
     assert abs(restored[0]-a.accepted.target[0]) > .02
+
+
+@pytest.mark.parametrize('axis', range(6))
+@pytest.mark.parametrize('space', ['tcp', 'joint'])
+def test_cartesian_target_accumulates_despite_stationary_measurements(models, axis, space):
+    """An impedance target must reach the requested offset, not one dt of it."""
+    c, clock, published = make_rig(models, space, ('left',), 'gamepad')
+    servo = c.servos['left']
+    p, r = servo.forward_tcp(Q, TOOL_P, TOOL_R)
+    goal = p.copy()
+    rotation = r.copy()
+    if axis < 3:
+        goal[axis] += .004  # Inside the measured-pose lookahead bound.
+    else:
+        rotation = r @ Rotation.from_rotvec(np.eye(3)[axis-3] * .02).as_matrix()
+    previous = Q.copy()
+    for tick in range(200):
+        clock[0] += 10_000_000
+        c.observe('left', ArmMeasurement(Q, .45, TOOL_P, TOOL_R, clock[0]))
+        candidate = c.gamepad_target({'left': (goal, rotation, .45)}, .01)
+        if tick % 10 in (0, 4, 7):
+            c.accept(candidate, source='gamepad',
+                     generation=c.generation, slot_id=tick)
+        c.tick(.01)
+        q = published[-1][1]
+        period = .04 if space == 'joint' else .01  # joint labels are accepted at 30 Hz
+        assert np.max(np.abs(q - previous)) <= servo.config.max_joint_speed * period + 1e-12
+        previous = q
+    actual, actual_rotation = servo.forward_tcp(previous, TOOL_P, TOOL_R)
+    assert np.linalg.norm(actual - goal) < .0005
+    assert Rotation.from_matrix(actual_rotation.T @ rotation).magnitude() < .002
+    # Explicit revocation clears the integrated command, including after faults.
+    c.transition(reason='test stop', fault=True)
+    before = len(published)
+    c.tick()
+    assert len(published) == before
+    reset(c, 'gamepad')
+    c.accept(c.gamepad_target({'left': (p, r, .45)}, .01), source='gamepad',
+             generation=c.generation, slot_id=0)
+    c.tick(.01)
+    np.testing.assert_allclose(published[-1][1], Q, atol=1e-12)
+
+
+def test_blocked_arm_bounds_integrator_and_measurement_jump_faults(models):
+    c, clock, published = make_rig(models, 'tcp', ('left',), 'gamepad')
+    servo = c.servos['left']
+    p, r = servo.forward_tcp(Q, TOOL_P, TOOL_R)
+    previous = Q.copy()
+    for tick in range(500):
+        clock[0] += 10_000_000
+        c.observe('left', ArmMeasurement(Q, .45, TOOL_P, TOOL_R, clock[0]))
+        if tick % 10 in (0, 4, 7):
+            # User keeps pushing while the measured arm is blocked.
+            c.accept(np.r_[p + [tick*.0002, 0., 0.], matrix_to_rot6d(r), .45],
+                     source='gamepad', generation=c.generation, slot_id=tick)
+        c.tick(.01)
+        q = published[-1][1]
+        assert np.max(np.abs(q-previous)) <= servo.config.max_joint_speed*.01 + 1e-12
+        assert np.max(np.abs(q-Q)) <= servo.config.max_joint_speed*servo.config.velocity_tracking_tau_s + 1e-12
+        previous = q
+    actual, _ = servo.forward_tcp(q, TOOL_P, TOOL_R)
+    assert np.linalg.norm(actual-p) <= servo.config.max_linear_velocity*servo.config.velocity_tracking_tau_s + .0001
+    before = len(published)
+    c.observe('left', ArmMeasurement(Q + .4, .45, TOOL_P, TOOL_R, clock[0]))
+    with pytest.raises(RuntimeError, match='tracking error'):
+        c.tick(.01)
+    assert c.mode == 'fault' and c.accepted is None and len(published) == before
+
+
+def test_initial_measurement_outside_joint_envelope_cannot_submit_target(models):
+    c, clock, published = make_rig(models, 'tcp', ('left',), 'gamepad')
+    servo = c.servos['left']
+    q = Q.copy()
+    q[0] = servo.model.upper_limits[0] + 2*servo.config.max_joint_speed*servo.config.velocity_tracking_tau_s
+    c.observe('left', ArmMeasurement(q, .45, TOOL_P, TOOL_R, clock[0]))
+    p, r = servo.forward_tcp(q, TOOL_P, TOOL_R)
+    c.accept(np.r_[p, matrix_to_rot6d(r), .45], source='gamepad', generation=c.generation, slot_id=0)
+    with pytest.raises(RuntimeError, match='outside Cartesian tracking envelope'):
+        c.tick(.01)
+    assert c.mode == 'fault' and not published

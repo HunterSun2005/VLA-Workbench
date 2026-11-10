@@ -70,6 +70,68 @@ def refresh(c):
     c._latest = {key: (now, value) for key, (_, value) in c._latest.items()}
 
 
+@pytest.mark.parametrize('space', ['tcp', 'joint'])
+def test_manual_input_reaches_transport_before_recording(deployment, ros_module, monkeypatch, space):
+    """Exercise both timer callbacks, reset acknowledgement and unrecorded motion."""
+    b, c, *_ = deployment
+    c.config = replace(c.config, action_space=space)
+    c.coordinator.spec = c.config.action_spec
+    sent, speeds, periods = [], [], []
+    monkeypatch.setattr(c, '_validate_robot_health', lambda _: None)
+    monkeypatch.setattr(c, '_publish_gripper_speed', lambda arm, speed: speeds.append((arm.name, speed)))
+    # Model the zero-speed hold; the real stop adapter has a separate transport test.
+    def stop():
+        for arm in c.config.arms:
+            c._publish_gripper_speed(arm, 0.)
+    monkeypatch.setattr(c, '_stop_grippers_at_measured_position', stop)
+    c.coordinator.publish = lambda arm, q, g, *_: sent.append((arm, q.copy(), g))
+    def step(q, p, r, tp, tr, dt):
+        periods.append(dt)
+        return np.r_[p, np.zeros(4)]
+    for servo in c.servos.values():
+        servo.step = step
+    monkeypatch.setattr(c.coordinator, 'request_reset', lambda _: None)
+    command(b, 'mode', mode='human')
+    command(b, 'enable')
+    assert c.coordinator.mode == 'resetting'
+    now = [time.monotonic_ns()]
+    monkeypatch.setattr(ros_module, 'time', NS(monotonic_ns=lambda: now[0], monotonic=lambda: now[0]/1e9))
+    c.coordinator.clock = lambda: now[0]
+
+    def tick():
+        now[0] += 10_000_000
+        c._latest = {key: (now[0], value) for key, (_, value) in c._latest.items()}
+        c._gamepad_tick()
+        c._tick()
+
+    for _ in range(10):
+        tick()
+    assert not sent and all(speed == 0 for _, speed in speeds)
+    for arm in c.config.arms:
+        c.coordinator.acknowledge(arm.name, c.coordinator.generation, 0, np.zeros(7), now[0])
+        if c.config.input_source == 'gamepad':
+            c._latest[f'{arm.name}.gamepad'][1].axes[1] = 1.
+        else:
+            c._latest[f'{arm.name}.gello_gripper'][1].data = .7
+    for _ in range(30):
+        tick()
+    assert sent and not c._faulted and not c._recording and c._journal is None
+    assert not c._states
+    if c.config.input_source == 'gamepad':
+        assert sent[-1][1][0] > sent[0][1][0] + .001
+        assert periods and np.allclose(periods, .01)  # input IK runs at 100 Hz, too
+    else:
+        assert sent[-1][2] == pytest.approx(.7)
+        for arm in c.config.arms:
+            assert [v for name, v in speeds if name == arm.name][-1] > 0
+    command(b, 'pause')
+    before = len(sent)
+    for _ in range(10):
+        tick()
+    assert len(sent) == before
+    assert all(v == 0 for _, v in speeds[-len(c.config.arms):])
+
+
 def test_positioning_is_unrecorded_and_recording_keeps_human_owner(deployment):
     b, c, raw, values, images = deployment
     command(b, 'mode', mode='human')

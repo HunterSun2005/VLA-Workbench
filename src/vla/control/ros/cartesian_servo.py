@@ -8,6 +8,8 @@ from vla.datacollection.franka_robotiq_rollout.safety import (
     pose_step_to_twist, smooth_pose_target,
 )
 
+CARTESIAN_TRACKING = 'bounded_command_integration_v1'
+
 
 def _clamp_norm(values, maximum):
     norm = float(np.linalg.norm(values))
@@ -24,8 +26,10 @@ class CartesianServo:
         self._last_smoothed_rotation: np.ndarray | None = None
         self._last_linear_velocity = np.zeros(3, dtype=np.float64)
         self._last_angular_velocity = np.zeros(3, dtype=np.float64)
+        self._command_joints: np.ndarray | None = None
 
     def reset_tracking(self) -> None:
+        self._command_joints = None
         self._last_smoothed_position = None
         self._last_smoothed_rotation = None
         self._last_linear_velocity.fill(0.0)
@@ -69,10 +73,19 @@ class CartesianServo:
         flange_to_tcp_rotation: np.ndarray,
         dt: float,
     ) -> np.ndarray:
-        current_flange_position, current_flange_rotation = self.forward(joints)
+        if not 0 < dt <= .05:
+            raise ValueError('invalid Cartesian tracker period')
+        # Keep the trajectory state between ticks. Re-seeding IK from measured
+        # joints every tick makes the impedance error only velocity * dt, so
+        # a slow/stationary arm never receives the requested position target.
+        command_joints = joints if self._command_joints is None else self._command_joints
+        following_limit = self.config.max_joint_speed * self.config.velocity_tracking_tau_s
+        if np.any(np.abs(command_joints - joints) > following_limit + 1e-9):
+            raise RuntimeError('Cartesian joint tracking error exceeds lookahead bound')
+        measured_flange_position, measured_flange_rotation = self.forward(joints)
         current_tcp_position, current_tcp_rotation = compose_pose(
-            current_flange_position,
-            current_flange_rotation,
+            measured_flange_position,
+            measured_flange_rotation,
             flange_to_tcp_position,
             flange_to_tcp_rotation,
         )
@@ -104,6 +117,7 @@ class CartesianServo:
             flange_to_tcp_position,
             flange_to_tcp_rotation,
         )
+        current_flange_position, current_flange_rotation = self.forward(command_joints)
         linear, angular = pose_step_to_twist(
             current_flange_position,
             current_flange_rotation,
@@ -119,7 +133,16 @@ class CartesianServo:
         angular = _clamp_norm(angular, self.config.max_angular_velocity)
         self._last_linear_velocity = linear.copy()
         self._last_angular_velocity = angular.copy()
-        return self._joint_step(joints, np.concatenate((linear, angular)), dt)
+        result = self._joint_step(command_joints, np.concatenate((linear, angular)), dt)
+        # A blocked arm must not accumulate an unbounded joint target. The
+        # Cartesian lookahead above and this joint bound both use fresh state.
+        lower = np.maximum(joints - following_limit, self.model.lower_limits)
+        upper = np.minimum(joints + following_limit, self.model.upper_limits)
+        if np.any(lower > upper):
+            raise RuntimeError('measured joints outside Cartesian tracking envelope')
+        result = np.clip(result, lower, upper)
+        self._command_joints = result.copy()
+        return result
 
     def step_gamepad(
         self,

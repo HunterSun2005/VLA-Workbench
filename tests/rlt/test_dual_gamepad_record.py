@@ -251,39 +251,14 @@ def test_demo_enable_record_pause_and_fault(collector):
     assert not c._teleop_enabled
 
 
-def test_standby_hold_keeps_controller_target_without_acquiring_owner(collector, ros_module, monkeypatch):
-    """The Web configuration stage still feeds a fixed target to the effort controller."""
-    class Publisher:
-        def __init__(self):
-            self.messages = []
-
-        def publish(self, message):
-            self.messages.append(message)
-
-    class Clock:
-        @staticmethod
-        def now():
-            return SimpleNamespace(to_msg=lambda: SimpleNamespace())
-
-    def command(names, joints, generation, command_id, sequence, stamp):
-        return SimpleNamespace(
-            header=SimpleNamespace(frame_id=f'vla:{generation}:{command_id}:{sequence}', stamp=stamp),
-            name=list(names), position=list(joints),
-        )
-
+def test_standby_never_publishes_unowned_commands(collector, monkeypatch):
     c = collector
-    c._joint_publishers = {arm.name: Publisher() for arm in c.config.arms}
-    c.get_clock = lambda: Clock()
-    monkeypatch.setattr(ros_module, 'joint_command', command)
-    c.coordinator.mode = 'standby'
-    c.coordinator.generation = 123
-    c._publish_standby_hold()
-    assert c.coordinator.owner is None
-    assert c._standby_hold_command_id == 1
-    for arm in c.config.arms:
-        message = c._joint_publishers[arm.name].messages[-1]
-        assert message.header.frame_id.startswith('vla:123:1:')
-        np.testing.assert_allclose(message.position, [0.] * 7)
+    c.coordinator.publish = lambda *args: pytest.fail('standby submitted a command')
+    c._joint_publishers = {arm.name: SimpleNamespace(
+        publish=lambda _: pytest.fail('bypassed coordinator')) for arm in c.config.arms}
+    monkeypatch.setattr(c._tracking_clock, 'poll', lambda _: 0)
+    c._gamepad_tick()
+    assert c.coordinator.owner is None and not c._faulted
 
 
 def test_demo_save_preserves_stage_and_is_cache_demonstration(collector, monkeypatch):

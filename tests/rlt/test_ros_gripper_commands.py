@@ -84,6 +84,43 @@ def test_gamepad_rows_record_submitted_goals_and_latched_hold(ros_transport, arm
     assert len(faults) == 2
 
 
+def test_gello_restores_speed_only_after_all_inputs_validate(ros_transport):
+    import time
+    from vla.control.ros import ControlCoordinator
+    c = object.__new__(ros_transport.RolloutCollector)
+    c.config = replace(load_rollout_config(DEFAULT_CONFIG), input_source='gello', action_space='joint')
+    c._latest, c._gamepad_targets, c._input_action = {}, {}, None
+    c._gripper_speed_publishers = {a.name: Messages() for a in c.config.arms}
+    c.servos = {a.name: NS(model=NS(joint_names=[f'j{i}' for i in range(7)])) for a in c.config.arms}
+    c.coordinator = ControlCoordinator(c.config.action_spec, c.servos, {}, None, None)
+    holds = []
+    c._send_gripper_goal = lambda arm, goal: holds.append((arm.name, goal))
+    now = time.monotonic_ns()
+    for arm in c.config.arms:
+        c._latest[f'{arm.name}.gripper_state'] = (now, NS(name=[arm.gripper_joint_name], position=[.4]))
+        c._latest[f'{arm.name}.gello_joint'] = (now, NS(name=[f'j{i}' for i in range(7)], position=[0.]*7))
+        c._latest[f'{arm.name}.gello_gripper'] = (now, NS(data=.7))
+    c._stop_grippers_at_measured_position()
+    assert len(holds) == 2
+    c._publish_gello()
+    for publisher in c._gripper_speed_publishers.values():
+        assert publisher.values == [[0.], [c.config.policy_gripper_speed]]
+    c._stop_grippers_at_measured_position()
+    c._latest['right.gello_joint'] = (now - int(2e9), c._latest['right.gello_joint'][1])
+    with pytest.raises(RuntimeError, match='input stream interrupted'):
+        c._publish_gello()
+    for publisher in c._gripper_speed_publishers.values():
+        assert publisher.values == [[0.], [c.config.policy_gripper_speed], [0.]]
+    # An actual aborted result must still stop control; never hide status 6.
+    faults = []
+    c._gripper_goal_futures = set()
+    c._latch_fault = faults.append
+    aborted = Future()
+    aborted.set_result(NS(status=6))
+    c._gripper_goal_result('left', aborted)
+    assert len(faults) == 1 and 'status 6' in str(faults[0])
+
+
 @pytest.fixture
 def fine_module(ros_transport, monkeypatch):
     for name, attrs in {
