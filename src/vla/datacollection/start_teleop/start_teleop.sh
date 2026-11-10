@@ -11,6 +11,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TELEOP_MODE="${TELEOP_MODE:-duo}"
 CONTROL_OWNER="${CONTROL_OWNER:-rollout}"
+FRANKY_OWNER="${FRANKY_OWNER:-0}"
 VLA_RUN_MODE="${VLA_RUN_MODE:-terminal}"
 case "$VLA_RUN_MODE" in
   terminal|managed) ;;
@@ -146,8 +147,10 @@ main() {
     bash --noprofile --norc -c "$(ros_env_cmd) /usr/bin/python3 '$GELLO_FINE_LAUNCH' --check --config-path '$GELLO_RUNTIME_CONFIG' --expected-namespaces '$EXPECTED_GELLO_NAMESPACES'" ||
       die "GELLO fine launch configuration check failed"
   fi
-  bash --noprofile --norc -c "$(ros_env_cmd) ros2 launch '$ARM_TELEOP_LAUNCH' --show-args >/dev/null" ||
-    die "FR3 teleop topic remap launch check failed"
+  if ! is_enabled "$FRANKY_OWNER"; then
+    bash --noprofile --norc -c "$(ros_env_cmd) ros2 launch '$ARM_TELEOP_LAUNCH' --show-args >/dev/null" ||
+      die "FR3 teleop topic remap launch check failed"
+  fi
   bash --noprofile --norc -c "$(ros_env_cmd) ros2 launch '$GRIPPER_TELEOP_LAUNCH' --show-args >/dev/null" ||
     die "Robotiq teleop topic remap launch check failed"
 
@@ -212,11 +215,13 @@ main() {
     done
   fi
 
-  add_task "fr3_${TELEOP_MODE}_controllers" \
-    "${environment} exec ros2 launch '$ARM_TELEOP_LAUNCH' robot_config_file:='$ARM_RUNTIME_CONFIG' control_owner:=$CONTROL_OWNER"
-  start_task "$((${#TASK_NAMES[@]} - 1))"
+  if ! is_enabled "$FRANKY_OWNER"; then
+    add_task "fr3_${TELEOP_MODE}_controllers" \
+      "${environment} exec ros2 launch '$ARM_TELEOP_LAUNCH' robot_config_file:='$ARM_RUNTIME_CONFIG' control_owner:=$CONTROL_OWNER"
+    start_task "$((${#TASK_NAMES[@]} - 1))"
+  fi
 
-  if is_enabled "$SET_FULL_COLLISION_BEHAVIOR"; then
+  if ! is_enabled "$FRANKY_OWNER" && is_enabled "$SET_FULL_COLLISION_BEHAVIOR"; then
     for side in "${ACTIVE_SIDES[@]}"; do
       apply_collision_behavior "$side"
     done
@@ -230,7 +235,11 @@ main() {
   fi
 
   if [[ "$CONTROL_OWNER" == "rollout" ]]; then
-    log "$MODE_LABEL FR3 rollout hardware stack is ready; collector owns all arm commands."
+    if is_enabled "$FRANKY_OWNER"; then
+      log "$MODE_LABEL Franky peripheral stack is ready; worker owns all arm commands."
+    else
+      log "$MODE_LABEL FR3 rollout hardware stack is ready; collector owns all arm commands."
+    fi
   elif [[ "$TELEOP_MODE" == "duo" ]]; then
     log "Dual FR3 teleoperation stack is ready. Right arm remains under GELLO control."
   else

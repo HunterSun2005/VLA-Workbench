@@ -28,13 +28,23 @@ arms:
   - 0.2
   - -0.45
   - 0.05
-backend: ros2
+backend: franky
 cameras:
 - name: base
   serial: '260722303785'
 - name: left_wrist
   serial: '346222073620'
 control:
+  compliance:
+    translational_stiffness: 1000
+    rotational_stiffness: 50
+    nullspace_stiffness: 20
+    translational_clip: 0.008
+    rotational_clip: 0.04
+    max_step: 0.03
+    max_step_rad: 0.10
+    max_delta_tau: 0.2
+    gains_time_constant: 0.1
   damping: 0.05
   gamepad_control_rate: 100
   gamepad_deadzone: 0.08

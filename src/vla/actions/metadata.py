@@ -14,6 +14,7 @@ class RecordingContract:
     kinematics_fingerprint: str
     control_fingerprint: str
     derived_from: str | None = None
+    backend: str = 'ros2_joint_impedance'
 
     def __post_init__(self):
         if self.action_spec.representation != 'absolute':
@@ -23,10 +24,12 @@ class RecordingContract:
             raise ValueError('recording requires device, TCP tool, kinematics and control identities')
         if self.derived_from not in (None, 'joint_command_fk', 'tcp_submitted_joints'):
             raise ValueError('unsupported action derivation')
+        if self.backend not in ('ros2_joint_impedance', 'franky_cartesian_impedance'):
+            raise ValueError('unsupported recording backend')
 
     def to_dict(self):
         return {**self.__dict__, 'action_spec': self.action_spec.to_dict(),
-                'version': 2, 'backend': 'ros2_joint_impedance',
+                'version': 2, 'backend': self.backend,
                 'recording_point': 'accepted_before_tracking' if self.derived_from is None else 'derived'}
 
 

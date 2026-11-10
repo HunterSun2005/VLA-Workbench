@@ -11,11 +11,14 @@ from vla.core.lease_metadata import release_owned_streams
 
 
 class HardwareLease:
-    def __init__(self, robot_ip: str, gripper_port: str, *, directory: Path | None = None):
+    def __init__(self, robot_ip: str, gripper_port: str | None = None, *, directory: Path | None = None):
         directory = directory or Path("/tmp/vla-hardware-locks")
         directory.mkdir(mode=0o755, parents=True, exist_ok=True)
         self._streams = []
-        resources = sorted((f"franka:{robot_ip}", f"serial:{Path(gripper_port).resolve()}"))
+        resources = [f"franka:{robot_ip}"]
+        if gripper_port:
+            resources.append(f"serial:{Path(gripper_port).resolve()}")
+        resources.sort()
         try:
             for resource in resources:
                 name = hashlib.sha256(resource.encode("utf-8")).hexdigest() + ".lock"

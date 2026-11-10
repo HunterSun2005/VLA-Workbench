@@ -14,8 +14,8 @@ def configured_backend(path: str | Path) -> str:
     if not isinstance(value, dict):
         raise ValueError(f"rollout config must be a YAML mapping: {config_path}")
     backend = str(value.get("backend", "ros2"))
-    if backend != "ros2":
-        raise ValueError("Legacy Franky backend removed; use an explicit ROS2 rollout configuration")
+    if backend not in ("ros2", "franky"):
+        raise ValueError("backend must be ros2 or franky")
     return backend
 
 

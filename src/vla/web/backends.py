@@ -99,9 +99,13 @@ class BaseBackend:
         if self.config.workflow == 'deploy' and self.config.policy_path:
             from vla.actions.metadata import checkpoint_contract
             space = checkpoint_contract(self.config.policy_path)['action_spec']['space']
+        if c.backend == 'franky' and space != 'tcp':
+            raise ValueError('Franky Cartesian impedance deployments require a TCP checkpoint')
         c = replace(c, action_space=space, input_source=self.config.source)
         return replace(c, dataset_root=Path(self.config.dataset_root), task=self.config.task,
-                       tasks=self.config.tasks or tuple(dict.fromkeys((self.config.task, *c.tasks))), joy_socket_path=self.directory/'joy.sock')
+                       tasks=self.config.tasks or tuple(dict.fromkeys((self.config.task, *c.tasks))),
+                       joy_socket_path=self.directory/'joy.sock',
+                       worker_socket_path=self.directory/'franky.sock')
 
     def collector_command(self, op, args):
         c = self.collector
@@ -183,6 +187,23 @@ class BaseBackend:
             if was_positioning and mode != 'human':
                 self.enabled = False
             self._policy_armed = self.enabled and not active and not c._teleop_enabled
+        elif op == 'compliance':
+            if self.config.workflow not in ('collect', 'deploy'):
+                raise ValueError('阻抗参数只适用于采集或部署会话')
+            values = args.get('values')
+            if not isinstance(values, dict):
+                raise ValueError('compliance values must be an object')
+            allowed = {'translational_stiffness', 'rotational_stiffness', 'nullspace_stiffness',
+                       'translational_clip', 'rotational_clip', 'max_step', 'max_step_rad',
+                       'max_delta_tau', 'gains_time_constant'}
+            if not values or set(values) - allowed:
+                raise ValueError('unknown or empty Franky compliance values')
+            if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value)
+                   for value in values.values()):
+                raise ValueError('Franky compliance values must be finite numbers')
+            if not hasattr(c, 'update_compliance'):
+                raise RuntimeError('当前控制后端不支持 Franky 阻抗调参')
+            c.update_compliance(values)
         elif op == 'critical' and (self.config.workflow == 'collect' or getattr(c, 'require_online', False)):
             if not active:
                 raise RuntimeError('no active episode')
@@ -217,7 +238,7 @@ class BaseBackend:
             ops.append('critical')
             if getattr(c.config, 'subtasks', ()):
                 ops.append('next_subtask')
-        return {'execution_state': (c._execution.state.value if getattr(c, '_execution', None) else
+        status = {'execution_state': (c._execution.state.value if getattr(c, '_execution', None) else
                                    'human' if human else 'standby'),
                 'state': 'storage_blocked' if getattr(c, '_storage_blocked', False) else
                 'waiting_resume' if getattr(c, '_waiting_resume', False) else 'fault' if c._faulted else 'recording' if active else 'active' if self.enabled else 'standby',
@@ -235,6 +256,9 @@ class BaseBackend:
                              'name':c.config.subtasks[c._subtask_index]}
                             if self.config.workflow == 'collect' and getattr(c.config, 'subtasks', ()) else None),
                 'rtc': c.policy_client.contract.get('rtc_enabled',False) if c.policy_client else False}
+        if hasattr(c, 'compliance_status'):
+            status['compliance'] = c.compliance_status()
+        return status
 
     def close(self):
         if self.poses.moving:
@@ -259,11 +283,12 @@ class ROSBackend(BaseBackend):
         if config.workflow == 'collect':
             from .config import collection_camera_serials
             self.camera_serials = collection_camera_serials(config, self.hardware)
-        from vla.core.hardware_lease import HardwareLease
-        for arm in self.arms:
-            lease = HardwareLease(self.hardware[f'{arm.upper()}_ROBOT_IP'],
-                                  self.hardware[f'{arm.upper()}_ROBOTIQ_PORT'])
-            self.resources.callback(lease.close)
+        if getattr(config, 'backend', 'ros2') != 'franky':
+            from vla.core.hardware_lease import HardwareLease
+            for arm in self.arms:
+                lease = HardwareLease(self.hardware[f'{arm.upper()}_ROBOT_IP'],
+                                      self.hardware[f'{arm.upper()}_ROBOTIQ_PORT'])
+                self.resources.callback(lease.close)
         self.resources.callback(self.children.close)
         legacy = self.root / 'runtime' / f'fr3_fine_teleop_{os.getuid()}' / 'launcher.pid'
         if legacy.exists():
@@ -283,12 +308,16 @@ class ROSBackend(BaseBackend):
             rollout = replace(rollout, cameras=tuple(CameraConfig(role, serial) for role, serial in self.camera_serials.items()))
         if config.workflow == 'deploy' and config.policy_path:
             rollout = self.start_policy(rollout)
+        if rollout.backend == 'franky':
+            self._start_franky_worker(rollout)
         # Both arm/gripper command routes go through managed coordinators, including GELLO.
         env = clean_environment(root,'/usr/bin/python3',ros=True)
         env.update(self.hardware, VLA_RUN_MODE='managed', CONTROL_OWNER='rollout', TELEOP_MODE='duo' if config.arms == 'dual' else 'single_left',
                    ROS2_WS=str(config.ros_workspace or Path(root)/'ros_ws'),
                    VLA_WEB_READY_FILE=str(self.directory/'hardware.ready'),
-                   LOG_DIR=str(self.directory/'ros'), STATE_DIR=str(self.directory/'ros-state'), START_CAMERAS='0')
+                   LOG_DIR=str(self.directory/'ros'), STATE_DIR=str(self.directory/'ros-state'), START_CAMERAS='0',
+                   VLA_WORKER_SESSION_ID=self.directory.name,
+                   FRANKY_OWNER='1' if rollout.backend == 'franky' else '0')
         self.children.start('hardware',['/bin/bash',str(resource('datacollection/start_teleop/start_teleop.sh'))],env)
         deadline = time.monotonic()+180
         while not (self.directory/'hardware.ready').exists():
@@ -309,6 +338,51 @@ class ROSBackend(BaseBackend):
         self.resources.callback(self.collector.close)
         if config.workflow == 'deploy' and not self.collector.require_online:
             self.collector.set_control_mode(config.mode)
+
+    def _start_franky_worker(self, rollout):
+        """Start the isolated Franky process before any ROS peripherals."""
+        import json
+        worker_python = (rollout.worker_python or
+                         Path(os.environ.get('FRANKY_PYTHON', '/usr/bin/python3')))
+        worker_config = self.directory / 'franky-worker.json'
+        arms = {
+            arm: {
+                'robot_ip': self.hardware[f'{arm.upper()}_ROBOT_IP'],
+            }
+            for arm in self.arms
+        }
+        worker_config.write_text(json.dumps({
+            'session_id': self.directory.name,
+            'arms': arms,
+            'compliance': rollout.franky_compliance,
+        }, indent=2) + '\n')
+        env = clean_environment(self.root, worker_python)
+        self.children.start(
+            'franky-worker',
+            interpreter_command(worker_python, [
+                '-m', 'vla.control.franky.worker_main',
+                '--config', str(worker_config),
+                '--socket-path', str(rollout.worker_socket_path),
+            ], root=self.root),
+            env,
+        )
+        from vla.control.franky.ipc import FrankyWorkerClient
+        deadline = time.monotonic() + 30
+        client = FrankyWorkerClient(rollout.worker_socket_path, timeout_s=1.)
+        self.resources.callback(client.close)
+        while time.monotonic() < deadline:
+            self.check_children()
+            if rollout.worker_socket_path.exists():
+                try:
+                    response = client._request({'kind': 'health', 'session_id': self.directory.name})
+                    if response.get('kind') == 'state' and not response.get('fault'):
+                        client.close()
+                        return
+                except (OSError, RuntimeError, TimeoutError):
+                    pass
+            time.sleep(.1)
+        client.close()
+        raise TimeoutError('Franky worker startup timed out; see franky-worker.log')
 
     def _start_gello(self, env):
         import yaml

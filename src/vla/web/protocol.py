@@ -7,7 +7,8 @@ import struct
 VERSION = 1
 MAX_PACKET = 2 * 1024 * 1024
 COMMANDS = frozenset({'enable', 'pause', 'record', 'save', 'discard', 'recover',
-                      'stop', 'mode', 'intervention', 'critical', 'next_subtask', 'pose_capture', 'pose_restore'})
+                      'stop', 'mode', 'intervention', 'critical', 'next_subtask',
+                      'compliance', 'pose_capture', 'pose_restore'})
 
 
 def receive(sock):

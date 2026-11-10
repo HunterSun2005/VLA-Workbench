@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from threading import RLock
 import time
 import numpy as np
+from scipy.spatial.transform import Rotation
 from vla.actions import ActionSpec, AcceptedCommand, matrix_to_rot6d, rot6d_to_matrix
 from vla.actions.spec import immutable_array, validate_array
 
@@ -34,10 +35,14 @@ class ControlCoordinator:
     all controllers acknowledge its generation. No model or ROS imports here.
     """
     def __init__(self, spec, servos, bounds, publish, reset, *, state_timeout_s=.5,
-                 command_timeout_s=.5, reset_timeout_s=1., clock=time.monotonic_ns):
+                 command_timeout_s=.5, reset_timeout_s=1., clock=time.monotonic_ns,
+                 backend='ros2'):
         if spec.representation != 'absolute':
-            raise ValueError('ROS accepts only absolute targets')
-        self.spec, self.servos, self.bounds = spec, servos, bounds
+            raise ValueError('execution accepts only absolute targets')
+        if backend == 'franky' and spec.space != 'tcp':
+            raise ValueError('Franky Cartesian impedance requires TCP actions')
+        self.spec, self.servos, self.bounds = spec, servos or {}, bounds
+        self.backend = backend
         self.publish, self.request_reset, self.clock = publish, reset, clock
         self.state_timeout_ns = int(state_timeout_s * 1e9)
         self.command_timeout_ns = int(command_timeout_s * 1e9)
@@ -146,6 +151,8 @@ class ControlCoordinator:
         for i, arm in enumerate(self.spec.arms):
             off = i * self.spec.width
             if self.spec.space == 'joint':
+                if self.backend == 'franky':
+                    raise ValueError('Franky execution does not accept joint actions')
                 model = self.servos[arm].model
                 target[off:off+7] = np.clip(target[off:off+7], model.lower_limits, model.upper_limits)
             else:
@@ -201,7 +208,15 @@ class ControlCoordinator:
                     block = command.target[i*self.spec.width:(i+1)*self.spec.width]
                     m = self._measurements[arm]
                     if self.spec.space == 'joint':
+                        if self.backend == 'franky':
+                            raise ValueError('Franky execution does not accept joint actions')
                         q = block[:7].copy()
+                    elif self.backend == 'franky':
+                        pose = np.r_[block[:3], Rotation.from_matrix(
+                            rot6d_to_matrix(block[3:9])).as_quat()]
+                        submitted[arm] = {'joints': m.joints.copy(), 'fk_tcp': block[:9].copy(),
+                                          'pose': pose, 'gripper': float(block[-1])}
+                        continue
                     else:
                         q = self.servos[arm].step(m.joints, block[:3], rot6d_to_matrix(block[3:9]),
                                                   m.tool_position, m.tool_rotation, dt)
@@ -211,7 +226,12 @@ class ControlCoordinator:
                 # Validate every arm before the first publish; a partial publish faults all arms.
                 self.partial_submission = {}
                 for arm, target in submitted.items():
-                    self.publish(arm, target['joints'], target['gripper'], command.generation, command.command_id)
+                    if self.backend == 'franky':
+                        self.publish(arm, target['pose'], target['gripper'],
+                                     command.generation, command.command_id)
+                    else:
+                        self.publish(arm, target['joints'], target['gripper'],
+                                     command.generation, command.command_id)
                     self.partial_submission[arm] = target
                 self.submitted = submitted
                 return command

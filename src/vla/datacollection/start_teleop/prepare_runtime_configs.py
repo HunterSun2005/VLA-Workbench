@@ -42,10 +42,10 @@ def prepare_runtime_configs(
     *,
     mode: str,
     gello_source: str | Path | None,
-    arm_source: str | Path,
+    arm_source: str | Path | None,
     gripper_source: str | Path,
     gello_output: str | Path | None,
-    arm_output: str | Path,
+    arm_output: str | Path | None,
     gripper_output: str | Path,
     gripper_speed_output: str | Path,
     left_gello: str = "",
@@ -67,7 +67,7 @@ def prepare_runtime_configs(
         raise ValueError("teleop control requires GELLO source and output paths")
 
     gello = _load_selected(gello_source, sides) if control_owner == "teleop" else None
-    arms = _load_selected(arm_source, sides)
+    arms = _load_selected(arm_source, sides) if arm_source else {side: {} for side in sides}
     grippers = _load_selected(gripper_source, sides)
 
     overrides = {
@@ -78,7 +78,7 @@ def prepare_runtime_configs(
         gello_port, robot_ip, gripper_port = overrides[side]
         if gello is not None and gello_port:
             gello[side]["com_port"] = gello_port
-        if robot_ip:
+        if robot_ip and arms[side]:
             arms[side]["robot_ip"] = robot_ip
         if gripper_port:
             grippers[side]["com_port"] = gripper_port
@@ -102,7 +102,8 @@ def prepare_runtime_configs(
 
     if gello is not None:
         _save(gello_output, gello)
-    _save(arm_output, arms)
+    if arm_output:
+        _save(arm_output, arms)
     _save(gripper_output, grippers)
     _save(
         gripper_speed_output,
@@ -124,10 +125,10 @@ def parse_args() -> argparse.Namespace:
         "--control-owner", choices=("teleop", "rollout"), default="teleop"
     )
     parser.add_argument("--gello-source")
-    parser.add_argument("--arm-source", required=True)
+    parser.add_argument("--arm-source")
     parser.add_argument("--gripper-source", required=True)
     parser.add_argument("--gello-output")
-    parser.add_argument("--arm-output", required=True)
+    parser.add_argument("--arm-output")
     parser.add_argument("--gripper-output", required=True)
     parser.add_argument("--gripper-speed-output", required=True)
     parser.add_argument("--left-gello", default="")

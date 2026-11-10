@@ -21,8 +21,9 @@ def main():
         parser.error('output exists; choose a new contract path')
     info = load_info(args.dataset)
     source = info.get('recording_contract') or info.get('processing', {}).get('source_contract', {}).get('recording_contract')
-    if not source or source.get('version') != 2 or source.get('backend') != 'ros2_joint_impedance':
-        raise ValueError('missing native ROS action contract; only schema-5 source recordings are supported')
+    if not source or source.get('version') != 2 or source.get('backend') not in {
+            'ros2_joint_impedance', 'franky_cartesian_impedance'}:
+        raise ValueError('missing supported action contract; only schema-5 source recordings are supported')
     spec = replace(ActionSpec.from_dict(info['action_spec']), representation=args.representation)
     sampling = SamplingSpec(args.chunk_length, args.frame_stride)
     sources = validate_mixture([source], allow_derived=args.allow_derived)

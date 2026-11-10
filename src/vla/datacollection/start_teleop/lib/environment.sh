@@ -79,12 +79,16 @@ validate_environment() {
   require_file "$ROS2_WS/install/setup.bash"
   require_file "$FRANKA_ROS2_WS/install/setup.bash"
   require_file "$ROBOTIQ_ROS2_SETUP"
-  [[ -d "$OPENROBOTS_LIB_DIR" ]] ||
-    die "Missing robotpkg library directory: $OPENROBOTS_LIB_DIR"
-  require_file "$FRANKA_HARDWARE_LIBRARY"
+  if ! is_enabled "$FRANKY_OWNER"; then
+    [[ -d "$OPENROBOTS_LIB_DIR" ]] ||
+      die "Missing robotpkg library directory: $OPENROBOTS_LIB_DIR"
+    require_file "$FRANKA_HARDWARE_LIBRARY"
+  fi
   require_file "$PREPARE_CONFIGS"
-  require_file "$CONTROLLER_STATE_CHECK"
-  require_file "$ARM_TELEOP_LAUNCH"
+  if ! is_enabled "$FRANKY_OWNER"; then
+    require_file "$CONTROLLER_STATE_CHECK"
+    require_file "$ARM_TELEOP_LAUNCH"
+  fi
   require_file "$GRIPPER_TELEOP_LAUNCH"
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
     require_file "$FINE_TELEOP_NODE"
@@ -93,14 +97,14 @@ validate_environment() {
 
   local package
   local -a packages=(
-    franka_hardware
-    franka_robot_state_broadcaster
-    franka_fr3_arm_controllers
     franka_gripper_manager
     robotiq_driver
     robotiq_controllers
     joy
   )
+  if ! is_enabled "$FRANKY_OWNER"; then
+    packages+=(franka_hardware franka_robot_state_broadcaster franka_fr3_arm_controllers)
+  fi
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
     packages+=(franka_gello_state_publisher forward_command_controller std_srvs)
   fi
@@ -116,14 +120,16 @@ validate_environment() {
       die "Fine teleop self-test failed"
   fi
 
-  local hardware_library_q missing_libraries
-  printf -v hardware_library_q '%q' "$FRANKA_HARDWARE_LIBRARY"
-  missing_libraries="$(
-    bash --noprofile --norc -c "$(ros_env_cmd) ldd $hardware_library_q" |
-      awk '$2 == "=>" && $3 == "not" && $4 == "found" {print $1}'
-  )"
-  if [[ -n "$missing_libraries" ]]; then
-    die "Franka hardware library has unresolved dependencies: ${missing_libraries//$'\n'/, }"
+  if ! is_enabled "$FRANKY_OWNER"; then
+    local hardware_library_q missing_libraries
+    printf -v hardware_library_q '%q' "$FRANKA_HARDWARE_LIBRARY"
+    missing_libraries="$(
+      bash --noprofile --norc -c "$(ros_env_cmd) ldd $hardware_library_q" |
+        awk '$2 == "=>" && $3 == "not" && $4 == "found" {print $1}'
+    )"
+    if [[ -n "$missing_libraries" ]]; then
+      die "Franka hardware library has unresolved dependencies: ${missing_libraries//$'\n'/, }"
+    fi
   fi
 
   if ! is_enabled "$CHECK_ONLY"; then
@@ -175,31 +181,34 @@ prepare_runtime_configs() {
     gello_source="$(config_source_path franka_gello_state_publisher "$GELLO_CONFIG")"
     require_file "$gello_source"
   fi
-  arm_source="$(config_source_path franka_fr3_arm_controllers "$ROBOT_CONFIG")"
+  if ! is_enabled "$FRANKY_OWNER"; then
+    arm_source="$(config_source_path franka_fr3_arm_controllers "$ROBOT_CONFIG")"
+  fi
   gripper_source="$(config_source_path franka_gripper_manager "$GRIPPER_CONFIG")"
-  require_file "$arm_source"
+  if [[ -n "$arm_source" ]]; then require_file "$arm_source"; fi
   require_file "$gripper_source"
 
-  arm_share="$(package_share franka_fr3_arm_controllers)"
+  if [[ -n "$arm_source" ]]; then arm_share="$(package_share franka_fr3_arm_controllers)"; fi
   gripper_share="$(package_share franka_gripper_manager)"
   suffix="runtime_${CONTROL_OWNER}_${TELEOP_MODE}_${USER:-user}_$$"
-  ARM_RUNTIME_CONFIG="$STATE_DIR/${suffix}_arms.yaml"
+  ARM_RUNTIME_CONFIG=""
   GRIPPER_RUNTIME_CONFIG="$STATE_DIR/${suffix}_grippers.yaml"
   GRIPPER_SPEED_CONTROLLER_CONFIG="$STATE_DIR/${suffix}_gripper_speed_controller.yaml"
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
     GELLO_RUNTIME_CONFIG="$STATE_DIR/${suffix}_gello.yaml"
     add_runtime_file "$GELLO_RUNTIME_CONFIG"
   fi
-  add_runtime_file "$ARM_RUNTIME_CONFIG"
+  if [[ -n "$arm_source" ]]; then
+    ARM_RUNTIME_CONFIG="$STATE_DIR/${suffix}_arms.yaml"
+    add_runtime_file "$ARM_RUNTIME_CONFIG"
+  fi
   add_runtime_file "$GRIPPER_RUNTIME_CONFIG"
   add_runtime_file "$GRIPPER_SPEED_CONTROLLER_CONFIG"
 
   local -a config_args=(
     --mode "$TELEOP_MODE"
     --control-owner "$CONTROL_OWNER"
-    --arm-source "$arm_source"
     --gripper-source "$gripper_source"
-    --arm-output "$ARM_RUNTIME_CONFIG"
     --gripper-output "$GRIPPER_RUNTIME_CONFIG"
     --gripper-speed-output "$GRIPPER_SPEED_CONTROLLER_CONFIG"
     --left-gello "$LEFT_GELLO_SERIAL_ID"
@@ -209,6 +218,9 @@ prepare_runtime_configs() {
     --left-gripper "$LEFT_ROBOTIQ_PORT"
     --right-gripper "$RIGHT_ROBOTIQ_PORT"
   )
+  if [[ -n "$arm_source" ]]; then
+    config_args+=(--arm-source "$arm_source" --arm-output "$ARM_RUNTIME_CONFIG")
+  fi
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
     config_args+=(
       --gello-source "$gello_source"
@@ -220,7 +232,11 @@ prepare_runtime_configs() {
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
     log "Runtime GELLO config: $GELLO_RUNTIME_CONFIG"
   fi
-  log "Runtime arm config: $(basename "$ARM_RUNTIME_CONFIG")"
+  if [[ -n "$ARM_RUNTIME_CONFIG" ]]; then
+    log "Runtime arm config: $(basename "$ARM_RUNTIME_CONFIG")"
+  else
+    log "Runtime arm config: Franky worker (ROS arm controller disabled)"
+  fi
   log "Runtime gripper config: $(basename "$GRIPPER_RUNTIME_CONFIG")"
   log "Runtime left gripper speed controller config: $GRIPPER_SPEED_CONTROLLER_CONFIG"
 }

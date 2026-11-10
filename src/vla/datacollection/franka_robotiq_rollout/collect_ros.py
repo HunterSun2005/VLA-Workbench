@@ -20,6 +20,7 @@ import time
 import traceback
 from collections import Counter
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import numpy as np
 import rclpy
@@ -36,6 +37,7 @@ from vla.actions import ActionSpec, matrix_to_rot6d
 from vla.actions.spec import fingerprint, validate_array
 from vla.control.ros import ControlCoordinator, ArmMeasurement
 from vla.control.ros.transport import joint_command, controller_identity
+from vla.control.franky import FrankyWorkerClient
 
 from vla.datacollection.franka_robotiq_single_left import schema
 from vla.datacollection.franka_robotiq_single_left.auto_record import (
@@ -224,6 +226,10 @@ class RolloutCollector(Node):
             ("command.source", 1, "int64"),
             ("diagnostic.controller", 3 * len(config.arms), "int64"),
             ("diagnostic.filtered_joint", 7 * len(config.arms), "float64"),
+            ("command.target_tcp", 10 * len(config.arms), "float64"),
+            ("diagnostic.actual_tcp", 7 * len(config.arms), "float64"),
+            ("diagnostic.target_joint", 7 * len(config.arms), "float64"),
+            ("diagnostic.tracker", 4 * len(config.arms), "int64"),
         ]:
             self._extra_features[key] = {"dtype": dtype, "shape": [dim], "names": None}
         self._lock = threading.RLock()
@@ -315,13 +321,23 @@ class RolloutCollector(Node):
             arm.name: CartesianServo(self._load_kinematic_model(arm), config)
             for arm in config.arms
         }
+        self._worker_client = None
+        self._pending_compliance = None
+        self._pending_worker_targets = {}
+        self._worker_session_id = os.environ.get('VLA_WORKER_SESSION_ID', '')
+        if config.backend == 'franky':
+            if not self._worker_session_id:
+                raise RuntimeError('Franky rollout requires VLA_WORKER_SESSION_ID')
+            self._worker_client = FrankyWorkerClient(
+                config.worker_socket_path, session_id=self._worker_session_id)
         self._setup_ros_io()
         self.coordinator = ControlCoordinator(
             config.action_spec, self.servos,
             {a.name: (np.asarray(a.workspace_min), np.asarray(a.workspace_max)) for a in config.arms},
             self._coordinated_publish, self._request_controller_reset,
             state_timeout_s=config.gamepad_state_timeout_s,
-            command_timeout_s=config.control_discontinuity_timeout_s)
+            command_timeout_s=config.control_discontinuity_timeout_s,
+            backend=config.backend)
         self._last_gripper_goal = {}
         self._publish_sequence = 0
         from vla.actions.metadata import RecordingContract
@@ -331,9 +347,13 @@ class RolloutCollector(Node):
             fingerprint({a.name: os.environ.get(f'{a.name.upper()}_ROBOT_IP', a.robot_state_publisher) for a in config.arms}),
             fingerprint(tool), fingerprint(self._kinematics_identity),
             fingerprint({k: str(v) for k, v in asdict(config).items()
-                         if k not in ('dataset_root', 'task', 'tasks', 'socket_path', 'joy_socket_path')})).to_dict()
+                         if k not in ('dataset_root', 'task', 'tasks', 'socket_path', 'joy_socket_path')}),
+            backend='franky_cartesian_impedance' if config.backend == 'franky' else 'ros2_joint_impedance').to_dict()
         metadata['tool_definition'] = tool
-        controller_parameters = self._controller_parameters()
+        controller_parameters = ({'backend': 'franky_cartesian_impedance',
+                                  'ipc_version': 1,
+                                  'compliance': dict(config.franky_compliance)}
+                                 if config.backend == 'franky' else self._controller_parameters())
         control_parameters = {k: asdict(config)[k] for k in (
             'fps', 'gamepad_control_rate', 'control_discontinuity_timeout_s', 'joint_limit_margin',
             'max_linear_velocity', 'max_angular_velocity', 'velocity_tracking_tau_s',
@@ -344,7 +364,9 @@ class RolloutCollector(Node):
         metadata['recording_contract']['control_fingerprint'] = fingerprint({
             'python': control_parameters, 'cpp': controller_parameters,
             'cartesian_tracking': CARTESIAN_TRACKING,
-            'execution': {'version': 2, 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots}})
+            'execution': {'version': 2, 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots},
+            'franky': controller_parameters if config.backend == 'franky' else None,
+            'binding': self._worker_client.binding_fingerprint() if self._worker_client else None})
         metadata['effective_controller_parameters'] = controller_parameters
         metadata['execution_projection'] = {
             'lower': np.concatenate([self.servos[a.name].model.lower_limits if config.action_space == 'joint'
@@ -403,6 +425,8 @@ class RolloutCollector(Node):
         # one camera exposure just because the 30 Hz timer and camera drift.
         self.create_timer(1.0 / (config.gamepad_control_rate if demonstration else config.fps), self._tick)
         self.create_timer(1.0 / config.gamepad_control_rate, self._gamepad_tick)
+        if getattr(self, '_worker_client', None) is not None:
+            self.create_timer(.01, self._poll_worker_states)
         control_profile = (
             str(config.rtc_deployment_config)
             if config.rtc_deployment_config is not None
@@ -427,6 +451,18 @@ class RolloutCollector(Node):
         print(f"Rollout collector ready; dataset={config.dataset_root}", flush=True)
 
     def _tool_definition(self):
+        if self.config.backend == 'franky':
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                states = self._worker_client.states() if self._worker_client else {}
+                if all(arm.name in states for arm in self.config.arms):
+                    return {arm.name: {
+                                       'position': np.asarray(states[arm.name].flange_to_tcp_pose[:3]).tolist(),
+                                       'rotation': Rotation.from_quat(states[arm.name].flange_to_tcp_pose[3:]).as_matrix().tolist(),
+                                       'base': arm.base_link, 'tip': arm.tip_link}
+                            for arm in self.config.arms}
+                time.sleep(.05)
+            raise TimeoutError('Franky worker did not publish an initial state')
         deadline = time.monotonic() + 30
         while any(f'{a.name}.{field}' not in self._latest for a in self.config.arms
                   for field in ('robot_state', 'measured_joint', 'gripper_state')):
@@ -531,6 +567,21 @@ class RolloutCollector(Node):
                 return
 
     def _load_kinematic_model(self, arm: ArmConfig):
+        if self.config.backend == 'franky':
+            candidates = []
+            if os.environ.get('FRANKA_URDF'):
+                candidates.append(os.environ['FRANKA_URDF'])
+            candidates.append(str(Path(__file__).parents[4] / 'ros_ws/src/third_party/libfranka/test/fr3.urdf'))
+            for candidate in candidates:
+                path = Path(candidate).expanduser()
+                if path.is_file():
+                    description = path.read_text(encoding='utf-8')
+                    self._kinematics_identity[arm.name] = fingerprint(description)
+                    return build_kinematic_model(
+                        description, arm.base_link, arm.tip_link,
+                        self.config.joint_limit_margin,
+                    )
+            raise FileNotFoundError('Franky mode requires FRANKA_URDF or the bundled FR3 URDF')
         service_name = f"{arm.robot_state_publisher.rstrip('/')}/get_parameters"
         client = self.create_client(GetParameters, service_name)
         if not client.wait_for_service(timeout_sec=30.0):
@@ -566,25 +617,29 @@ class RolloutCollector(Node):
         self._subscription_handles = []
         for arm in self.config.arms:
             prefix = arm.name
-            self._reset_publishers[prefix] = self.create_publisher(UInt64, f"/{prefix}/teleop/reset", 10)
-            self._subscription_handles.append(self.create_subscription(
-                JointState, f"/{prefix}/teleop/controller_state",
-                lambda msg, name=prefix: self._controller_ack(name, msg), 10))
+            if self.config.backend != 'franky':
+                self._reset_publishers[prefix] = self.create_publisher(UInt64, f"/{prefix}/teleop/reset", 10)
+                self._subscription_handles.append(self.create_subscription(
+                    JointState, f"/{prefix}/teleop/controller_state",
+                    lambda msg, name=prefix: self._controller_ack(name, msg), 10))
             subscriptions = (
-                (FrankaRobotState, arm.robot_state_topic, f"{prefix}.robot_state"),
-                (JointState, arm.measured_joint_topic, f"{prefix}.measured_joint"),
                 (JointState, arm.gripper_state_topic, f"{prefix}.gripper_state"),
                 (Joy, arm.gamepad.joy_topic, f"{prefix}.gamepad"),
                 (JointState, f"/{prefix}/gello/joint_states", f"{prefix}.gello_joint"),
                 (Float32, f"/{prefix}/gello/gripper_width_percent", f"{prefix}.gello_gripper"),
             )
+            if self.config.backend != 'franky':
+                subscriptions = ((FrankaRobotState, arm.robot_state_topic, f"{prefix}.robot_state"),
+                                 (JointState, arm.measured_joint_topic, f"{prefix}.measured_joint"),
+                                 *subscriptions)
             for message_type, topic, key in subscriptions:
                 self._subscription_handles.append(
                     self.create_subscription(message_type, topic, self._callback(key), qos)
                 )
-            self._joint_publishers[prefix] = self.create_publisher(
-                JointState, arm.command_joint_topic, 10
-            )
+            if self.config.backend != 'franky':
+                self._joint_publishers[prefix] = self.create_publisher(
+                    JointState, arm.command_joint_topic, 10
+                )
             self._gripper_publishers[prefix] = self.create_publisher(
                 Float32, arm.command_gripper_topic, 10
             )
@@ -736,6 +791,31 @@ class RolloutCollector(Node):
         for servo in self.servos.values():
             servo.reset_tracking()
 
+    def update_compliance(self, values):
+        if self._worker_client is None:
+            raise RuntimeError('Franky worker is not active')
+        from vla.control.franky.worker import Compliance
+        self._pending_compliance = asdict(Compliance.from_mapping(values, Compliance.from_mapping(self.config.franky_compliance)))
+        self._worker_client.compliance(
+            self._worker_session_id, self.coordinator.generation,
+            str(time.monotonic_ns()), values)
+
+    def compliance_status(self):
+        current = (self._worker_client.compliance_values()
+                   if self._worker_client else {})
+        if self._pending_compliance and all(
+                abs(current.get(key, float('nan')) - value) < 1e-9
+                for key, value in self._pending_compliance.items()):
+            self._pending_compliance = None
+        return {
+            'backend': self.config.backend,
+            'pending': self._pending_compliance is not None,
+            'values': (self._worker_client.compliance_values()
+                       if self._worker_client and self._worker_client.compliance_values()
+                       else dict(getattr(self.config, 'franky_compliance', {}))),
+            'fault': self._worker_client.fault if self._worker_client else None,
+        }
+
     def _invalidate_policy(self) -> None:
         if self.policy_client is not None:
             self.policy_client.invalidate()
@@ -835,18 +915,41 @@ class RolloutCollector(Node):
                 self._latch_fault(error)
 
     def _request_controller_reset(self, generation):
+        if self._worker_client is not None:
+            self._worker_client.reset(self._worker_session_id, generation)
+            return
         for publisher in self._reset_publishers.values():
             message = UInt64()
             message.data = generation
             publisher.publish(message)
 
-    def _coordinated_publish(self, name, joints, gripper, generation, command_id):
+    def _coordinated_publish(self, name, target, gripper, generation, command_id):
         arm = next(a for a in self.config.arms if a.name == name)
-        self._publish_sequence += 1
-        message = joint_command(self.servos[name].model.joint_names, joints,
-                                generation, command_id, self._publish_sequence,
-                                self.get_clock().now().to_msg())
-        self._joint_publishers[name].publish(message)
+        if self._worker_client is not None:
+            # ControlCoordinator calls this once per arm. Franky IPC targets
+            # are an atomic multi-arm packet so both trackers receive the
+            # same command sequence. Keep the per-arm gripper path below.
+            key = (int(generation), int(command_id))
+            bucket = self._pending_worker_targets.setdefault(key, {})
+            bucket[name] = {'pose': np.asarray(target, dtype=float).tolist()}
+            expected = {configured.name for configured in self.config.arms}
+            if set(bucket) == expected:
+                self._publish_sequence += 1
+                self._worker_client.target(
+                    self._worker_session_id, generation, self._publish_sequence,
+                    bucket, time.monotonic_ns())
+                self._pending_worker_targets.pop(key, None)
+                # A failed or abandoned control boundary must not retain old
+                # arm targets indefinitely.
+                for stale in tuple(self._pending_worker_targets):
+                    if stale[0] != generation or stale[1] < command_id:
+                        self._pending_worker_targets.pop(stale, None)
+        else:
+            self._publish_sequence += 1
+            message = joint_command(self.servos[name].model.joint_names, target,
+                                    generation, command_id, self._publish_sequence,
+                                    self.get_clock().now().to_msg())
+            self._joint_publishers[name].publish(message)
         if self.coordinator.owner != 'pose' and self._last_gripper_goal.get(name) != gripper:
             self._send_gripper_goal(arm, gripper)
             self._last_gripper_goal[name] = gripper
@@ -870,6 +973,7 @@ class RolloutCollector(Node):
             self.policy_client.invalidate(self._execution.session_id, self._execution.generation)
         self._execution_record = None
         self.coordinator.transition(owner, fault=fault, reason=reason)
+        self._pending_worker_targets.clear()
         self._last_command_snapshot = None
         self._input_action = None
         self._last_gripper_goal.clear()
@@ -884,6 +988,8 @@ class RolloutCollector(Node):
         self._segment_id += 1
 
     def _track_control(self, dt):
+        if self._pending_compliance is not None:
+            return
         command = self.coordinator.tick(dt)
         if command is None:
             return
@@ -956,6 +1062,32 @@ class RolloutCollector(Node):
             [d.get('generation', -1), d.get('command_id', -1), d.get('received_at_ns', -1)] for d in diagnostics]))
         self._annotations['diagnostic.filtered_joint'].append(np.concatenate([
             d.get('filtered_joints', np.zeros(7)) for d in diagnostics]))
+        target_tcp_parts = []
+        actual_tcp_parts = []
+        target_joint_parts = []
+        tracker_parts = []
+        worker_states = self._worker_client.states() if self._worker_client else {}
+        for index, arm in enumerate(self.config.arms):
+            block = command.target[index * self.config.action_spec.width:
+                                   (index + 1) * self.config.action_spec.width]
+            target_tcp_parts.append(np.asarray(block, dtype=np.float64))
+            robot = values[f"{arm.name}.robot_state"]
+            position, rotation = schema.measured_pose_from_robot_state(robot)
+            actual_tcp_parts.append(np.r_[position, Rotation.from_matrix(rotation).as_quat()])
+            state = worker_states.get(arm.name)
+            target_joint_parts.append(np.asarray(
+                state.target_joints if state and len(state.target_joints) == 7 else np.zeros(7),
+                dtype=np.float64))
+            tracker_parts.append(np.asarray([
+                int(bool(state and state.tracker_running)),
+                int(state.generation if state else -1),
+                int(state.sequence if state else -1),
+                int(bool(state and state.fault)),
+            ], dtype=np.int64))
+        self._annotations['command.target_tcp'].append(np.concatenate(target_tcp_parts))
+        self._annotations['diagnostic.actual_tcp'].append(np.concatenate(actual_tcp_parts))
+        self._annotations['diagnostic.target_joint'].append(np.concatenate(target_joint_parts))
+        self._annotations['diagnostic.tracker'].append(np.concatenate(tracker_parts))
         self._annotations["complementary_info.phase"].append([snapshot.phase])
         self._annotations["complementary_info.is_intervention"].append(
             [float(snapshot.source == COLLECTOR_HUMAN and not self.demonstration)])
@@ -1083,6 +1215,62 @@ class RolloutCollector(Node):
         except Exception as error:
             self._latch_fault(error)
             print(f"{arm_name} Robotiq goal failed: {error}", file=sys.stderr, flush=True)
+
+    @staticmethod
+    def _worker_pose(pose):
+        position = SimpleNamespace(x=float(pose[0]), y=float(pose[1]), z=float(pose[2]))
+        orientation = SimpleNamespace(x=float(pose[3]), y=float(pose[4]),
+                                      z=float(pose[5]), w=float(pose[6]))
+        return SimpleNamespace(pose=SimpleNamespace(position=position, orientation=orientation))
+
+    def _worker_robot_state(self, state):
+        pose = self._worker_pose(state.tcp_pose)
+        flange = self._worker_pose(state.flange_to_tcp_pose)
+        desired = self._worker_pose(state.desired_tcp_pose or state.tcp_pose)
+        joints = SimpleNamespace(name=[f'fr3_joint{i}' for i in range(1, 8)],
+                                 position=list(state.joints), velocity=list(state.joint_velocity),
+                                 effort=list(state.joint_torque or (0.0,) * 7))
+        external = SimpleNamespace(name=joints.name, position=list(state.joints),
+                                   velocity=list(state.joint_velocity),
+                                   effort=list(state.external_joint_torque or (0.0,) * 7))
+        wrench = SimpleNamespace(force=SimpleNamespace(**dict(zip(('x', 'y', 'z'), (state.force + (0, 0, 0))[:3]))),
+                                 torque=SimpleNamespace(**dict(zip(('x', 'y', 'z'), (state.torque + (0, 0, 0))[:3]))))
+        return SimpleNamespace(
+            o_t_ee=pose, o_t_ee_d=desired, f_t_ee=flange,
+            o_f_ext_hat_k=SimpleNamespace(wrench=wrench),
+            measured_joint_state=joints, tau_ext_hat_filtered=external,
+            current_errors=SimpleNamespace(), robot_mode=1,
+            ROBOT_MODE_IDLE=1, ROBOT_MODE_MOVE=2,
+            control_command_success_rate=1.0,
+        )
+
+    def _poll_worker_states(self):
+        if self._worker_client is None:
+            return
+        fault = self._worker_client.fault
+        if fault:
+            self._latch_fault(RuntimeError(fault))
+            return
+        for arm, state in self._worker_client.states().items():
+            if not state.state_valid:
+                self._latch_fault(RuntimeError(f"Franky worker state for {arm} is invalid"))
+                continue
+            message = self._worker_robot_state(state)
+            joint = message.measured_joint_state
+            self._store_latest(f'{arm}.robot_state', message, state.observed_at_ns)
+            self._store_latest(f'{arm}.measured_joint', joint, state.observed_at_ns)
+            if state.generation == self.coordinator.generation and not state.fault:
+                try:
+                    self._observe_control()
+                    self.coordinator.acknowledge(
+                        arm, state.generation, 0,
+                        np.asarray(state.target_joints or state.joints),
+                        state.observed_at_ns,
+                    )
+                except (RuntimeError, ValueError) as error:
+                    self._latch_fault(error)
+            if state.fault:
+                self._latch_fault(RuntimeError(state.fault))
 
     def _gripper_goal_result(self, arm_name: str, future: object) -> None:
         self._gripper_goal_futures.discard(future)
@@ -1350,18 +1538,20 @@ class RolloutCollector(Node):
         if failures:
             problems.append(f"camera failures={failures}")
         for arm in self.config.arms:
-            for label, topic in (
-                ("robot state", arm.robot_state_topic),
-                ("measured joints", arm.measured_joint_topic),
+            required_publishers = [
                 ("gripper state", arm.gripper_state_topic),
                 ("input", f"/{arm.name}/gello/joint_states" if self.config.input_source == 'gello' else arm.gamepad.joy_topic),
-            ):
+            ]
+            if self.config.backend != 'franky':
+                required_publishers[:0] = [("robot state", arm.robot_state_topic),
+                                           ("measured joints", arm.measured_joint_topic)]
+            for label, topic in required_publishers:
                 if self.count_publishers(topic) < 1:
                     problems.append(f"{arm.name} {label} has no publisher: {topic}")
-            for label, topic in (
-                ("arm command", arm.command_joint_topic),
-                ("gripper speed", arm.gripper_speed_topic),
-            ):
+            required_subscribers = [("gripper speed", arm.gripper_speed_topic)]
+            if self.config.backend != 'franky':
+                required_subscribers.insert(0, ("arm command", arm.command_joint_topic))
+            for label, topic in required_subscribers:
                 if self.count_subscribers(topic) < 1:
                     problems.append(f"{arm.name} {label} has no controller subscriber: {topic}")
             if not self._gripper_action_clients[arm.name].server_is_ready():
@@ -1370,6 +1560,11 @@ class RolloutCollector(Node):
                     f"{arm.gripper_action_topic}"
                 )
         try:
+            if self._worker_client is not None:
+                if self._worker_client.fault:
+                    raise RuntimeError(f"Franky worker fault: {self._worker_client.fault}")
+                if set(self._worker_client.states()) != {a.name for a in self.config.arms}:
+                    raise RuntimeError("Franky worker state is not ready")
             if self.policy_client is not None:
                 self.policy_client.raise_if_failed()
             snapshot = self._snapshot(raise_on_invalid=True)
@@ -1933,6 +2128,12 @@ class RolloutCollector(Node):
                 raise RuntimeError('finish storage cleanup before recovery')
             if self.require_online:
                 self.policy_client.recover_online()
+            if self._worker_client is not None:
+                self._worker_client.request_now({'kind': 'recover', 'session_id': self._worker_session_id,
+                                                 'generation': self.coordinator.generation,
+                                                 'request_id': str(time.monotonic_ns())})
+                if self._worker_client.fault:
+                    raise RuntimeError(f"Franky worker recovery failed: {self._worker_client.fault}")
             self._observe_control()
             self.coordinator._fresh()
             values = {key: value[1] for key, value in self._latest.items()}
@@ -2011,6 +2212,13 @@ class RolloutCollector(Node):
                 pass  # Recover only the durable matching prefix after restart.
         if self.policy_client is not None:
             self.policy_client.close()
+        if self._worker_client is not None:
+            try:
+                self._worker_client.request_now({'kind': 'stop', 'session_id': self._worker_session_id,
+                                                 'generation': self.coordinator.generation,
+                                                 'request_id': str(time.monotonic_ns())})
+            finally:
+                self._worker_client.close()
         for camera in reversed(tuple(self._cameras.values())):
             camera.close()
 

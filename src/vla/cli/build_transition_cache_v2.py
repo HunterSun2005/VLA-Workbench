@@ -412,7 +412,7 @@ def load_episode_frame_annotations(
     )
     phase_only_demo = phase_only_demo or (
         available == {FRAME_PHASE_KEY} and info.get('collection_kind') == 'human_demonstration'
-        and contract.get('backend') == 'ros2_joint_impedance'
+        and contract.get('backend') in ('ros2_joint_impedance', 'franky_cartesian_impedance')
         and contract.get('recording_point') in ('accepted_before_tracking', 'derived'))
     if FRAME_COLLECTOR_KEY not in available and not phase_only_demo:
         raise ValueError(

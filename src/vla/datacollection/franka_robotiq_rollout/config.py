@@ -8,6 +8,19 @@ from typing import Any
 import yaml
 
 
+FRANKY_COMPLIANCE_DEFAULTS = {
+    "translational_stiffness": 1000.0,
+    "rotational_stiffness": 50.0,
+    "nullspace_stiffness": 20.0,
+    "translational_clip": 0.008,
+    "rotational_clip": 0.04,
+    "max_step": 0.03,
+    "max_step_rad": 0.10,
+    "max_delta_tau": 0.2,
+    "gains_time_constant": 0.1,
+}
+
+
 @dataclass(frozen=True)
 class GamepadConfig:
     joy_topic: str
@@ -75,6 +88,9 @@ class CameraConfig:
 @dataclass(frozen=True)
 class RolloutConfig:
     backend: str
+    worker_socket_path: Path
+    worker_python: Path | None
+    franky_compliance: dict[str, float]
     dataset_root: Path
     task: str
     fps: int
@@ -337,13 +353,13 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     config_path = Path(path).expanduser().resolve()
     with config_path.open(encoding="utf-8") as stream:
         raw = _mapping(yaml.safe_load(stream), "rollout config")
-    if "robot" in raw or raw.get("backend") == "franky":
-        raise ValueError("Legacy Franky configuration removed; migrate explicitly to a ROS2 rollout YAML")
+    if "robot" in raw:
+        raise ValueError("Legacy Franky configuration requires explicit migration to the Cartesian worker")
     if raw.get("version") != 1:
         raise ValueError("rollout config version must be 1")
     backend = str(raw.get("backend", "ros2"))
-    if backend != "ros2":
-        raise ValueError("Legacy Franky configuration is unsupported; migrate explicitly to the ROS2 rollout YAML")
+    if backend not in ("ros2", "franky"):
+        raise ValueError("backend must be ros2 or franky")
     from vla.actions import ActionSpec
     ActionSpec(space=str(raw.get("action_space", "tcp")))
     if raw.get("input_source", "gamepad") not in ("gamepad", "gello"):
@@ -366,10 +382,33 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
             or any(not isinstance(name, str) or not name.strip() for name in subtasks)
             or len(set(subtasks)) != len(subtasks)):
         raise ValueError("dataset.subtasks must be a list of unique nonempty stage labels")
-    if subtasks and backend != "ros2":
-        raise ValueError("subtask annotations currently require the ROS2 collector")
+    if backend == "franky" and str(raw.get("action_space", "tcp")) != "tcp":
+        raise ValueError("Franky Cartesian impedance requires action_space: tcp")
     transport = _mapping(raw.get("transport"), "transport")
     control = _mapping(raw.get("control"), "control")
+    compliance_raw = _mapping(control.get("compliance", {}), "control.compliance")
+    compliance_keys = {
+        "translational_stiffness", "rotational_stiffness", "nullspace_stiffness",
+        "translational_clip", "rotational_clip", "max_step", "max_step_rad",
+        "max_delta_tau", "gains_time_constant",
+    }
+    unknown_compliance = set(compliance_raw) - compliance_keys
+    if unknown_compliance:
+        raise ValueError("unknown Franky compliance parameters: " + ", ".join(sorted(unknown_compliance)))
+    franky_compliance = {**FRANKY_COMPLIANCE_DEFAULTS,
+                         **{key: float(value) for key, value in compliance_raw.items()}}
+    if not (0 < franky_compliance['translational_stiffness'] <= 1200):
+        raise ValueError('control.compliance.translational_stiffness must be in (0, 1200]')
+    if not (0 < franky_compliance['rotational_stiffness'] <= 80):
+        raise ValueError('control.compliance.rotational_stiffness must be in (0, 80]')
+    if franky_compliance['nullspace_stiffness'] < 0:
+        raise ValueError('control.compliance.nullspace_stiffness must be non-negative')
+    if franky_compliance['translational_clip'] < .005:
+        raise ValueError('control.compliance.translational_clip must be at least 0.005')
+    if franky_compliance['rotational_clip'] < .02:
+        raise ValueError('control.compliance.rotational_clip must be at least 0.02')
+    if any(franky_compliance[key] <= 0 for key in ('max_step', 'max_step_rad', 'max_delta_tau', 'gains_time_constant')):
+        raise ValueError('control.compliance step and tracker parameters must be positive')
     gamepad_profile = control.get("gamepad_profile")
     if gamepad_profile not in (None, "sft_record"):
         raise ValueError("gamepad_profile must be sft_record or omitted")
@@ -503,6 +542,10 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     return RolloutConfig(
         inference_slots=inference_slots, installation_guard_slots=guard_slots,
         backend=backend,
+        worker_socket_path=Path(str(transport.get("worker_socket_path", "/tmp/vla_franky_worker.sock"))).expanduser().resolve(),
+        worker_python=(Path(str(transport["worker_python"])).expanduser().resolve()
+                       if transport.get("worker_python") else None),
+        franky_compliance=franky_compliance,
         action_space=str(raw.get("action_space", "tcp")),
         input_source=str(raw.get("input_source", "gamepad")),
         dataset_root=Path(str(dataset["root"])).expanduser().resolve(),

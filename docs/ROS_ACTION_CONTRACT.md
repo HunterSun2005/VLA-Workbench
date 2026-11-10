@@ -1,6 +1,6 @@
 # ROS 控制与动作契约
 
-本仓库只提供 ROS 2 Humble + C++ 关节阻抗控制路线。Franky 驱动、采集器、独占串口夹爪路线及依赖已删除；旧实现仅在 Git 历史中保留。旧 Franky YAML 会报迁移错误。
+本仓库的统一采集／部署路线使用独立 Franky worker 和 `CartesianImpedanceTracker`。ROS 2 Humble 继续负责 GELLO、Gamepad、夹爪、相机和采集器；worker 独占 Franka FCI 控制连接。旧 ROS 关节阻抗路线保留为隔离的 legacy backend，不能与 Franky 数据混采。
 
 ## 数据与训练
 
@@ -23,7 +23,9 @@
 
 ## 控制与记录
 
-关节模式下，GELLO 直接提交关节目标；Gamepad 笛卡尔操纵经过 IK 后进入同一入口。TCP 模式下，GELLO 经过 FK、Gamepad 和策略直接提交 TCP 目标，随后使用同一个跟踪器和 IK。策略重放关节动作不会再次经过 Gamepad IK。
+Franky 路线只接受绝对 TCP 目标。GELLO 通过 FK、Gamepad 和策略都更新同一个 TCP 参考位姿，worker 使用 `CartesianImpedanceTracker.set_target()` 持续跟踪；Gamepad 松杆后保持最后参考位姿。旧 ROS backend 才使用 CartesianServo 和关节目标。
+
+Franky 默认阻抗参数为平移刚度 1000 N/m、旋转刚度 50 Nm/rad、平移误差裁剪 0.008 m、旋转误差裁剪 0.04 rad、单次目标步长 0.03 m/0.10 rad。运行中可通过 Web 调整增益；裁剪、力矩变化率和增益时间常数的更新会停止并重建 tracker。刚度上限为 1200 N/m、80 Nm/rad，裁剪下限为 0.005 m、0.02 rad。
 
 学习目标最多按 30 Hz 接受，上层跟踪按 100 Hz 更新，C++ 控制器保持 1000 Hz。Normal/Fast、工作空间、关节速度及力矩变化率保护沿用 ROS 基线。停止、接管、回合边界和故障通过代际撤销命令，重置发生在实时循环中；所有机械臂确认新代际后才允许新目标。确认超时保持故障。诊断快照使用序列号避免读到混合代际的状态。
 
@@ -41,12 +43,16 @@ CartesianServo 从复位后的实测关节初始化，随后从上一周期的�
 |---|---|
 | `action` | 当前原生空间的接受目标，始终绝对值 |
 | `observation.anchor` | 当前原始实测锚点 |
-| `command.joint` | 实际提交的绝对关节与夹爪目标 |
-| `command.fk_tcp` | 提交关节目标对应的 FK TCP 与夹爪 |
+| `command.joint` | Franky 路线记录的实测关节（旧 ROS 路线为提交关节）与夹爪 |
+| `command.fk_tcp` | 提交目标 TCP（旧 ROS 路线由关节目标 FK 得到）与夹爪 |
+| `command.target_tcp` | Franky worker 接受的绝对 TCP 目标与夹爪 |
 | `command.identity` | 代际、命令 ID、接受时间、观测时间（纳秒） |
 | `command.source` | 示教／PI05／RLT 来源 |
 | `diagnostic.controller` | 每臂接收代际、命令 ID、诊断接收时间 |
 | `diagnostic.filtered_joint` | 控制器可用的滤波后关节目标 |
+| `diagnostic.actual_tcp` | worker 回传的实测 TCP 位姿（xyz + quaternion_xyzw） |
+| `diagnostic.target_joint` | Franky tracker 回传的目标关节（不可用时为零） |
+| `diagnostic.tracker` | tracker 运行标志、代际、序号及故障标志 |
 
 诊断未返回时使用 `-1` 标识缺失身份；诊断不是到达确认，不能替换训练标签。元数据包含设备、TCP、运动学和控制参数指纹。
 
