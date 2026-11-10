@@ -2,13 +2,14 @@
 from __future__ import annotations
 import numpy as np
 import PyKDL
+from scipy.spatial.transform import Rotation
 from vla.datacollection.franka_robotiq_rollout.config import RolloutConfig
 from vla.datacollection.franka_robotiq_rollout.safety import (
     clamp_pose_step, compose_pose, flange_pose_from_tcp, gamepad_tracking_twist,
     pose_step_to_twist, smooth_pose_target,
 )
 
-CARTESIAN_TRACKING = 'bounded_command_integration_v1'
+CARTESIAN_TRACKING = 'tcp_reference_coordinated_limits_v2'
 
 
 def _clamp_norm(values, maximum):
@@ -80,8 +81,21 @@ class CartesianServo:
         # a slow/stationary arm never receives the requested position target.
         command_joints = joints if self._command_joints is None else self._command_joints
         following_limit = self.config.max_joint_speed * self.config.velocity_tracking_tau_s
-        if np.any(np.abs(command_joints - joints) > following_limit + 1e-9):
-            raise RuntimeError('Cartesian joint tracking error exceeds lookahead bound')
+        # Saturation and fault detection must not share an exact boundary: a
+        # fresh sample can move slightly while a target sits at the soft limit.
+        # Allow one 30 Hz action interval of joint travel as a guard band; this
+        # is not additional commanded travel. Larger errors still latch fault.
+        fault_limit = following_limit + self.config.max_joint_speed / self.config.fps
+        error = np.abs(command_joints - joints)
+        if np.any(error > fault_limit + 1e-9):
+            index = int(np.argmax(error))
+            raise RuntimeError(
+                f'Cartesian joint tracking error: {self.model.joint_names[index]} '
+                f'error={error[index]:.6f} rad exceeds {fault_limit:.6f} rad '
+                f'(measured={joints[index]:.6f}, target={command_joints[index]:.6f})')
+        if (np.any(command_joints < self.model.lower_limits - 1e-12)
+                or np.any(command_joints > self.model.upper_limits + 1e-12)):
+            raise RuntimeError('measured joints outside Cartesian tracking envelope')
         measured_flange_position, measured_flange_rotation = self.forward(joints)
         current_tcp_position, current_tcp_rotation = compose_pose(
             measured_flange_position,
@@ -89,9 +103,13 @@ class CartesianServo:
             flange_to_tcp_position,
             flange_to_tcp_rotation,
         )
+        current_flange_position, current_flange_rotation = self.forward(command_joints)
+        command_tcp_position, command_tcp_rotation = compose_pose(
+            current_flange_position, current_flange_rotation,
+            flange_to_tcp_position, flange_to_tcp_rotation)
         limited_tcp_position, limited_tcp_rotation = clamp_pose_step(
-            current_tcp_position,
-            current_tcp_rotation,
+            command_tcp_position,
+            command_tcp_rotation,
             target_position,
             target_rotation,
             max_linear_step=(
@@ -111,18 +129,11 @@ class CartesianServo:
             )
         self._last_smoothed_position = limited_tcp_position.copy()
         self._last_smoothed_rotation = limited_tcp_rotation.copy()
-        target_flange_position, target_flange_rotation = flange_pose_from_tcp(
+        linear, angular = pose_step_to_twist(
+            command_tcp_position,
+            command_tcp_rotation,
             limited_tcp_position,
             limited_tcp_rotation,
-            flange_to_tcp_position,
-            flange_to_tcp_rotation,
-        )
-        current_flange_position, current_flange_rotation = self.forward(command_joints)
-        linear, angular = pose_step_to_twist(
-            current_flange_position,
-            current_flange_rotation,
-            target_flange_position,
-            target_flange_rotation,
             tracking_tau_s=self.config.velocity_tracking_tau_s,
         )
         alpha = self.config.velocity_smoothing
@@ -133,14 +144,40 @@ class CartesianServo:
         angular = _clamp_norm(angular, self.config.max_angular_velocity)
         self._last_linear_velocity = linear.copy()
         self._last_angular_velocity = angular.copy()
-        result = self._joint_step(command_joints, np.concatenate((linear, angular)), dt)
-        # A blocked arm must not accumulate an unbounded joint target. The
-        # Cartesian lookahead above and this joint bound both use fresh state.
-        lower = np.maximum(joints - following_limit, self.model.lower_limits)
-        upper = np.minimum(joints + following_limit, self.model.upper_limits)
-        if np.any(lower > upper):
-            raise RuntimeError('measured joints outside Cartesian tracking envelope')
-        result = np.clip(result, lower, upper)
+        # Hold a previously submitted target inside the guard band rather than
+        # snapping it to a moving measurement. Only motion back toward the soft
+        # envelope is permitted on a saturated joint. Scale the entire IK step
+        # together, so limits do not turn pure rotation into translation.
+        lower = np.minimum(command_joints, joints-following_limit)
+        upper = np.maximum(command_joints, joints+following_limit)
+        result = self._joint_step(
+            command_joints, np.concatenate((linear, angular)), dt,
+            reference_offset=current_flange_rotation @ flange_to_tcp_position,
+            lower=lower, upper=upper)
+        # The measured-pose envelope limits the submitted trajectory, not the
+        # goal fed into the proportional servo. Applying it to that goal adds
+        # plant lag to the tracking time constant and throttles even feasible
+        # constant-velocity motion. Preserve the whole joint-step direction.
+        position_limit = max(self.config.max_linear_velocity*self.config.velocity_tracking_tau_s,
+                             float(np.linalg.norm(command_tcp_position-current_tcp_position)))
+        rotation_limit = max(self.config.max_angular_velocity*self.config.velocity_tracking_tau_s,
+                             Rotation.from_matrix(command_tcp_rotation@current_tcp_rotation.T).magnitude())
+
+        def within_envelope(q):
+            p, r = self.forward_tcp(q, flange_to_tcp_position, flange_to_tcp_rotation)
+            return (np.linalg.norm(p-current_tcp_position) <= position_limit + 1e-12
+                    and Rotation.from_matrix(r@current_tcp_rotation.T).magnitude() <= rotation_limit + 1e-12)
+
+        if not within_envelope(result):
+            delta = result-command_joints
+            low, high = 0., 1.
+            for _ in range(12):
+                middle = (low+high)*.5
+                if within_envelope(command_joints+middle*delta):
+                    low = middle
+                else:
+                    high = middle
+            result = command_joints+low*delta
         self._command_joints = result.copy()
         return result
 
@@ -175,19 +212,29 @@ class CartesianServo:
         )
         return self._joint_step(joints, np.concatenate((linear, angular)), dt)
 
-    def _joint_step(self, joints: np.ndarray, twist: np.ndarray, dt: float) -> np.ndarray:
+    def _joint_step(self, joints: np.ndarray, twist: np.ndarray, dt: float, *,
+                    reference_offset=None, lower=None, upper=None) -> np.ndarray:
         jacobian_kdl = PyKDL.Jacobian(7)
         if self.jacobian_solver.JntToJac(self._joints(joints), jacobian_kdl) < 0:
             raise RuntimeError("KDL Jacobian calculation failed")
+        if reference_offset is not None:
+            # KDL returns the flange Jacobian. At the TCP,
+            # v_tcp = v_flange + omega x (R_flange * tool_translation).
+            jacobian_kdl.changeRefPoint(PyKDL.Vector(*map(float, reference_offset)))
         jacobian = np.array(
             [[jacobian_kdl[row, column] for column in range(7)] for row in range(6)]
         )
         regularized = jacobian @ jacobian.T + self.config.damping**2 * np.eye(6)
         velocity = jacobian.T @ np.linalg.solve(regularized, twist)
-        velocity = np.clip(velocity, -self.config.max_joint_speed, self.config.max_joint_speed)
-        return np.clip(
-            joints + velocity * dt,
-            self.model.lower_limits,
-            self.model.upper_limits,
-        )
+        velocity *= min(1., self.config.max_joint_speed / max(float(np.max(np.abs(velocity))), 1e-12))
+        delta = velocity * dt
+        lower = self.model.lower_limits if lower is None else np.maximum(lower, self.model.lower_limits)
+        upper = self.model.upper_limits if upper is None else np.minimum(upper, self.model.upper_limits)
+        scale = 1.
+        for index, step in enumerate(delta):
+            if step > 0:
+                scale = min(scale, max(0., (upper[index]-joints[index])/step))
+            elif step < 0:
+                scale = min(scale, max(0., (lower[index]-joints[index])/step))
+        return joints + scale * delta
 
