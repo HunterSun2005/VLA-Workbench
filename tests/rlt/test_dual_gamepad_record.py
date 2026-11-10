@@ -418,9 +418,9 @@ def test_online_save_waits_for_terminal_observation_and_controller_reset(collect
     c._online_save_tick()
     assert not called.is_set()
     c.coordinator.mode='standby'
-    c.executor=SimpleNamespace(session_id='s', generation=1)
+    c._execution=SimpleNamespace(session_id='s', generation=1)
     c._online_save_tick()
-    c.executor=None
+    c._execution=None
     assert called.wait(1)
     c._online_worker.join(1)
 

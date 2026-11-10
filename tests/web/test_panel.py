@@ -179,14 +179,14 @@ def test_ros_collector_drops_old_mode_and_preserves_human_control(ros_module):
     action=np.array([.4,0,.3,1,0,0,0,1,0,.5],dtype=np.float32)
     result=PolicyResult(1,action,'vla',False,1.,1.,'x',.01,time.monotonic(),'auto',1,.9)
     c.policy_client.poll_latest.return_value=result
-    c.executor = Mock()
-    c.executor.install.return_value = False
+    c._execution = Mock()
+    c._execution.install.return_value = False
     c._consume_policy_result()
     assert c._latest_policy_result is None
     c._intervention=False;c._phase='vla'
     c.policy_client.poll_latest.return_value=replace(result,mode_version=2)
-    c.executor = Mock()
-    c.executor.install.return_value = False
+    c._execution = Mock()
+    c._execution.install.return_value = False
     c._consume_policy_result()
     assert c._latest_policy_result is None
     assert c._web_switch_pending  # Only an accepted plan can finish a switch.

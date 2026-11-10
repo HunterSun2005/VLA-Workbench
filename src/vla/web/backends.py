@@ -217,7 +217,7 @@ class BaseBackend:
             ops.append('critical')
             if getattr(c.config, 'subtasks', ()):
                 ops.append('next_subtask')
-        return {'execution_state': (c.executor.state.value if getattr(c, 'executor', None) else
+        return {'execution_state': (c._execution.state.value if getattr(c, '_execution', None) else
                                    'human' if human else 'standby'),
                 'state': 'storage_blocked' if getattr(c, '_storage_blocked', False) else
                 'waiting_resume' if getattr(c, '_waiting_resume', False) else 'fault' if c._faulted else 'recording' if active else 'active' if self.enabled else 'standby',

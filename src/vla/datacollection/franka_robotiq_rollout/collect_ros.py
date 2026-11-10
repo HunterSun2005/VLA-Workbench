@@ -379,7 +379,7 @@ class RolloutCollector(Node):
         self._slot_clock = FixedDeadline(epoch, 30)
         self._tracking_clock = FixedDeadline(epoch, 100)
         self._slot_id = -1
-        self.executor = None
+        self._execution = None
         self._execution_record = None
         self._waiting_resume = False
         if self.policy_client is not None:
@@ -390,11 +390,11 @@ class RolloutCollector(Node):
                 metadata['recording_contract']['kinematics_fingerprint'],
                 metadata['recording_contract']['tool_fingerprint'], frame_stride=model['frame_stride'],
                 inference_slots=config.inference_slots, guard_slots=config.installation_guard_slots)
-            self.executor = Executor(execution, session_id=uuid.uuid4().hex,
+            self._execution = Executor(execution, session_id=uuid.uuid4().hex,
                                      model_version=model.get('model_version', model['checkpoint_fingerprint']), epoch_ns=epoch,
                                      project=self.coordinator.project)
-            self._slot_clock = self.executor.control_clock
-            self._tracking_clock = self.executor.tracking_clock
+            self._slot_clock = self._execution.control_clock
+            self._tracking_clock = self._execution.tracking_clock
         self._start_cameras()
 
         # Poll fresh base frames frequently; demonstrations must not duplicate
@@ -853,19 +853,19 @@ class RolloutCollector(Node):
         self._gripper_publishers[name].publish(goal)
 
     def _control_boundary(self, owner=None, *, fault=False, reason='control boundary', execution_state=None):
-        if getattr(self, 'executor', None) is not None:
+        if self._execution is not None:
             from vla.control.execution import ExecutionState
             if owner == 'policy' and not fault:
                 values = {key: value[1] for key, value in self._latest.items()}
                 raw = self._raw_state(values, time.monotonic_ns())
-                self.executor.enable(self.coordinator.project(self._raw_anchor(raw)),
+                self._execution.enable(self.coordinator.project(self._raw_anchor(raw)),
                                      episode_id=str(self.writer.next_episode_index()))
                 self._waiting_resume = False
             else:
                 state = ExecutionState(execution_state) if execution_state else (
                     ExecutionState.FAULT if fault else ExecutionState.HUMAN if owner else ExecutionState.STANDBY)
-                self.executor.invalidate(state, reason)
-            self.policy_client.invalidate(self.executor.session_id, self.executor.generation)
+                self._execution.invalidate(state, reason)
+            self.policy_client.invalidate(self._execution.session_id, self._execution.generation)
         self._execution_record = None
         self.coordinator.transition(owner, fault=fault, reason=reason)
         self._last_command_snapshot = None
@@ -961,14 +961,14 @@ class RolloutCollector(Node):
         if self.config.subtasks:
             self._annotations["complementary_info.subtask_index"].append([self._subtask_index])
         self._frame_times.append(now_ns)
-        if self.executor is not None and self._journal is not None:
+        if self._execution is not None and self._journal is not None:
             from dataclasses import replace
             if self._execution_record is not None:
                 self._journal_event(('execution', replace(self._execution_record,
                     accepted_at_ns=command.accepted_at_ns, submitted_at_ns=snapshot.published_at_ns,
                     outcome='submitted', diagnostics=tuple((a.name, diagnostics[i].get('command_id', -1))
                         for i, a in enumerate(self.config.arms)))))
-            context = self.executor.execution_context(self._slot_id, self._annotations['observation.anchor'][-1])
+            context = self._execution.execution_context(self._slot_id, self._annotations['observation.anchor'][-1])
             if context is not None:
                 self._journal_event(('execution_context', context))
 
@@ -1024,16 +1024,16 @@ class RolloutCollector(Node):
         if self.policy_client is None:
             return
         result = self.policy_client.poll_latest()
-        if result is not None and self.executor.install(result, time.monotonic_ns()):
+        if result is not None and self._execution.install(result, time.monotonic_ns()):
             self._web_switch_pending = False
             self._plan_latency_ms = (time.monotonic_ns()-result.request.observed_at_ns)/1e6
 
     def _publish_policy(self, values, dt):
         if self.coordinator.mode != 'active':
             return False
-        record = self.executor.advance(self._slot_id, time.monotonic_ns())
+        record = self._execution.advance(self._slot_id, time.monotonic_ns())
         if record is None:
-            if self.executor.state.value == 'waiting_resume' and not self._waiting_resume:
+            if self._execution.state.value == 'waiting_resume' and not self._waiting_resume:
                 self._control_boundary(reason='policy queue exhausted; manual resume required',
                                        execution_state='waiting_resume')
                 self._waiting_resume = True
@@ -1295,7 +1295,7 @@ class RolloutCollector(Node):
         if self._intervention or self._waiting_resume or self.coordinator.mode != 'active':
             return
         mode = self.policy_client.control_mode or ('rlt' if self._phase == 'rl' else 'vla')
-        plan = self.executor.request(slot=self._slot_id, anchor=self._raw_anchor(raw_state),
+        plan = self._execution.request(slot=self._slot_id, anchor=self._raw_anchor(raw_state),
                                      observation_id=self._slot_id, observed_at_ns=time.monotonic_ns(), policy=mode)
         if plan is None:
             return
@@ -1309,7 +1309,7 @@ class RolloutCollector(Node):
             reset_episode=self._reset_policy_on_request,
         )
         if submitted is None:
-            self.executor.inflight = None
+            self._execution.inflight = None
         if submitted is not None:
             if self._log_next_policy_request:
                 print(
@@ -1522,14 +1522,14 @@ class RolloutCollector(Node):
             while self._pending_events:
                 self._journal.event(self._pending_events[0])
                 del self._pending_events[0]
-        if self.executor is None:
+        if self._execution is None:
             return
         if self._journal is not None:
-            while self.executor.events:
-                self._journal.event(self.executor.events[0])
-                del self.executor.events[0]
+            while self._execution.events:
+                self._journal.event(self._execution.events[0])
+                del self._execution.events[0]
         else:
-            self.executor.events.clear()
+            self._execution.events.clear()
 
     def _storage_stop(self, error):
         if threading.current_thread() is getattr(self, '_save_worker', None):
@@ -1542,15 +1542,15 @@ class RolloutCollector(Node):
         self._fault_reason = f'storage blocked: {error}'
         self._teleop_enabled = False
         self._control_boundary(reason=self._fault_reason)
-        if self.executor is not None:
+        if self._execution is not None:
             from vla.control.execution import ExecutionState
-            self.executor.state = ExecutionState.STORAGE
+            self._execution.state = ExecutionState.STORAGE
         self._stop_grippers_at_measured_position()
 
     def _online_save_tick(self):
         if self._pending_online_save is None or self.coordinator.mode != 'standby':
             return
-        execution_context = {'session_id': self.executor.session_id, 'generation': self.executor.generation,
+        execution_context = {'session_id': self._execution.session_id, 'generation': self._execution.generation,
                              'slot_id': self._slot_id, 'state': 'standby',
                              'reset_acknowledged': self.coordinator._acknowledged == set(self.config.action_spec.arms)}
         episode, outcome = self._pending_online_save
@@ -1591,7 +1591,7 @@ class RolloutCollector(Node):
                 return
             if self.require_online:
                 self._episode_identity = self.policy_client.begin_episode()
-                self.executor.model_version = self.policy_client.contract['model_version']
+                self._execution.model_version = self.policy_client.contract['model_version']
             episode_index = self.writer.next_episode_index()
             import uuid
             from vla.datacollection.episode_journal import EpisodeJournal
@@ -1602,7 +1602,7 @@ class RolloutCollector(Node):
             self._journal = EpisodeJournal(staging/self._journal_id,
                 identity={**self._episode_identity, 'journal_id': self._journal_id, 'episode_index': episode_index,
                           'task': self.config.tasks[self._episode_task_index],
-                          'execution_contract': self.executor.contract.to_dict() if self.executor else None}, fps=self.config.fps)
+                          'execution_contract': self._execution.contract.to_dict() if self._execution else None}, fps=self.config.fps)
             self._states = []
             self._actions = []
             self._annotations = {key: [] for key in self._extra_features}

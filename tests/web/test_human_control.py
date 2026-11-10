@@ -43,7 +43,7 @@ def deployment(collector, ros_module, monkeypatch, request):
     c.policy_client = Mock(control_mode='vla', contract={'rtc_enabled': True})
     c.policy_client.set_control_mode.side_effect = lambda mode: setattr(c.policy_client, 'control_mode', mode)
     c.policy_client.poll_latest.return_value = None
-    c.executor = Executor(ExecutionContract(config.action_spec, {'vla': 12, 'rlt': 12, 'auto': 12},
+    c._execution = Executor(ExecutionContract(config.action_spec, {'vla': 12, 'rlt': 12, 'auto': 12},
                                            'control', 'urdf', 'tcp'),
                           session_id='test-session', model_version='test-model', epoch_ns=now,
                           project=c.coordinator.project)
@@ -79,7 +79,7 @@ def test_positioning_is_unrecorded_and_recording_keeps_human_owner(deployment):
     assert b.enabled and c._teleop_enabled and c._intervention
     assert c.coordinator.owner == c.config.input_source
     assert b.collector_status()['actual_source'] == c.config.input_source
-    assert c.executor.state == ExecutionState.HUMAN
+    assert c._execution.state == ExecutionState.HUMAN
     c._record_frame(raw, values, images, time.monotonic_ns())
     assert not c._states and c._journal is None
     generation = c.coordinator.generation
@@ -87,7 +87,7 @@ def test_positioning_is_unrecorded_and_recording_keeps_human_owner(deployment):
     assert c.coordinator.generation == generation  # explicit choice is idempotent
     command(b, 'record')
     assert c._recording and c.coordinator.owner == c.config.input_source
-    assert c.executor.state == ExecutionState.HUMAN and not c._states
+    assert c._execution.state == ExecutionState.HUMAN and not c._states
     c._restore_policy_gripper_speed.assert_not_called()
     target = c._raw_anchor(raw)
     c._observe_control()
@@ -99,7 +99,7 @@ def test_positioning_is_unrecorded_and_recording_keeps_human_owner(deployment):
     assert c._annotations['command.source'] == [[0]]
     command(b, 'mode', mode='rlt')
     assert c._recording and not c._intervention and not c._manual_requested
-    assert c.coordinator.owner == 'policy' and c.executor.state == ExecutionState.PREPARING
+    assert c.coordinator.owner == 'policy' and c._execution.state == ExecutionState.PREPARING
     assert c.policy_client.control_mode == 'rlt'
     generation = c.coordinator.generation
     command(b, 'mode', mode='rlt')
@@ -119,13 +119,13 @@ def test_positioning_to_policy_stops_until_explicit_enable_and_record(deployment
     assert b.enabled and b._policy_armed and c.coordinator.owner is None
     command(b, 'record')
     assert c._recording and c.coordinator.owner == 'policy' and not b._policy_armed
-    req = c.executor.request(slot=0, anchor=c._raw_anchor(c._raw_state()), observation_id=0,
-                             observed_at_ns=c.executor.control_clock.deadline(0), policy='vla')
+    req = c._execution.request(slot=0, anchor=c._raw_anchor(c._raw_state()), observation_id=0,
+                             observed_at_ns=c._execution.control_clock.deadline(0), policy='vla')
     old = PlanResponse(req, np.tile(req.anchor, (req.horizon, 1)), ('vla',)*req.horizon,
                        (0,)*req.horizon, np.tile(req.anchor, (req.horizon, 1)))
     command(b, 'mode', mode='human')
-    assert c.executor.state == ExecutionState.HUMAN
-    assert not c.executor.install(old, time.monotonic_ns())
+    assert c._execution.state == ExecutionState.HUMAN
+    assert not c._execution.install(old, time.monotonic_ns())
 
 
 @pytest.mark.parametrize('blocked', ['_faulted', '_storage_blocked', '_waiting_resume', '_saving', '_processing'])
@@ -200,5 +200,5 @@ def test_direct_handback_before_recording_never_starts_policy(deployment):
     c.toggle_intervention()
     b.tick()
     assert not b.enabled and not c._teleop_enabled and not c._manual_requested
-    assert c.coordinator.owner is None and c.executor.state == ExecutionState.STANDBY
+    assert c.coordinator.owner is None and c._execution.state == ExecutionState.STANDBY
     c.policy_client.submit.assert_not_called()
