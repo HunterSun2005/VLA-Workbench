@@ -17,11 +17,14 @@ def collector():
     node = RolloutCollector.__new__(RolloutCollector)
     values = asdict(Compliance())
     results, requests, faults = {}, [], []
-    node.config = SimpleNamespace(backend='franky', franky_compliance=values, gamepad_state_timeout_s=.5)
+    node.config = SimpleNamespace(fps=30, backend='franky', franky_compliance=values, gamepad_state_timeout_s=.5)
     node._lock = threading.RLock()
     node._faulted = False
     node._journal = None
     node._pending_worker_targets = {}
+    node._pending_submission = None
+    node._pending_lifecycle = None
+    node._recording = False
     node._pending_compliance = None
     node._worker_session_id = 'session'
     node.coordinator = SimpleNamespace(generation=3, mode='standby', command_id=1)
@@ -43,7 +46,7 @@ def test_compliance_needs_matching_request_ack_even_if_values_already_match():
     results['unrelated'] = {'request_status': 'applied'}
     node._poll_worker_states()
     assert node.compliance_status()['pending']
-    results[request_id] = {'request_status': 'applied', 'request_id': request_id, 'generation': 3, 'compliance': values}
+    results[request_id] = {'session_id': 'session', 'request_status': 'applied', 'request_id': request_id, 'generation': 3, 'compliance': values}
     node._poll_worker_states()
     assert not node.compliance_status()['pending'] and not faults
 
@@ -109,7 +112,7 @@ def test_explicit_franky_urdf_is_used_and_missing_override_is_rejected(monkeypat
     import xacro
     from ament_index_python.packages import get_package_share_directory
     node = RolloutCollector.__new__(RolloutCollector)
-    node.config = SimpleNamespace(backend='franky', joint_limit_margin=.05)
+    node.config = SimpleNamespace(fps=30, backend='franky', joint_limit_margin=.05)
     node._kinematics_identity = {}
     arm = SimpleNamespace(name='left', base_link='custom_fr3_link0', tip_link='custom_fr3_link8')
     source = Path(get_package_share_directory('franka_description'))/'robots/fr3/fr3.urdf.xacro'
@@ -134,16 +137,15 @@ def test_late_compliance_ack_cannot_resume_a_new_generation():
     assert not node.compliance_status()['pending'] and not faults
 
 
-def test_tuning_freezes_input_and_waits_for_fresh_acceptance():
+def test_tuning_freezes_the_single_control_loop():
     node, _, _, _, _ = collector()
     node.update_compliance({'rotational_stiffness': 60})
     node._pending_storage_error = None
-    node._tracking_clock = SimpleNamespace(poll=lambda _:0)
-    node._last_gamepad_tick = time.monotonic()-.01
+    node._slot_clock = SimpleNamespace(poll=lambda _:0)
+    node._last_control_tick = time.monotonic()-1/30
+    node._saving = node._storage_blocked = False
     node._observe_control = node._online_save_tick = lambda:None
     node._publish_gamepad = lambda *a: pytest.fail('integrated input during tuning')
     node._track_control = lambda *a: pytest.fail('submitted target during tuning')
-    node._gamepad_tick()
-    node._pending_compliance = None
-    node.coordinator.tick = lambda *a: pytest.fail('resumed an old accepted target')
-    RolloutCollector._track_control(node,.01)
+    node._tick()
+    assert not node._faulted

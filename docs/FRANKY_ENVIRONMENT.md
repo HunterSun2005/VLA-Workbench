@@ -89,3 +89,13 @@ bash scripts/test_ros.sh \
 ```
 
 GELLO 启动器将本检出的 `ros_ws/src/franka_gello_state_publisher` 放在子节点 Python 搜索路径首位，以免旧的复制安装遮蔽采样新鲜度修复；不修改已有 ROS 安装环境。驱动缓存保存采样时间和序号；JointState 的 stamp 为采样时间，最后一个 `gello_gripper` 位置为同帧夹爪开度，collector 不再从独立无时间戳的 Float32 消息刷新 GELLO 夹爪输入。
+
+应用层使用一个 30 Hz 控制回调：读取 worker 缓存与外设输入、生成并接受目标、提交一次 IPC、关联记录。tracker 的 1000 Hz 阻抗闭环和 worker 独立 watchdog 不受上层调度控制。`max_step` / `max_step_rad` 仍限制每次参考变化，不因降频而放大；目标流超时保持 0.1 s，健康查询不能代替控制目标。控制指纹包含 `single_30hz`，旧控制指纹数据不能直接续写或混采。
+
+## 单个应用控制循环
+
+采集、部署和姿态恢复统一使用单个 30 Hz 回调，异步 IPC 最多一条在途目标，无待发目标队列。等待确认时冻结人工积分和记录，恢复后不补算；策略按当前真实时隙取动作。Franky 保持独立 1000 Hz 阻抗闭环，固定 wheel/libfranka 0.19.0。新会话只接受 Franky/TCP，旧独立 tracking rate 和 IK 执行参数明确报错。
+
+启用先准备全部 tracker；停止、故障、恢复后须显式启用。目标请求／流默认 100 ms、通信／状态 500 ms，健康查询不能代替目标确认。运行调参暂停目标，匹配请求确认才结束等待，代际变化使迟到确认失效。worker 通信失败有界关闭，不自动恢复运动。
+
+相机偶发缺帧跳过整条记录，连续过期超过 `sync_tolerance_ms` 才停控。提交时冻结数据，匹配 IPC v2 确认后记录；实际参考和应用时间写入审计。缺帧和 IPC 等待形成 slot／segment 缺口，训练和 Replay 不跨缺口。旧指纹的 checkpoint 需使用匹配的新数据训练，不做静默转换。详见 [动作契约](ROS_ACTION_CONTRACT.md)。

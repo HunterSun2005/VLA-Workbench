@@ -176,3 +176,12 @@ def test_manifest_resume_requires_identical_contract(tmp_path: Path) -> None:
             resume=True,
         )
     assert json.loads((tmp_path / "cache_manifest.json").read_text())["contract"] == contract
+
+
+@pytest.mark.parametrize('field,value', [('slot_id', 3), ('segment_id', 1), ('observation_valid', 0)])
+def test_cache_cannot_bridge_gap_to_endpoint(field, value):
+    rows = human_rows(3)
+    rows[2][field] = value
+    encoded = encoded_anchors({i: dict(state_vec=torch.zeros(1), exec_chunk=torch.zeros(2,1),
+                                      ref_chunk=torch.zeros(2,1)) for i in range(3)})
+    assert _encoded_to_transitions(encoded, [0], 2, 2, True, 0, rows) == []

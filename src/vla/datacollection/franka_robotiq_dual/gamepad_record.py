@@ -26,14 +26,14 @@ def validate_dual_config(config):
     if len({camera.serial for camera in config.cameras}) != len(config.cameras):
         raise ValueError("dual recording requires distinct camera serials")
     for field in ("robot_state_topic", "measured_joint_topic", "gripper_state_topic",
-                  "command_joint_topic", "command_gripper_topic", "gripper_action_topic",
+                  "command_gripper_topic", "gripper_action_topic",
                   "gripper_speed_topic"):
         if len({getattr(arm, field) for arm in config.arms}) != len(config.arms):
             raise ValueError(f"left/right {field} must be distinct")
     if len({arm.gamepad.joy_topic for arm in config.arms}) != len(config.arms):
         raise ValueError("left and right gamepads must use distinct Joy topics")
-    if config.fps != 30 or config.image_size != (224, 224) or config.gamepad_control_rate != 100:
-        raise ValueError("dual recording requires 30 FPS, 224x224 RGB and 100 Hz gamepad control")
+    if config.fps != 30 or config.image_size != (224, 224):
+        raise ValueError("dual recording requires 30 FPS, 224x224 RGB and 30 Hz gamepad control")
     if not config.task.strip():
         raise ValueError("task must be nonempty")
     if not config.tasks or config.task not in config.tasks:

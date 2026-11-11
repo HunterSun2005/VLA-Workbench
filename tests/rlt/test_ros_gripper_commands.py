@@ -43,7 +43,6 @@ def ros_transport(ros_module, monkeypatch):
     monkeypatch.setattr(ros_module, 'Float32', NS)
     monkeypatch.setattr(ros_module, 'Float64MultiArray', NS)
     monkeypatch.setattr(ros_module, 'JointState', joint_message)
-    monkeypatch.setattr(sys.modules['vla.control.ros.transport'], 'JointState', joint_message)
     return ros_module
 
 
@@ -62,6 +61,10 @@ def test_gamepad_rows_record_submitted_goals_and_latched_hold(ros_transport, arm
     c.get_clock = lambda: NS(now=lambda: NS(to_msg=lambda: None))
     c.servos = {arm_name: NS(model=NS(joint_names=[f'j{i}' for i in range(7)]))}
     c.coordinator = NS(owner='gamepad')
+    c._pending_worker_targets = {}
+    c._worker_session_id = 'test'
+    c._slot_id = 0
+    c._worker_client = NS(target=lambda *a,**kw:'test-target')
     c._last_gripper_goal = {}
     c._publish_sequence = 0
     c._latch_fault = faults.append
@@ -246,6 +249,7 @@ def test_collector_preflight_requires_drive_consumer_not_recording_listener(ros_
     c.count_subscribers = lambda topic: 0 if topic in missing else 1
     c._gripper_action_clients = {a.name: NS(server_is_ready=lambda: True) for a in c.config.arms}
     c.policy_client = None
+    c._worker_client = NS(fault=None, states=lambda:{a.name:NS() for a in c.config.arms})
     c._snapshot = lambda **_: None
     missing.update(a.command_gripper_topic for a in c.config.arms)
     assert c._preflight_problems() == []

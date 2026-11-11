@@ -195,7 +195,7 @@ def main(argv=None):
                 'ROS_VERSION', 'ROS_PYTHON_VERSION'):
         env.pop(key, None)
     commands = {
-        'model': ['bash', 'scripts/test.sh', '-q', '-p', 'no:cacheprovider', '--tb=short', '-rs',
+        'model': ['bash', 'scripts/test.sh', '--ignore=tests/ros', '-q', '-p', 'no:cacheprovider', '--tb=short', '-rs',
                   '--junitxml='+str(output/'model.xml')],
         'ros': ['bash', 'scripts/test_ros.sh', 'tests/ros', '-q', '--junitxml='+str(output/'ros.xml')],
         'wheel': [args.model_python, 'scripts/validate_wheel.py', '--output', str(output/'wheel')],

@@ -1,9 +1,28 @@
-"""Production Cartesian tracking and KDL IK, importable without ROS nodes or Torch."""
+"""Historical ROS/IK validation only; never used by Franky sessions."""
 from __future__ import annotations
 import numpy as np
 import PyKDL
 from scipy.spatial.transform import Rotation
-from vla.datacollection.franka_robotiq_rollout.config import RolloutConfig
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class LegacyServoConfig:
+    """Fixed historical harness parameters, isolated from session configuration."""
+    fps: int = 30
+    damping: float = .05
+    max_joint_speed: float = .3
+    velocity_tracking_tau_s: float = .15
+    target_smoothing_alpha: float = .25
+    velocity_smoothing: float = .3
+    smooth_angular_velocity: bool = True
+    gamepad_position_gain: float = 8.
+    gamepad_orientation_gain: float = 3.
+    gamepad_xy_speed: float = .02
+    gamepad_max_angular_speed: float = .3
+    max_linear_velocity: float = .04
+    max_angular_velocity: float = .3
+
 from vla.datacollection.franka_robotiq_rollout.safety import (
     clamp_pose_step, compose_pose, flange_pose_from_tcp, gamepad_tracking_twist,
     pose_step_to_twist, smooth_pose_target,
@@ -18,7 +37,7 @@ def _clamp_norm(values, maximum):
 
 
 class CartesianServo:
-    def __init__(self, model, config: RolloutConfig) -> None:
+    def __init__(self, model, config: LegacyServoConfig) -> None:
         self.model = model
         self.fk_solver = PyKDL.ChainFkSolverPos_recursive(model.chain)
         self.jacobian_solver = PyKDL.ChainJntToJacSolver(model.chain)

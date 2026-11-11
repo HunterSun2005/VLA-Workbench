@@ -124,6 +124,7 @@ def ros_backend(source, arm='left'):
     messages = []
     from vla.control.ros.coordinator import ControlCoordinator, ArmMeasurement
     node.config = rollout
+    node._last_control_tick = time.monotonic()
     node._measured_joints = lambda a,m:np.array(m.position)
     node._faulted = False
     node._neutral_gamepads = lambda:True
@@ -131,7 +132,7 @@ def ros_backend(source, arm='left'):
         step=lambda q,p,r,tp,tr,dt:q+dt*.05, forward_tcp=lambda *args:(np.array([.4,0,.3]),np.eye(3))) for name in ('left','right')}
     node.coordinator = ControlCoordinator(rollout.action_spec, node.servos,
         {a.name:(a.workspace_min,a.workspace_max) for a in rollout.arms},
-        lambda name,q,g,generation,command:messages.append((name,q.copy())), lambda generation:None)
+        lambda name,q,g,generation,command:messages.append((name,q.copy())), lambda generation:None, backend="franky")
     def observe():
         for name in ('left','right'):
             node.coordinator.observe(name,ArmMeasurement(np.zeros(7),.5,np.zeros(3),np.eye(3),time.monotonic_ns()))
@@ -158,8 +159,11 @@ def test_ros_real_adapter_freshness_solver_joint_only_and_hold(monkeypatch, sour
     pose = driver.read(arm)
     target = {**pose,'position':[.45,0,.3]}
     driver.start(target)
-    driver.last -= .015
     driver.tick(target)
+    assert not messages  # UI driver only registers; the collector owns submission.
+    c = b.collector
+    c.coordinator.accept(c._pose_action, source='pose', generation=c.coordinator.generation, slot_id=0)
+    c._track_control(1/30)
     assert len(messages) == 2  # one coordinated command per arm, no direct gripper call
     assert b.collector.coordinator.owner == 'pose'
     driver.stop()
@@ -179,7 +183,7 @@ def test_ros_reflex_and_timeout_rejected(monkeypatch):
     latest['left.robot_state'][1].robot_mode = 1
     driver.arm='left'
     b.collector._control_boundary('pose')
-    driver.last = time.monotonic()-1
+    b.collector._last_control_tick = time.monotonic()-1
     with pytest.raises(RuntimeError,match='超时'):
         driver.tick({**driver.read('left'), 'position':[.5,0,.3]})
 

@@ -18,7 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 from vla.actions import ActionSpec, matrix_to_rot6d
 from vla.actions.transforms import DeltaActions, AbsoluteActions
 from vla.control.ros import ControlCoordinator, ArmMeasurement
-from vla.control.ros.cartesian_servo import CartesianServo
+from vla.control.ros.cartesian_servo import CartesianServo, LegacyServoConfig
 from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
 from vla.datacollection.start_teleop.franka_kinematics import build_kinematic_model
 
@@ -43,7 +43,7 @@ def models():
 def make_rig(models, space, arms, owner):
     config = load_rollout_config(Path(__file__).parents[2]/'src/vla/datacollection/franka_robotiq_rollout/configs/dual.yaml')
     clock, published = [1_000_000_000], []
-    servos = {a: CartesianServo(models[a], config) for a in arms}
+    servos = {a: CartesianServo(models[a], LegacyServoConfig()) for a in arms}
     c = ControlCoordinator(ActionSpec(space, arms), servos,
         {a: (np.array([-.8, -.8, -.1]), np.array([.8, .8, 1.2])) for a in arms},
         lambda a, q, g, *_: published.append((a, q.copy(), g)), lambda _: None, clock=lambda: clock[0])

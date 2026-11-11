@@ -167,8 +167,15 @@ class ROSPoseDriver:
         c = self.b.collector
         if not c._neutral_gamepads():
             raise RuntimeError('请松开手柄并确认输入在线')
+        c._observe_control()
+        tcp = {}
+        for configured in c.config.arms:
+            pose = target if configured.name == self.arm else self.read(configured.name)
+            tcp[configured.name] = (np.asarray(pose['position']), np.asarray(pose['rotation']),
+                                    c.coordinator._measurements[configured.name].gripper)
+        action = c.coordinator.gamepad_target(tcp, 1/c.config.fps)
         c._control_boundary('pose', reason='saved pose restore')
-        self.last = time.monotonic()
+        c._pose_action = action.copy()
 
     def tick(self, target):
         from vla.actions import matrix_to_rot6d
@@ -183,22 +190,8 @@ class ROSPoseDriver:
             return 'completed'
         if c.coordinator.mode != 'active':
             return
-        now = time.monotonic()
-        dt = now-self.last
-        if dt < .01:
-            return
-        self.last = now
-        if dt > .1:
+        if time.monotonic()-c._last_control_tick > c.config.control_discontinuity_timeout_s:
             raise RuntimeError('恢复控制循环超时')
-        c._observe_control()
-        tcp = {}
-        for arm in c.config.arms:
-            pose = target if arm.name == self.arm else self.read(arm.name)
-            m = c.coordinator._measurements[arm.name]
-            tcp[arm.name] = (np.asarray(pose['position']), np.asarray(pose['rotation']), m.gripper)
-        action = c.coordinator.gamepad_target(tcp, 1/c.config.fps)
-        c.coordinator.accept(action, source='pose', generation=c.coordinator.generation, slot_id=time.monotonic_ns()*30//1_000_000_000)
-        c._track_control(min(dt, .05))
 
     def stop(self):
         self.b.collector._control_boundary(reason='pose restore stopped')

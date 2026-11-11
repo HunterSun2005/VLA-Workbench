@@ -55,7 +55,7 @@ class SessionConfig:
         if type(result.resume) is not bool:
             raise ValueError('resume must be boolean')
         for name, choices in {'workflow': ('collect','deploy'), 'arms': ('single_left','dual'),
-                              'source': ('gamepad','gello'), 'schema': ('full',), 'action_space': ('joint','tcp'),
+                              'source': ('gamepad','gello'), 'schema': ('full',), 'action_space': ('tcp',),
                               'policy_kind': ('sft','rlt'), 'mode': ('vla','rlt','auto')}.items():
             if getattr(result, name) not in choices:
                 raise ValueError(f'invalid {name}')
@@ -208,6 +208,8 @@ def collection_camera_serials(config, hardware=None):
 
 def preflight(config, *, demo=False, root=None):
     checks, errors = [], []
+    if config.action_space != 'tcp':
+        errors.append('新会话仅支持 Franky TCP 动作空间')
     effective_compliance = None
     try:
         effective_compliance = config.effective_compliance()
@@ -319,6 +321,8 @@ def preflight(config, *, demo=False, root=None):
             from vla.actions import ActionSpec
             contract = checkpoint_contract(config.policy_path)
             spec = ActionSpec.from_dict(contract['action_spec'])
+            if spec.space != 'tcp':
+                errors.append('新会话仅支持 Franky TCP checkpoint')
             expected_arms = ('left', 'right') if config.arms == 'dual' else ('left',)
             if spec.arms != expected_arms:
                 errors.append('checkpoint 机械臂顺序不匹配')

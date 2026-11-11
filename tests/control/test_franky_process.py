@@ -64,6 +64,8 @@ def process_worker(arms=('left',), target_timeout=3., state_timeout=3.):
 
 
 def request(root, kind='health', generation=-1, **kwargs):
+    if kind == 'target':
+        kwargs.setdefault('slot_id', kwargs.get('sequence', 0))
     packet = {'session_id': 's', 'kind': kind, 'generation': generation,
               'request_id': uuid.uuid4().hex, **kwargs}
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -172,7 +174,7 @@ def test_client_fault_latches_until_recover_and_control_requires_reset():
             wait_for(client.states)
             client.reset('s', 1)
             wait_for(lambda: client.states()['left'].generation == 1)
-            client.target('s', 1, 1, {'left': POSE})
+            client.target('s', 1, 1, {'left': POSE}, slot_id=0)
             wait_for(lambda: client.states()['left'].tracker_running)
             wait_for(lambda: client.fault)
             request(root, 'recover', 2)  # Another channel's success cannot clear client's latch.
@@ -239,13 +241,13 @@ def test_explicit_recovery_handles_join_error_after_controller_stopped():
         assert not target(root, generation=4)['fault']
 
 
-def test_dual_worker_100hz_with_production_watchdog_deadlines():
+def test_dual_worker_30hz_with_production_watchdog_deadlines():
     with process_worker(('left', 'right'), target_timeout=.1, state_timeout=.5) as (root, _, _):
         request(root, 'reset', 1)
         assert not target(root, arms=('left', 'right'))['fault']
         start = time.monotonic()
-        for sequence in range(2, 202):
-            deadline = start + (sequence-1)*.01
+        for sequence in range(2, 62):
+            deadline = start + (sequence-1)/30
             time.sleep(max(0, deadline-time.monotonic()))
             result = target(root, sequence=sequence, arms=('left', 'right'))
             assert not result['fault']

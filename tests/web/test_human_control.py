@@ -72,7 +72,7 @@ def refresh(c):
 
 @pytest.mark.parametrize('space', ['tcp'])
 def test_manual_input_reaches_transport_before_recording(deployment, ros_module, monkeypatch, space):
-    """Exercise both timer callbacks, reset acknowledgement and unrecorded motion."""
+    """Exercise the single control callback, reset acknowledgement and unrecorded motion."""
     b, c, *_ = deployment
     c.config = replace(c.config, action_space=space)
     c.coordinator.spec = c.config.action_spec
@@ -101,7 +101,6 @@ def test_manual_input_reaches_transport_before_recording(deployment, ros_module,
     def tick():
         now[0] += 10_000_000
         c._latest = {key: (now[0], value) for key, (_, value) in c._latest.items()}
-        c._gamepad_tick()
         c._tick()
 
     for _ in range(10):

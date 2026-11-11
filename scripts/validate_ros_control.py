@@ -28,7 +28,7 @@ from ament_index_python.packages import get_package_share_directory
 from vla.actions import ActionSpec
 from vla.control.ros import ControlCoordinator, ArmMeasurement
 from vla.control.execution import FixedDeadline
-from vla.control.ros.cartesian_servo import CartesianServo
+from vla.control.ros.cartesian_servo import CartesianServo, LegacyServoConfig
 from vla.control.ros.transport import joint_command, controller_identity
 from vla.datacollection.start_teleop.franka_kinematics import build_kinematic_model
 from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
@@ -144,7 +144,7 @@ class Session:
                                           lambda msg, arm=arm: self.on_state(arm, msg), 10)
             self.start(arm, ['/opt/ros/humble/lib/controller_manager/ros2_control_node', '--ros-args',
                              '-r', f'__ns:=/{arm}', '--params-file', str(file)])
-        self.servos = {a: CartesianServo(m, config) for a,m in self.models.items()}
+        self.servos = {a: CartesianServo(m, LegacyServoConfig()) for a,m in self.models.items()}
 
     def start(self, name, argv):
         stream = open(self.directory/f'{name}.log', 'w'); self.streams.append(stream)
@@ -223,7 +223,6 @@ class Session:
         if not hasattr(self, 'slot_clock'):
             epoch = time.monotonic_ns()
             self.slot_clock = FixedDeadline(epoch, 30)
-            self.track_clock = FixedDeadline(epoch, 100)
         while time.monotonic() < end:
             now_ns = time.monotonic_ns()
             try:
@@ -239,12 +238,12 @@ class Session:
                                 m = self.c._measurements[arm]
                                 p, r = self.servos[arm].forward_tcp(m.joints, m.tool_position, m.tool_rotation)
                                 tcp[arm] = (p + tcp_offset, r, .45)
-                            target = self.c.gamepad_target(tcp, .01)
+                            target = self.c.gamepad_target(tcp, 1/30)
                         accepted = self.c.accept(target, source=self.c.owner, generation=self.c.generation, slot_id=slot)
                         if record:
                             self.accept_times.append(accepted.accepted_at_ns)
-                    if self.track_clock.poll(now_ns) is not None:
-                        self.c.tick(.01)
+                    if slot is not None:
+                        self.c.tick(1/30)
                         if record:
                             self.tick_times.append(time.monotonic_ns())
             except (KeyError, ValueError, RuntimeError, np.linalg.LinAlgError) as error:
@@ -418,10 +417,10 @@ def main():
                 report[arm+'_mock']=json.loads(Path(str(path)+'.json').read_text())
         if 'tracking' in report and all(a+'_controller' in report for a in ('left','right')):
             report['frequency_target_passed']=all(abs(report[key]['hz']/hz-1)<=.03 for key,hz in
-                [('accept',30),('tracking',100),('left_controller',1000),('right_controller',1000)])
+                [('accept',30),('tracking',30),('left_controller',1000),('right_controller',1000)])
         (directory/'report.json').write_text(json.dumps(report,indent=2))
         print('REPORT='+str(directory/'report.json'),flush=True)
     if not report.get('frequency_target_passed', False):
-        raise SystemExit('30/100/1000 Hz frequency acceptance failed; see report')
+        raise SystemExit('30 Hz acceptance/submission and 1000 Hz mock controller frequency acceptance failed; see report')
 
 if __name__=='__main__': main()

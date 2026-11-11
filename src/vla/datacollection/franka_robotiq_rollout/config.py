@@ -62,7 +62,6 @@ class ArmConfig:
     measured_joint_topic: str
     gripper_state_topic: str
     gamepad: GamepadConfig
-    command_joint_topic: str
     command_gripper_topic: str
     gripper_action_topic: str
     gripper_speed_topic: str
@@ -109,17 +108,9 @@ class RolloutConfig:
     sync_tolerance_ms: float
     policy_timeout_s: float
     control_discontinuity_timeout_s: float
-    rtc_deployment_config: Path | None
     max_linear_velocity: float
     max_angular_velocity: float
-    velocity_tracking_tau_s: float
-    target_smoothing_alpha: float
-    velocity_smoothing: float
-    smooth_angular_velocity: bool
-    damping: float
-    max_joint_speed: float
     joint_limit_margin: float
-    gamepad_control_rate: float
     gamepad_joy_timeout_s: float
     gamepad_state_timeout_s: float
     gamepad_deadzone: float
@@ -129,8 +120,6 @@ class RolloutConfig:
     gamepad_gripper_speed: float
     policy_gripper_speed: float
     gamepad_gripper_trigger_deadzone: float
-    gamepad_position_gain: float
-    gamepad_orientation_gain: float
     gamepad_max_angular_speed: float
     min_control_command_success_rate: float
     low_success_rate_samples: int
@@ -170,125 +159,16 @@ def _vector3(value: Any, label: str) -> tuple[float, float, float]:
     return tuple(float(item) for item in value)
 
 
-def _resolve_reference(path: str, *, relative_to: Path) -> Path:
-    candidate = Path(path).expanduser()
-    if candidate.is_absolute():
-        resolved = candidate.resolve()
-    else:
-        from_cwd = candidate.resolve()
-        from_config = (relative_to / candidate).resolve()
-        resolved = from_cwd if from_cwd.is_file() else from_config
-    if not resolved.is_file():
-        raise FileNotFoundError(f"referenced RTC deployment config is missing: {resolved}")
-    return resolved
-
-
-def _rtc_control_values(
-    control: dict[str, Any],
-    *,
-    config_path: Path,
-    fps: int,
-    arms: tuple[ArmConfig, ...],
-) -> tuple[Path | None, dict[str, float | bool]]:
-    profile_value = control.get("rtc_deployment_config")
-    if profile_value is None:
-        # Keep standalone profiles usable, while accepting the old speed key names.
-        return None, {
-            "max_linear_velocity": float(
-                control.get("max_linear_velocity", control.get("max_linear_speed", 0.04))
-            ),
-            "max_angular_velocity": float(
-                control.get("max_angular_velocity", control.get("max_angular_speed", 0.30))
-            ),
-            "velocity_tracking_tau_s": float(control.get("velocity_tracking_tau_s", 0.15)),
-            "target_smoothing_alpha": float(control.get("target_smoothing_alpha", 0.0)),
-            "velocity_smoothing": float(control.get("velocity_smoothing", 0.0)),
-            "smooth_angular_velocity": bool(control.get("smooth_angular_velocity", False)),
-            "control_discontinuity_timeout_s": float(
-                control.get("control_discontinuity_timeout_ms", 100.0)
-            )
-            / 1000.0,
-        }
-
-    profile_path = _resolve_reference(str(profile_value), relative_to=config_path.parent)
-    with profile_path.open(encoding="utf-8") as stream:
-        profile = _mapping(yaml.safe_load(stream), "RTC deployment config")
-    robot = _mapping(profile.get("robot"), "RTC deployment robot config")
-    deployment = _mapping(profile.get("deployment"), "RTC deployment config.deployment")
-    required = (
-        "control_frequency",
-        "max_linear_velocity",
-        "max_angular_velocity",
-        "velocity_tracking_tau_s",
-        "target_smoothing_alpha",
-        "velocity_smoothing",
-        "smooth_angular_velocity",
-    )
-    missing = [key for key in required if key not in robot]
-    if missing:
-        raise ValueError(f"RTC deployment robot config is missing: {', '.join(missing)}")
-    if float(robot["control_frequency"]) != float(fps):
-        raise ValueError(
-            "rollout dataset FPS must match RTC robot.control_frequency: "
-            f"{fps} != {robot['control_frequency']}"
-        )
-
-    workspace = _mapping(robot.get("workspace"), "RTC deployment robot.workspace")
-    profile_minimum = _vector3(workspace.get("min"), "RTC deployment workspace.min")
-    profile_maximum = _vector3(workspace.get("max"), "RTC deployment workspace.max")
-    for arm in arms:
-        if any(value < bound for value, bound in zip(arm.workspace_min, profile_minimum)) or any(
-            value > bound for value, bound in zip(arm.workspace_max, profile_maximum)
-        ):
-            raise ValueError(
-                f"rollout workspace for {arm.name!r} must stay within the RTC deployment workspace"
-            )
-
-    overridden = sorted(
-        key
-        for key in (
-            "max_linear_velocity",
-            "max_linear_speed",
-            "max_angular_velocity",
-            "max_angular_speed",
-            "velocity_tracking_tau_s",
-            "target_smoothing_alpha",
-            "velocity_smoothing",
-            "smooth_angular_velocity",
-        )
-        if key in control
-    )
-    if overridden:
-        raise ValueError(
-            "RTC-owned control values cannot be overridden in rollout config: "
-            + ", ".join(overridden)
-        )
-    return profile_path, {
-        "max_linear_velocity": float(robot["max_linear_velocity"]),
-        "max_angular_velocity": float(robot["max_angular_velocity"]),
-        "velocity_tracking_tau_s": float(robot["velocity_tracking_tau_s"]),
-        "target_smoothing_alpha": float(robot["target_smoothing_alpha"]),
-        "velocity_smoothing": float(robot["velocity_smoothing"]),
-        "smooth_angular_velocity": bool(robot["smooth_angular_velocity"]),
-        "control_discontinuity_timeout_s": float(
-            deployment.get(
-                "control_discontinuity_timeout_ms",
-                robot.get("velocity_motion_duration_ms", 100),
-            )
-        )
-        / 1000.0,
-    }
-
-
 def _arm(value: Any) -> ArmConfig:
     raw = _mapping(value, "arm")
+    if "command_joint_topic" in raw:
+        raise ValueError("removed ROS arm command_joint_topic; Franky accepts TCP through IPC")
     gamepad_raw = _mapping(raw.get("gamepad"), f"{raw.get('name', 'arm')}.gamepad")
     required = (
         "name",
         "robot_state_topic",
         "measured_joint_topic",
         "gripper_state_topic",
-        "command_joint_topic",
         "command_gripper_topic",
         "gripper_action_topic",
         "gripper_speed_topic",
@@ -346,7 +226,6 @@ def _arm(value: Any) -> ArmConfig:
                 "tool_roll_button_sign", gamepad_raw.get("joint7_button_sign", -1.0)
             )),
         ),
-        command_joint_topic=str(raw["command_joint_topic"]),
         command_gripper_topic=str(raw["command_gripper_topic"]),
         gripper_action_topic=str(raw["gripper_action_topic"]),
         gripper_speed_topic=str(raw["gripper_speed_topic"]),
@@ -370,9 +249,9 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         raise ValueError("Legacy Franky configuration requires explicit migration to the Cartesian worker")
     if raw.get("version") != 1:
         raise ValueError("rollout config version must be 1")
-    backend = str(raw.get("backend", "ros2"))
-    if backend not in ("ros2", "franky"):
-        raise ValueError("backend must be ros2 or franky")
+    backend = str(raw.get("backend", ""))
+    if backend != "franky" or raw.get("action_space", "tcp") != "tcp":
+        raise ValueError("new sessions require backend: franky and action_space: tcp")
     from vla.actions import ActionSpec
     ActionSpec(space=str(raw.get("action_space", "tcp")))
     if raw.get("input_source", "gamepad") not in ("gamepad", "gello"):
@@ -449,26 +328,17 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     image_size = (int(image_size_raw[0]), int(image_size_raw[1]))
     if any(value <= 0 for value in image_size):
         raise ValueError("dataset.image_size values must be positive")
-    rtc_deployment_config, rtc_control = _rtc_control_values(
-        control,
-        config_path=config_path,
-        fps=fps,
-        arms=arms,
-    )
+    obsolete = set(control) & set(['damping', 'gamepad_control_rate', 'gamepad_orientation_gain', 'gamepad_position_gain', 'max_joint_speed', 'rtc_deployment_config', 'smooth_angular_velocity', 'target_smoothing_alpha', 'velocity_smoothing', 'velocity_tracking_tau_s'])
+    if obsolete:
+        raise ValueError('removed ROS tracking settings: ' + ', '.join(sorted(obsolete)))
     positive = {
         "fps": fps,
         "sync_tolerance_ms": float(control.get("sync_tolerance_ms", 100.0)),
         "policy_timeout_s": float(control.get("policy_timeout_s", 2.0)),
-        "control_discontinuity_timeout_s": float(
-            rtc_control["control_discontinuity_timeout_s"]
-        ),
-        "damping": float(control.get("damping", 0.05)),
-        "max_linear_velocity": float(rtc_control["max_linear_velocity"]),
-        "max_angular_velocity": float(rtc_control["max_angular_velocity"]),
-        "velocity_tracking_tau_s": float(rtc_control["velocity_tracking_tau_s"]),
-        "max_joint_speed": float(control.get("max_joint_speed", 0.30)),
+        "control_discontinuity_timeout_s": float(control.get("control_discontinuity_timeout_ms", 100.0)) / 1000.0,
+        "max_linear_velocity": float(control.get("max_linear_velocity", .04)),
+        "max_angular_velocity": float(control.get("max_angular_velocity", .3)),
         "joint_limit_margin": float(control.get("joint_limit_margin", 0.05)),
-        "gamepad_control_rate": float(control.get("gamepad_control_rate", 100.0)),
         "gamepad_joy_timeout_s": float(control.get("gamepad_joy_timeout_s", 0.2)),
         "gamepad_state_timeout_s": float(control.get("gamepad_state_timeout_s", 0.5)),
         "gamepad_deadzone": float(control.get("gamepad_deadzone", 0.08)),
@@ -479,8 +349,6 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         "gamepad_roll_speed": float(control.get("gamepad_roll_speed", control.get("gamepad_joint7_speed", 0.30))),
         "gamepad_gripper_speed": float(control.get("gamepad_gripper_speed", 0.40)),
         "policy_gripper_speed": float(control.get("policy_gripper_speed", 1.0)),
-        "gamepad_position_gain": float(control.get("gamepad_position_gain", 8.0)),
-        "gamepad_orientation_gain": float(control.get("gamepad_orientation_gain", 3.0)),
         "gamepad_max_angular_speed": float(
             control.get("gamepad_max_angular_speed", 0.30)
         ),
@@ -501,12 +369,6 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     )
     if not 0.0 <= gamepad_gripper_trigger_deadzone < 1.0:
         raise ValueError("gamepad_gripper_trigger_deadzone must be in [0, 1)")
-    target_smoothing_alpha = float(rtc_control["target_smoothing_alpha"])
-    velocity_smoothing = float(rtc_control["velocity_smoothing"])
-    if not 0.0 <= target_smoothing_alpha < 1.0:
-        raise ValueError("target_smoothing_alpha must be in [0, 1)")
-    if not 0.0 <= velocity_smoothing < 1.0:
-        raise ValueError("velocity_smoothing must be in [0, 1)")
     min_success_rate = float(control.get("min_control_command_success_rate", 0.90))
     low_success_rate_samples = int(control.get("low_success_rate_samples", 3))
     if not 0.0 < min_success_rate <= 1.0:
@@ -554,8 +416,8 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     guard_slots = control.get('installation_guard_slots', 1)
     if any(type(v) is not int or v < 1 for v in (inference_slots, guard_slots)):
         raise ValueError('inference and installation budgets must be positive control-slot counts')
-    if fps != 30 or positive['gamepad_control_rate'] != 100:
-        raise ValueError('execution contract requires 30 Hz actions and 100 Hz tracking')
+    if fps != 30:
+        raise ValueError('execution contract requires one 30 Hz action/control loop')
     return RolloutConfig(
         inference_slots=inference_slots, installation_guard_slots=guard_slots,
         backend=backend,
@@ -575,13 +437,9 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         ).expanduser().resolve(),
         arms=arms,
         cameras=cameras,
-        rtc_deployment_config=rtc_deployment_config,
         gamepad_profile=gamepad_profile,
         subtasks=tuple(subtasks),
         tasks=tasks,
-        target_smoothing_alpha=target_smoothing_alpha,
-        velocity_smoothing=velocity_smoothing,
-        smooth_angular_velocity=bool(rtc_control["smooth_angular_velocity"]),
         gamepad_gripper_trigger_deadzone=gamepad_gripper_trigger_deadzone,
         min_control_command_success_rate=min_success_rate,
         low_success_rate_samples=low_success_rate_samples,

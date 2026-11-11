@@ -27,18 +27,14 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 import rclpy
 from control_msgs.action import GripperCommand
-from franka_msgs.msg import FrankaRobotState
-from rcl_interfaces.srv import GetParameters
 from rclpy.action import ActionClient
 from rclpy.node import Node
-from rclpy.parameter import parameter_value_to_python
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState, Joy
-from std_msgs.msg import Float32, Float64MultiArray, UInt64
+from std_msgs.msg import Float32, Float64MultiArray
 from vla.actions import ActionSpec, matrix_to_rot6d
 from vla.actions.spec import fingerprint, validate_array
 from vla.control.ros import ControlCoordinator, ArmMeasurement
-from vla.control.ros.transport import joint_command, controller_identity
 from vla.control.franky import FrankyWorkerClient
 
 from vla.datacollection.franka_robotiq_single_left import schema
@@ -169,7 +165,7 @@ class CommandSnapshot:
     published_at_ns: int
 
 
-from vla.control.ros.cartesian_servo import CARTESIAN_TRACKING, CartesianServo
+from vla.control.ros.kinematics import ForwardKinematics
 
 
 class RolloutCollector(Node):
@@ -200,6 +196,8 @@ class RolloutCollector(Node):
             from vla.datacollection.franka_robotiq_dual.gamepad_record import validate_dual_config
             validate_dual_config(config)
         super().__init__("vla_franka_rollout_collector")
+        if config.backend != "franky" or config.action_space != "tcp":
+            raise ValueError("collector requires Franky TCP control")
         self.config = config
         self.demonstration = demonstration
         self._teleop_enabled = False
@@ -212,7 +210,6 @@ class RolloutCollector(Node):
         self._journal = None
         self._pending_events = []
         self._pending_images = None
-        self._awaiting_record = None
         self._saving = False
         self._storage_blocked = False
         self._pending_storage_error = None
@@ -260,7 +257,7 @@ class RolloutCollector(Node):
         self._previous_buttons = {}
         self._initial_pose = {}
         self._gamepad_stale_reported = False
-        self._last_gamepad_tick = time.monotonic()
+        self._last_control_tick = time.monotonic()
         self._last_gamepad_input_log = 0.0
         self._phase = "vla"
         self._last_applied_control: tuple[int, str] | None = None
@@ -326,7 +323,7 @@ class RolloutCollector(Node):
         )
         self._kinematics_identity = {}
         self.servos = {
-            arm.name: CartesianServo(self._load_kinematic_model(arm), config)
+            arm.name: ForwardKinematics(self._load_kinematic_model(arm))
             for arm in config.arms
         }
         self._pending_compliance = None
@@ -334,17 +331,20 @@ class RolloutCollector(Node):
         self._input_diagnostics = {}
         self._input_stamps = {}
         self._pending_worker_targets = {}
-        if config.backend == 'franky':
-            if self._worker_client is None or not self._worker_session_id:
-                raise RuntimeError('Franky collector requires an explicit ready worker connection')
-            import uuid
-            ready = self._worker_client.request_now({'kind': 'health', 'session_id': self._worker_session_id,
-                                                    'generation': -1, 'request_id': uuid.uuid4().hex})
-            from vla.core.franky_runtime import semantic_binding
-            binding_identity = semantic_binding(ready['binding_fingerprint'])
-            if (set(self._worker_client.states()) != {a.name for a in config.arms}
-                    or not all(v.state_valid and not v.fault for v in self._worker_client.states().values())):
-                raise RuntimeError('Franky worker is not ready for all arms')
+        self._pending_submission = None
+        self._pending_lifecycle = None
+        self._last_target_applied_ns = None
+        self._pose_action = None
+        if self._worker_client is None or not self._worker_session_id:
+            raise RuntimeError('Franky collector requires an explicit ready worker connection')
+        import uuid
+        ready = self._worker_client.request_now({'kind': 'health', 'session_id': self._worker_session_id,
+                                                'generation': -1, 'request_id': uuid.uuid4().hex})
+        from vla.core.franky_runtime import semantic_binding
+        binding_identity = semantic_binding(ready['binding_fingerprint'])
+        if (set(self._worker_client.states()) != {a.name for a in config.arms}
+                or not all(v.state_valid and not v.fault for v in self._worker_client.states().values())):
+            raise RuntimeError('Franky worker is not ready for all arms')
         self._setup_ros_io()
         self.coordinator = ControlCoordinator(
             config.action_spec, self.servos,
@@ -363,25 +363,22 @@ class RolloutCollector(Node):
             fingerprint(tool), fingerprint(self._kinematics_identity),
             fingerprint({k: str(v) for k, v in asdict(config).items()
                          if k not in ('dataset_root', 'task', 'tasks', 'socket_path', 'joy_socket_path')}),
-            backend='franky_cartesian_impedance' if config.backend == 'franky' else 'ros2_joint_impedance').to_dict()
+            backend='franky_cartesian_impedance').to_dict()
         metadata['tool_definition'] = tool
-        controller_parameters = ({'backend': 'franky_cartesian_impedance',
-                                  'ipc_version': 1,
+        controller_parameters = {'backend': 'franky_cartesian_impedance',
+                                  'ipc_version': 2,
                                   'compliance': dict(config.franky_compliance)}
-                                 if config.backend == 'franky' else self._controller_parameters())
         control_parameters = {k: asdict(config)[k] for k in (
-            'fps', 'gamepad_control_rate', 'control_discontinuity_timeout_s', 'joint_limit_margin',
-            'max_linear_velocity', 'max_angular_velocity', 'velocity_tracking_tau_s',
-            'target_smoothing_alpha', 'velocity_smoothing', 'smooth_angular_velocity', 'damping',
-            'max_joint_speed', 'gamepad_position_gain', 'gamepad_orientation_gain', 'gamepad_max_angular_speed',
+            'fps', 'control_discontinuity_timeout_s', 'joint_limit_margin',
+            'max_linear_velocity', 'max_angular_velocity', 'gamepad_max_angular_speed',
             'gamepad_xy_speed', 'gamepad_z_speed', 'gamepad_joint7_speed', 'gamepad_gripper_speed',
             'policy_gripper_speed')}
         metadata['recording_contract']['control_fingerprint'] = fingerprint({
             'python': control_parameters, 'cpp': controller_parameters,
-            'cartesian_tracking': CARTESIAN_TRACKING,
+            'cartesian_tracking': 'franky_single_30hz_ack_v1',
             'human_input': {'version': 3, 'gamepads': {a.name: asdict(a.gamepad) for a in config.arms}},
-            'execution': {'version': 2, 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots},
-            'franky': controller_parameters if config.backend == 'franky' else None,
+            'execution': {'version': 2, 'loop': 'single_30hz', 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots},
+            'franky': controller_parameters,
             'binding': binding_identity if self._worker_client else None,
             'franky_implementation': ready['implementation_version'] if self._worker_client else None})
         metadata['effective_controller_parameters'] = controller_parameters
@@ -398,9 +395,6 @@ class RolloutCollector(Node):
             if self.policy_client.contract['action_contract']['execution_projection'] != metadata['execution_projection']:
                 raise ValueError('model/deployment execution projection mismatch')
         self._effective_metadata = metadata
-        from rcl_interfaces.msg import ParameterEvent
-        self._parameter_subscription = self.create_subscription(ParameterEvent, '/parameter_events',
-                                                                self._parameter_changed, 10)
         self.writer = V30DatasetWriter(
             config.dataset_root,
             config.fps,
@@ -420,7 +414,6 @@ class RolloutCollector(Node):
         import uuid
         epoch = time.monotonic_ns()
         self._slot_clock = FixedDeadline(epoch, 30)
-        self._tracking_clock = FixedDeadline(epoch, 100)
         self._slot_id = -1
         self._execution = None
         self._execution_record = None
@@ -437,63 +430,27 @@ class RolloutCollector(Node):
                                      model_version=model.get('model_version', model['checkpoint_fingerprint']), epoch_ns=epoch,
                                      project=self.coordinator.project)
             self._slot_clock = self._execution.control_clock
-            self._tracking_clock = self._execution.tracking_clock
         self._start_cameras()
 
-        # Poll fresh base frames frequently; demonstrations must not duplicate
-        # one camera exposure just because the 30 Hz timer and camera drift.
-        self.create_timer(1.0 / (config.gamepad_control_rate if demonstration else config.fps), self._tick)
-        self.create_timer(1.0 / config.gamepad_control_rate, self._gamepad_tick)
-        if getattr(self, '_worker_client', None) is not None:
-            self.create_timer(.01, self._poll_worker_states)
-        control_profile = (
-            str(config.rtc_deployment_config)
-            if config.rtc_deployment_config is not None
-            else "rollout YAML"
-        )
-        print(
-            "Cartesian control: "
-            f"source={control_profile}, linear={config.max_linear_velocity:.3f}m/s, "
-            f"angular={config.max_angular_velocity:.3f}rad/s, "
-            f"tracking_tau={config.velocity_tracking_tau_s:.3f}s, "
-            f"target_alpha={config.target_smoothing_alpha:.2f}, "
-            f"velocity_alpha={config.velocity_smoothing:.2f}",
-            flush=True,
-        )
-        print(
-            "Gamepad control: "
-            f"rate={config.gamepad_control_rate:.0f}Hz, "
-            f"xy={config.gamepad_xy_speed:.3f}m/s, z={config.gamepad_z_speed:.3f}m/s, "
-            f"position_gain={config.gamepad_position_gain:.1f}",
-            flush=True,
-        )
+        # One deadline and callback own input, acceptance, submission and recording.
+        # Franky's native impedance loop continues independently between targets.
+        self.create_timer(1.0 / config.fps, self._tick)
+        print(f"Franky TCP control: single {config.fps} Hz loop; "
+              f"xy={config.gamepad_xy_speed:.3f}m/s, z={config.gamepad_z_speed:.3f}m/s", flush=True)
         print(f"Rollout collector ready; dataset={config.dataset_root}", flush=True)
 
     def _tool_definition(self):
-        if self.config.backend == 'franky':
-            deadline = time.monotonic() + 30
-            while time.monotonic() < deadline:
-                states = self._worker_client.states() if self._worker_client else {}
-                if all(arm.name in states for arm in self.config.arms):
-                    return {arm.name: {
-                                       'position': np.asarray(states[arm.name].flange_to_tcp_pose[:3]).tolist(),
-                                       'rotation': Rotation.from_quat(states[arm.name].flange_to_tcp_pose[3:]).as_matrix().tolist(),
-                                       'base': arm.base_link, 'tip': arm.tip_link}
-                            for arm in self.config.arms}
-                time.sleep(.05)
-            raise TimeoutError('Franky worker did not publish an initial state')
         deadline = time.monotonic() + 30
-        while any(f'{a.name}.{field}' not in self._latest for a in self.config.arms
-                  for field in ('robot_state', 'measured_joint', 'gripper_state')):
-            if time.monotonic() > deadline:
-                raise TimeoutError('measured robot, joint and gripper states required before controller initialization')
-            rclpy.spin_once(self, timeout_sec=.1)
-        tool = {}
-        for arm in self.config.arms:
-            position, rotation = schema.pose_from_stamped(self._latest[f'{arm.name}.robot_state'][1].f_t_ee)
-            tool[arm.name] = {'position': position.tolist(), 'rotation': rotation.tolist(),
-                              'base': arm.base_link, 'tip': arm.tip_link}
-        return tool
+        while time.monotonic() < deadline:
+            states = self._worker_client.states() if self._worker_client else {}
+            if all(arm.name in states for arm in self.config.arms):
+                return {arm.name: {
+                                   'position': np.asarray(states[arm.name].flange_to_tcp_pose[:3]).tolist(),
+                                   'rotation': Rotation.from_quat(states[arm.name].flange_to_tcp_pose[3:]).as_matrix().tolist(),
+                                   'base': arm.base_link, 'tip': arm.tip_link}
+                        for arm in self.config.arms}
+            time.sleep(.05)
+        raise TimeoutError('Franky worker did not publish an initial state')
 
     def _validate_policy_contract(self) -> None:
         contract = self.policy_client.contract
@@ -547,82 +504,26 @@ class RolloutCollector(Node):
         if mismatches:
             raise ValueError("policy rollout contract mismatch: " + "; ".join(mismatches))
 
-    def _controller_parameters(self):
-        names = ['k_gains', 'd_gains', 'k_alpha', 'gello_deadband', 'gello_filter_alpha',
-                 'initial_alignment_speed_factor', 'max_gello_velocity', 'max_delta_tau_per_ms']
-        result = {}
-        for arm in self.config.arms:
-            for node, keys in [(f'/{arm.name}/joint_impedance_controller', names),
-                               (f'/{arm.name}/controller_manager', ['update_rate'])]:
-                client = self.create_client(GetParameters, node+'/get_parameters')
-                if not client.wait_for_service(timeout_sec=30):
-                    raise RuntimeError(f'effective controller parameters unavailable: {node}')
-                request = GetParameters.Request()
-                request.names = keys
-                future = client.call_async(request)
-                rclpy.spin_until_future_complete(self, future, timeout_sec=30)
-                response = future.result()
-                if response is None or len(response.values) != len(keys):
-                    raise ValueError('incomplete effective controller parameters')
-                values = {k: parameter_value_to_python(v) for k, v in zip(keys, response.values)}
-                if any(v is None for v in values.values()):
-                    raise ValueError('controller parameter is undeclared')
-                if 'update_rate' in values and values['update_rate'] != 1000:
-                    raise ValueError('controller manager must run at 1000 Hz')
-                result[node] = values
-                self.destroy_client(client)
-        return result
 
-    def _parameter_changed(self, event):
-        controllers = self._effective_metadata['effective_controller_parameters']
-        watched = set(controllers) | {a.robot_state_publisher.rstrip('/') for a in self.config.arms}
-        if event.node not in watched:
-            return
-        expected = controllers.get(event.node, {})
-        for parameter in (*event.changed_parameters, *event.deleted_parameters, *event.new_parameters):
-            if parameter.name == 'robot_description' or (parameter.name in expected and
-                    parameter_value_to_python(parameter.value) != expected[parameter.name]):
-                self._latch_fault(RuntimeError('effective execution parameters changed; start a new session'))
-                return
 
     def _load_kinematic_model(self, arm: ArmConfig):
-        if self.config.backend == 'franky':
-            if os.environ.get('FRANKA_URDF'):
-                # An explicit model must exist and match the configured links;
-                # never substitute a different robot model on configuration error.
-                description = Path(os.environ['FRANKA_URDF']).expanduser().read_text(encoding='utf-8')
-            else:
-                import xacro
-                from ament_index_python.packages import get_package_share_directory
-                source = Path(get_package_share_directory('franka_description')) / 'robots/fr3/fr3.urdf.xacro'
-                # Expand the installed description offline, with the same arm
-                # names as the ROS configuration but without a control plugin.
-                description = xacro.process_file(str(source), mappings={
-                    'hand': 'false', 'arm_prefix': arm.name, 'ros2_control': 'false',
-                }).toxml()
-            model = build_kinematic_model(description, arm.base_link, arm.tip_link,
-                                          self.config.joint_limit_margin)
-            self._kinematics_identity[arm.name] = fingerprint(description)
-            return model
-        service_name = f"{arm.robot_state_publisher.rstrip('/')}/get_parameters"
-        client = self.create_client(GetParameters, service_name)
-        if not client.wait_for_service(timeout_sec=30.0):
-            raise RuntimeError(f"parameter service unavailable: {service_name}")
-        request = GetParameters.Request()
-        request.names = ["robot_description"]
-        future = client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=30.0)
-        response = future.result()
-        if response is None or not response.values:
-            raise RuntimeError(f"failed to read robot_description from {service_name}")
-        description = parameter_value_to_python(response.values[0])
+        if os.environ.get('FRANKA_URDF'):
+            # An explicit model must exist and match the configured links;
+            # never substitute a different robot model on configuration error.
+            description = Path(os.environ['FRANKA_URDF']).expanduser().read_text(encoding='utf-8')
+        else:
+            import xacro
+            from ament_index_python.packages import get_package_share_directory
+            source = Path(get_package_share_directory('franka_description')) / 'robots/fr3/fr3.urdf.xacro'
+            # Expand the installed description offline, with the same arm
+            # names as the ROS configuration but without a control plugin.
+            description = xacro.process_file(str(source), mappings={
+                'hand': 'false', 'arm_prefix': arm.name, 'ros2_control': 'false',
+            }).toxml()
+        model = build_kinematic_model(description, arm.base_link, arm.tip_link,
+                                      self.config.joint_limit_margin)
         self._kinematics_identity[arm.name] = fingerprint(description)
-        return build_kinematic_model(
-            description,
-            arm.base_link,
-            arm.tip_link,
-            self.config.joint_limit_margin,
-        )
+        return model
 
     def _setup_ros_io(self) -> None:
         qos = QoSProfile(
@@ -630,8 +531,6 @@ class RolloutCollector(Node):
             depth=10,
             reliability=ReliabilityPolicy.BEST_EFFORT,
         )
-        self._reset_publishers = {}
-        self._joint_publishers = {}
         self._gripper_publishers = {}
         self._gripper_drive_publishers = {}
         self._gripper_speed_publishers = {}
@@ -639,29 +538,16 @@ class RolloutCollector(Node):
         self._subscription_handles = []
         for arm in self.config.arms:
             prefix = arm.name
-            if self.config.backend != 'franky':
-                self._reset_publishers[prefix] = self.create_publisher(UInt64, f"/{prefix}/teleop/reset", 10)
-                self._subscription_handles.append(self.create_subscription(
-                    JointState, f"/{prefix}/teleop/controller_state",
-                    lambda msg, name=prefix: self._controller_ack(name, msg), 10))
             subscriptions = (
                 (JointState, arm.gripper_state_topic, f"{prefix}.gripper_state"),
                 (Joy, arm.gamepad.joy_topic, f"{prefix}.gamepad"),
                 (JointState, f"/{prefix}/gello/joint_states", f"{prefix}.gello_joint"),
             )
-            if self.config.backend != 'franky':
-                subscriptions = ((FrankaRobotState, arm.robot_state_topic, f"{prefix}.robot_state"),
-                                 (JointState, arm.measured_joint_topic, f"{prefix}.measured_joint"),
-                                 *subscriptions)
             for message_type, topic, key in subscriptions:
                 self._subscription_handles.append(
                     self.create_subscription(message_type, topic, self._callback(key),
                                              QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
                                              if key.endswith('.gello_joint') else qos)
-                )
-            if self.config.backend != 'franky':
-                self._joint_publishers[prefix] = self.create_publisher(
-                    JointState, arm.command_joint_topic, 10
                 )
             self._gripper_publishers[prefix] = self.create_publisher(
                 Float32, arm.command_gripper_topic, 10
@@ -736,7 +622,7 @@ class RolloutCollector(Node):
         self._store_latest(f"camera.{role}", prepared, timestamp_ns)
 
     def _snapshot(
-        self, *, raise_on_invalid: bool = False
+        self, *, raise_on_invalid: bool = False, cameras: bool = True
     ) -> tuple[dict[str, object], dict[str, np.ndarray]] | None:
         now_ns = time.monotonic_ns()
         maximum_age_ns = int(self.config.sync_tolerance_ms * 1_000_000)
@@ -749,7 +635,8 @@ class RolloutCollector(Node):
                     f"{arm.name}.gripper_state",
                 )
             )
-        required.extend(f"camera.{camera.name}" for camera in self.config.cameras)
+        if cameras:
+            required.extend(f"camera.{camera.name}" for camera in self.config.cameras)
         values: dict[str, object] = {}
         timestamps: list[int] = []
         for key in required:
@@ -779,7 +666,7 @@ class RolloutCollector(Node):
             return None
         images = {
             camera.feature_key: np.asarray(values[f"camera.{camera.name}"])
-            for camera in self.config.cameras
+            for camera in self.config.cameras if cameras
         }
         expected_shape = (*self.config.image_size, 3)
         for key, image in images.items():
@@ -867,9 +754,12 @@ class RolloutCollector(Node):
             while len(history) > 16:
                 history.pop(next(iter(history)))
             self._compliance_requests = history
+            self._pending_submission = None
+            self._last_target_applied_ns = None
+            if self._recording:
+                self._record_gap('compliance update')
             self._pending_worker_targets.clear()
             self._input_action = None
-            self._compliance_resume_after = self.coordinator.command_id
             try:
                 self._worker_client.compliance(self._worker_session_id, self.coordinator.generation, request_id, values)
             except Exception as error:
@@ -1025,61 +915,37 @@ class RolloutCollector(Node):
                 self._measured_joints(arm, joint[1]), _gripper_open_fraction(gripper[1], arm.gripper_joint_name),
                 p, r, min(joint[0], robot[0], gripper[0])))
 
-    def _controller_ack(self, arm, message):
-        with self._lock:
-            if not hasattr(self, 'coordinator'):
-                return
-            try:
-                generation, command_id, fault = controller_identity(message)
-                if generation != self.coordinator.generation:
-                    return
-                if fault:
-                    raise RuntimeError(f'{arm} controller command watchdog fault')
-                self._observe_control()
-                self.coordinator.acknowledge(arm, int(generation), int(command_id),
-                                             message.position, time.monotonic_ns())
-            except (ValueError, RuntimeError) as error:
-                self._latch_fault(error)
 
     def _request_controller_reset(self, generation):
-        if self._worker_client is not None:
-            if self.coordinator.mode == 'fault':
-                self._worker_client.stop(self._worker_session_id, generation)
-            else:
-                self._worker_client.reset(self._worker_session_id, generation)
-            return
-        for publisher in self._reset_publishers.values():
-            message = UInt64()
-            message.data = generation
-            publisher.publish(message)
+        if self.coordinator.mode == 'fault' or self.coordinator._pending_owner is None:
+            request_id = self._worker_client.stop(self._worker_session_id, generation)
+        else:
+            request_id = self._worker_client.reset(self._worker_session_id, generation)
+        self._pending_lifecycle = request_id
 
     def _coordinated_publish(self, name, target, gripper, generation, command_id):
         arm = next(a for a in self.config.arms if a.name == name)
-        if self._worker_client is not None:
-            # ControlCoordinator calls this once per arm. Franky IPC targets
-            # are an atomic multi-arm packet so both trackers receive the
-            # same command sequence. Keep the per-arm gripper path below.
-            key = (int(generation), int(command_id))
-            bucket = self._pending_worker_targets.setdefault(key, {})
-            bucket[name] = {'pose': np.asarray(target, dtype=float).tolist()}
-            expected = {configured.name for configured in self.config.arms}
-            if set(bucket) == expected:
-                self._publish_sequence += 1
-                self._worker_client.target(
-                    self._worker_session_id, generation, self._publish_sequence,
-                    bucket, time.monotonic_ns())
-                self._pending_worker_targets.pop(key, None)
-                # A failed or abandoned control boundary must not retain old
-                # arm targets indefinitely.
-                for stale in tuple(self._pending_worker_targets):
-                    if stale[0] != generation or stale[1] < command_id:
-                        self._pending_worker_targets.pop(stale, None)
-        else:
+        # ControlCoordinator calls this once per arm. Franky IPC targets
+        # are one multi-arm packet so both trackers receive the
+        # same command sequence. Keep the per-arm gripper path below.
+        key = (int(generation), int(command_id))
+        bucket = self._pending_worker_targets.setdefault(key, {})
+        bucket[name] = {'pose': np.asarray(target, dtype=float).tolist()}
+        expected = {configured.name for configured in self.config.arms}
+        if set(bucket) == expected:
             self._publish_sequence += 1
-            message = joint_command(self.servos[name].model.joint_names, target,
-                                    generation, command_id, self._publish_sequence,
-                                    self.get_clock().now().to_msg())
-            self._joint_publishers[name].publish(message)
+            request_id = self._worker_client.target(
+                self._worker_session_id, generation, self._publish_sequence,
+                bucket, time.monotonic_ns(), slot_id=self._slot_id)
+            self._pending_submission = {'request_id': request_id, 'generation': generation,
+                                        'sequence': self._publish_sequence, 'slot_id': self._slot_id,
+                                        'started_ns': time.monotonic_ns(), 'frame': None}
+            self._pending_worker_targets.pop(key, None)
+            # A failed or abandoned control boundary must not retain old
+            # arm targets indefinitely.
+            for stale in tuple(self._pending_worker_targets):
+                if stale[0] != generation or stale[1] < command_id:
+                    self._pending_worker_targets.pop(stale, None)
         if self.coordinator.owner != 'pose' and self._last_gripper_goal.get(name) != gripper:
             self._send_gripper_goal(arm, gripper)
             self._last_gripper_goal[name] = gripper
@@ -1088,7 +954,10 @@ class RolloutCollector(Node):
         self._gripper_publishers[name].publish(goal)
 
     def _control_boundary(self, owner=None, *, fault=False, reason='control boundary', execution_state=None):
-        self._compliance_resume_after = None
+        self._pending_submission = None
+        self._pending_lifecycle = None
+        self._last_target_applied_ns = None
+        self._pose_action = None
         if self._pending_compliance is not None:
             self._compliance_result.update(status='cancelled', error=reason)
             self._pending_compliance = None
@@ -1111,7 +980,6 @@ class RolloutCollector(Node):
         self._last_command_snapshot = None
         self._input_action = None
         self._last_gripper_goal.clear()
-        self._awaiting_record = None
         if self._pending_frame is not None and self._journal is not None:
             try:
                 self._journal_frame(self._pending_frame)
@@ -1121,14 +989,41 @@ class RolloutCollector(Node):
                 self._fault_reason = str(error)
         self._segment_id += 1
 
+    def _consume_submission(self):
+        pending = self._pending_submission
+        if pending is None:
+            return
+        result = self._worker_client.result(pending['request_id'])
+        if result is None:
+            if time.monotonic_ns()-pending['started_ns'] >= self.config.control_discontinuity_timeout_s*1e9:
+                raise RuntimeError('Franky target acknowledgement timed out')
+            return
+        self._pending_submission = None
+        if pending['generation'] != self.coordinator.generation:
+            return
+        if (result.get('request_status') != 'applied' or result.get('fault') or result.get('error')
+                or result.get('session_id') != self._worker_session_id
+                or result.get('request_id') != pending['request_id']
+                or result.get('generation') != pending['generation']
+                or result.get('sequence') != pending['sequence'] or result.get('slot_id') != pending['slot_id']):
+            raise RuntimeError(result.get('error') or result.get('fault') or 'target acknowledgement rejected')
+        self._last_target_applied_ns = result['applied_at_ns']
+        if self._journal is not None:
+            self._journal_event(('target_applied', pending['generation'], pending['sequence'],
+                                 pending['slot_id'], result['applied_at_ns'], result['references']))
+        if pending['frame'] is not None and self._recording:
+            raw, values, images, observed, sensors = pending['frame']
+            self._record_frame(raw, values, images, observed, sensor_frames=sensors,
+                               slot_id=pending['slot_id'], context=pending['context'])
+
+    def _record_gap(self, reason):
+        self._complete_interval(time.monotonic_ns(), observation_valid=False)
+        self._segment_id += 1
+        self._skip_reasons[reason] += 1
+
     def _track_control(self, dt):
         if self._pending_compliance is not None:
             return
-        resume_after = getattr(self, '_compliance_resume_after', None)
-        if resume_after is not None:
-            if self.coordinator.command_id <= resume_after:
-                return
-            self._compliance_resume_after = None
         command = self.coordinator.tick(dt)
         if command is None:
             return
@@ -1140,6 +1035,11 @@ class RolloutCollector(Node):
                   for arm, value in self.coordinator.submitted.items()},
             source=source, phase=(self._execution_record.phase if command.source == 'policy' and self._execution_record
                                   else float(self._phase == 'rl')), published_at_ns=time.monotonic_ns())
+        if self._pending_submission is not None:
+            self._pending_submission['context'] = {
+                'snapshot': self._last_command_snapshot, 'command': command,
+                'candidate': self.coordinator.candidate, 'submitted': self.coordinator.submitted,
+                'execution': self._execution_record, 'segment_id': self._segment_id}
         if self._journal is not None and self._recording:
             self._journal_event(('submission', command.generation, command.command_id,
                                  self._last_command_snapshot.published_at_ns,
@@ -1155,17 +1055,21 @@ class RolloutCollector(Node):
         values: dict[str, object],
         images: dict[str, np.ndarray],
         now_ns: int,
-        sensor_frames=None,
+        sensor_frames=None, slot_id=None, context=None,
     ) -> None:
-        snapshot = self._last_command_snapshot
-        if not self._recording or snapshot is None or self.coordinator.accepted is None:
+        slot_id = self._slot_id if slot_id is None else slot_id
+        context = context or {}
+        snapshot = context.get('snapshot', self._last_command_snapshot)
+        command = context.get('command', self.coordinator.accepted)
+        submitted = context.get('submitted', self.coordinator.submitted)
+        record = context.get('execution', self._execution_record)
+        if not self._recording or snapshot is None or command is None:
             return
         if self.demonstration and now_ns - snapshot.published_at_ns > int(self.config.control_discontinuity_timeout_s * 1e9):
             raise RuntimeError("demonstration command stream is stale")
-        action = self._actual_action(values, snapshot)
+        action = command.target.copy()
         self._states.append(raw_state)
         self._actions.append(action)
-        command = self.coordinator.accepted
         names = _prefixed_fields(self.config.arms, schema.STATE_FIELDS)
         measured = dict(zip(names, raw_state))
         for name in self.config.action_spec.measured_fields:
@@ -1173,27 +1077,26 @@ class RolloutCollector(Node):
                 measured[name] = float(np.clip(measured[name] / schema.ROBOTIQ_MAX_OPENING_WIDTH_M, 0, 1))
         self._annotations['observation.anchor'].append(self.config.action_spec.anchor_from_fields(measured))
         self._annotations['command.joint'].append(np.concatenate([
-            np.r_[self.coordinator.submitted[a.name]['joints'], self.coordinator.submitted[a.name]['gripper']]
+            np.r_[submitted[a.name]['joints'], submitted[a.name]['gripper']]
             for a in self.config.arms]))
         self._annotations['command.fk_tcp'].append(np.concatenate([
-            np.r_[self.coordinator.submitted[a.name]['fk_tcp'], self.coordinator.submitted[a.name]['gripper']]
+            np.r_[submitted[a.name]['fk_tcp'], submitted[a.name]['gripper']]
             for a in self.config.arms]))
         self._annotations['command.identity'].append([
             command.generation, command.command_id, command.accepted_at_ns, command.observed_at_ns])
         self._annotations['command.source'].append([snapshot.source])
-        record = self._execution_record
-        for name, value in {'slot_id': self._slot_id, 'submitted_at_ns': snapshot.published_at_ns,
+        for name, value in {'slot_id': slot_id, 'submitted_at_ns': snapshot.published_at_ns,
                             'supervision_valid': int(snapshot.source >= 0), 'observation_valid': 1,
                             'plan_version': record.plan_version if record else -1,
                             'action_index': record.action_index if record else -1,
                             'observed_at_ns': now_ns, 'command_at_ns': command.accepted_at_ns,
-                            'command_id': command.command_id, 'segment_id': self._segment_id,
+                            'command_id': command.command_id, 'segment_id': context.get('segment_id', self._segment_id),
                             'action_valid': 0, 'segment_terminal': 0, 'task_terminal': 0}.items():
             self._annotations['complementary_info.'+name].append([value])
         self._pending_frame = len(self._states)-1
         self._pending_images = {key: image.copy() for key, image in images.items()}
         self._annotations['action.candidate'].append(
-            self._execution_record.candidate if self._execution_record else self.coordinator.candidate)
+            record.candidate if record else context.get('candidate', self.coordinator.candidate))
         self._annotations['observation.sensor_frames'].append(
             self._sensor_frame_snapshot(now_ns) if sensor_frames is None else sensor_frames)
         diagnostics = [self.coordinator.diagnostics.get(a.name, {}) for a in self.config.arms]
@@ -1236,12 +1139,12 @@ class RolloutCollector(Node):
         self._frame_times.append(now_ns)
         if self._execution is not None and self._journal is not None:
             from dataclasses import replace
-            if self._execution_record is not None:
-                self._journal_event(('execution', replace(self._execution_record,
+            if record is not None:
+                self._journal_event(('execution', replace(record,
                     accepted_at_ns=command.accepted_at_ns, submitted_at_ns=snapshot.published_at_ns,
                     outcome='submitted', diagnostics=tuple((a.name, diagnostics[i].get('command_id', -1))
                         for i, a in enumerate(self.config.arms)))))
-            context = self._execution.execution_context(self._slot_id, self._annotations['observation.anchor'][-1])
+            context = self._execution.execution_context(slot_id, self._annotations['observation.anchor'][-1])
             if context is not None:
                 self._journal_event(('execution_context', context))
 
@@ -1257,7 +1160,6 @@ class RolloutCollector(Node):
         self._policy_action = None
         self._reset_servo_tracking()
         if not self._intervention and self._recording:
-            self._republish_arm_hold()
             self._stop_grippers_at_measured_position()
 
     def select_control_mode(self, mode: str, *, enabled: bool) -> None:
@@ -1395,13 +1297,14 @@ class RolloutCollector(Node):
                 self._compliance_result.update(status='cancelled', error='control generation changed')
             elif result is not None:
                 self._pending_compliance = None
-                if (result.get('request_id') != pending['request_id']
+                if (result.get('session_id') != self._worker_session_id
+                        or result.get('request_id') != pending['request_id']
                         or result.get('generation') != pending['generation']
                         or result.get('request_status') != 'applied' or result.get('error') or result.get('fault')):
                     error = result.get('error') or result.get('fault') or 'compliance acknowledgement rejected'
                 else:
                     self._compliance_result.update(status='applied', values=result.get('compliance', {}))
-                    self._last_gamepad_tick = time.monotonic()
+                    self._last_control_tick = time.monotonic()
                     if self._journal is not None:
                         self._journal_event(('compliance', pending['request_id'], pending['generation'],
                                              result.get('sequence'), time.monotonic_ns(),
@@ -1417,6 +1320,13 @@ class RolloutCollector(Node):
         if fault:
             self._latch_fault(RuntimeError(fault))
             return
+        lifecycle = (self._worker_client.result(self._pending_lifecycle)
+                     if self._pending_lifecycle else None)
+        lifecycle_ready = bool(lifecycle and lifecycle.get('request_status') == 'applied'
+            and lifecycle.get('request_id') == self._pending_lifecycle
+            and lifecycle.get('session_id') == self._worker_session_id
+            and lifecycle.get('generation') == self.coordinator.generation
+            and not lifecycle.get('fault') and not lifecycle.get('error'))
         for arm, state in self._worker_client.states().items():
             if (not state.state_valid or not 0 <= time.monotonic_ns() - state.observed_at_ns
                     <= self.config.gamepad_state_timeout_s * 1e9):
@@ -1426,7 +1336,8 @@ class RolloutCollector(Node):
             joint = message.measured_joint_state
             self._store_latest(f'{arm}.robot_state', message, state.observed_at_ns)
             self._store_latest(f'{arm}.measured_joint', joint, state.observed_at_ns)
-            if state.generation == self.coordinator.generation and not state.fault:
+            if (lifecycle_ready and state.generation == self.coordinator.generation and not state.fault
+                    and (self.coordinator._pending_owner is None or state.tracker_running)):
                 try:
                     self._observe_control()
                     self.coordinator.acknowledge(
@@ -1564,69 +1475,6 @@ class RolloutCollector(Node):
                 values[key] = value
         return values, None
 
-    def _publish_gamepad_hold(self) -> None:
-        if set(self._gamepad_targets) != {arm.name for arm in self.config.arms}:
-            return
-        self._publish_commands(
-            {
-                arm.name: (
-                    self._gamepad_targets[arm.name].joints,
-                    self._gamepad_targets[arm.name].gripper,
-                )
-                for arm in self.config.arms
-            },
-            COLLECTOR_HUMAN,
-            float(self._phase == "rl"),
-            publish_gripper=False,
-        )
-
-    def _gamepad_tick(self):
-        with self._lock:
-            if self._pending_storage_error is not None:
-                error, self._pending_storage_error = self._pending_storage_error, None
-                self._storage_stop(error)
-            now_ns = time.monotonic_ns()
-            if self._tracking_clock.poll(now_ns) is None:
-                return
-            now = now_ns / 1e9
-            dt = min(max(now-self._last_gamepad_tick, .001), .05)
-            self._last_gamepad_tick = now
-            try:
-                self._observe_control()
-                self._online_save_tick()
-                if getattr(self, '_recovery_pending', False) and self.coordinator.mode == 'standby':
-                    self._faulted, self._fault_reason, self._recovery_pending = False, None, False
-                if self.coordinator.mode == 'resetting':
-                    self.coordinator.tick(dt)
-                    return
-                if self._faulted or self._pending_compliance is not None:
-                    return
-                if not (self._recording or self._teleop_enabled):
-                    return
-                if self.coordinator.mode != 'active':
-                    return
-                if self._intervention:
-                    if self.config.input_source == 'gello':
-                        self._publish_gello()
-                    else:
-                        values, problem = self._gamepad_control_snapshot()
-                        if values is None:
-                            raise RuntimeError(f'input stream interrupted: {problem}')
-                        self._publish_gamepad(values, dt)
-                self._track_control(dt)
-                if self._awaiting_record is not None:
-                    raw, values, images, observed, command_id, sensors = self._awaiting_record
-                    if self.coordinator.command_id != command_id:
-                        raise RuntimeError('accepted slot was replaced before submission was recorded')
-                    self._record_frame(raw, values, images, observed, sensor_frames=sensors)
-                    self._awaiting_record = None
-            except (KeyError, ValueError, RuntimeError, np.linalg.LinAlgError) as error:
-                from vla.datacollection.episode_journal import StorageBlocked
-                if isinstance(error, StorageBlocked):
-                    self._storage_stop(error)
-                else:
-                    self._latch_fault(error)
-
     def _publish_gello(self):
         joints, grippers = {}, {}
         for arm in self.config.arms:
@@ -1643,10 +1491,6 @@ class RolloutCollector(Node):
         for arm in self.config.arms:
             self._publish_gripper_speed(arm, self.config.policy_gripper_speed)
         self._input_action = action
-
-    def _republish_arm_hold(self):
-        # Tracking and controller heartbeat run independently at 100 Hz.
-        return
 
     def _initialize_episode_hold(self, values):
         self._control_boundary(self.config.input_source if self._intervention else 'policy', reason='episode start')
@@ -1709,15 +1553,10 @@ class RolloutCollector(Node):
                 ("gripper state", arm.gripper_state_topic),
                 ("input", f"/{arm.name}/gello/joint_states" if self.config.input_source == 'gello' else arm.gamepad.joy_topic),
             ]
-            if self.config.backend != 'franky':
-                required_publishers[:0] = [("robot state", arm.robot_state_topic),
-                                           ("measured joints", arm.measured_joint_topic)]
             for label, topic in required_publishers:
                 if self.count_publishers(topic) < 1:
                     problems.append(f"{arm.name} {label} has no publisher: {topic}")
             required_subscribers = [("gripper speed", arm.gripper_speed_topic)]
-            if self.config.backend != 'franky':
-                required_subscribers.insert(0, ("arm command", arm.command_joint_topic))
             for label, topic in required_subscribers:
                 if self.count_subscribers(topic) < 1:
                     problems.append(f"{arm.name} {label} has no controller subscriber: {topic}")
@@ -1748,6 +1587,10 @@ class RolloutCollector(Node):
             from vla.datacollection.episode_journal import freeze
             self._pending_events.append(freeze(('control_failure', self._slot_id,
                 self._execution_record, self.coordinator.partial_submission, str(error))))
+            if self._pending_submission:
+                pending = self._pending_submission
+                self._pending_events.append(freeze(('target_failure', pending['request_id'],
+                    pending['slot_id'], self._worker_client.result(pending['request_id']))))
         self._faulted = True
         self._teleop_enabled = False
         self._fault_reason = f"{type(error).__name__}: {error}"
@@ -1775,9 +1618,47 @@ class RolloutCollector(Node):
 
     def _tick(self) -> None:
         with self._lock:
-            if self._faulted or self._saving or self._storage_blocked:
+            now_ns = time.monotonic_ns()
+            slot = self._slot_clock.poll(now_ns)
+            if slot is None:
                 return
+            self._slot_id = slot
+            dt = min(max(now_ns / 1e9 - self._last_control_tick, .001), 1/self.config.fps)
+            self._last_control_tick = now_ns / 1e9
             try:
+                if self._pending_storage_error is not None:
+                    error, self._pending_storage_error = self._pending_storage_error, None
+                    self._storage_stop(error)
+                self._poll_worker_states()
+                if not self._faulted:
+                    self._consume_submission()
+                self._observe_control()
+                self._online_save_tick()
+                if getattr(self, '_recovery_pending', False) and self.coordinator.mode == 'standby':
+                    self._faulted, self._fault_reason, self._recovery_pending = False, None, False
+                if self.coordinator.mode == 'resetting':
+                    self.coordinator.tick(dt)
+                    return
+                if self._faulted or self._saving or self._storage_blocked or self._pending_compliance is not None:
+                    return
+                if self._pending_submission is not None or not self._worker_client.target_available:
+                    if self.coordinator.mode == 'active':
+                        self._record_gap('target acknowledgement pending')
+                    return
+                if (self._last_target_applied_ns is not None and self.coordinator.mode == 'active'
+                        and now_ns-self._last_target_applied_ns > self.config.control_discontinuity_timeout_s*1e9):
+                    raise RuntimeError('Franky target stream expired before next slot')
+                if self.coordinator.owner == 'pose':
+                    if not self._neutral_gamepads():
+                        self._control_boundary(reason='pose restore input cancelled')
+                        return
+                    if self._pose_action is not None:
+                        self.coordinator.accept(self._pose_action, source='pose',
+                                                generation=self.coordinator.generation, slot_id=slot)
+                        self._track_control(dt)
+                    return
+                if not (self._recording or self._teleop_enabled):
+                    return
                 if self._journal is not None:
                     self._journal.check()
                 self._drain_execution_events()
@@ -1786,34 +1667,31 @@ class RolloutCollector(Node):
                 failures = self._camera_failures()
                 if failures:
                     raise RuntimeError(f"RealSense capture failed: {failures}")
-                snapshot = self._snapshot(raise_on_invalid=self._recording or self._teleop_enabled)
+                snapshot = self._snapshot(raise_on_invalid=True, cameras=self._recording or not self._intervention)
                 if snapshot is None:
                     return
                 values, images = snapshot
                 self._validate_robot_health(values)
-                now_ns = time.monotonic_ns()
-                slot = self._slot_clock.poll(now_ns)
-                if slot is None:
-                    return
-                self._slot_id = slot
-                if self.demonstration and self._recording:
+                record_images = True
+                if self._recording:
                     base_ns = self._latest["camera.base"][0]
-                    previous = self._last_demo_images.get("base")
-                    if previous is not None and now_ns - previous > int(1.5e9 / self.config.fps):
-                        raise RuntimeError("demonstration camera interval exceeded 1.5 frame periods")
-                    if base_ns == previous:
-                        return
                     stamps = {camera.name: self._latest[f"camera.{camera.name}"][0] for camera in self.config.cameras}
-                    if any(stamps[name] <= old for name, old in self._last_demo_images.items()):
-                        return
-                    self._last_demo_images = stamps
+                    record_images = all(stamps[name] > old for name, old in self._last_demo_images.items())
+                    # Camera and control clocks need not be phase aligned. Do not
+                    # duplicate exposures, or skip a control target waiting for one.
+                    if record_images:
+                        self._last_demo_images = stamps
+                    else:
+                        self._record_gap('camera exposure reused')
                 raw_state = self._raw_state(values, now_ns)
                 if not (self._recording or self._teleop_enabled):
                     return
-                self._complete_interval(now_ns)
+                self._complete_interval(now_ns, observation_valid=record_images)
                 if self._pending_phase is not None:
-                    self._record_frame(raw_state, values, images, now_ns)
-                    if self._states:
+                    prior_count = len(self._states)
+                    if record_images:
+                        self._record_frame(raw_state, values, images, now_ns)
+                    if len(self._states) > prior_count:
                         self._annotations['complementary_info.segment_terminal'][-1] = [1]
                     self._phase = self._pending_phase
                     self._pending_phase = None
@@ -1826,8 +1704,10 @@ class RolloutCollector(Node):
                 if self._pending_finish is not None:
                     outcome = self._pending_finish
                     self._pending_finish = None
-                    self._record_frame(raw_state, values, images, now_ns)
-                    if self._states:
+                    prior_count = len(self._states)
+                    if record_images:
+                        self._record_frame(raw_state, values, images, now_ns)
+                    if len(self._states) > prior_count:
                         self._annotations['complementary_info.segment_terminal'][-1] = [int(self._phase == 'rl')]
                         self._annotations['complementary_info.task_terminal'][-1] = [1]
                     self._at_boundary = True
@@ -1836,22 +1716,29 @@ class RolloutCollector(Node):
                     finally:
                         self._at_boundary = False
                     return
-                if self._pending_compliance is not None:
-                    return
                 self._consume_policy_result()
                 previous = self.coordinator.command_id
                 if self._intervention:
-                    if self.coordinator.mode == 'active' and getattr(self, '_input_action', None) is not None:
+                    if self.coordinator.mode == 'active':
+                        if self.config.input_source == 'gello':
+                            self._publish_gello()
+                        else:
+                            inputs, problem = self._gamepad_control_snapshot()
+                            if inputs is None:
+                                raise RuntimeError(f'input stream interrupted: {problem}')
+                            self._publish_gamepad(inputs, dt)
                         self.coordinator.accept(self._input_action, source=self.config.input_source,
                                                 generation=self.coordinator.generation, slot_id=self._slot_id)
                 else:
-                    self._submit_policy(raw_state, images)
+                    if record_images:
+                        self._submit_policy(raw_state, images)
                     self._publish_policy(values, 1/self.config.fps)
                 if self.coordinator.command_id != previous:
-                    if self._awaiting_record is not None:
-                        raise RuntimeError('tracking missed an accepted execution slot')
-                    self._awaiting_record = (raw_state, values, images, now_ns, self.coordinator.command_id,
-                                             self._sensor_frame_snapshot(now_ns))
+                    self._track_control(dt)
+                    if record_images and self._recording:
+                        self._pending_submission['frame'] = (
+                            raw_state.copy(), dict(values), {key:image.copy() for key,image in images.items()},
+                            now_ns, self._sensor_frame_snapshot(now_ns))
             except (KeyError, ValueError, RuntimeError, np.linalg.LinAlgError) as error:
                 from vla.datacollection.episode_journal import StorageBlocked
                 if isinstance(error, StorageBlocked):
@@ -1860,14 +1747,14 @@ class RolloutCollector(Node):
                     self._skip_reasons[f"control error: {error}"] += 1
                     self._latch_fault(error)
 
-    def _complete_interval(self, now_ns):
+    def _complete_interval(self, now_ns, *, observation_valid=True):
         if self._pending_frame is None:
             return
         index = self._pending_frame
         observed = self._annotations['complementary_info.observed_at_ns'][index][0]
         command = self._annotations['complementary_info.command_at_ns'][index][0]
         elapsed = (now_ns-observed)/1e9
-        if .5/self.config.fps <= elapsed <= 1.5/self.config.fps and observed <= command < now_ns:
+        if observation_valid and .5/self.config.fps <= elapsed <= 1.5/self.config.fps and observed <= command < now_ns:
             self._annotations['complementary_info.action_valid'][index] = [1]
         else:
             self._segment_id += 1
@@ -2238,11 +2125,7 @@ class RolloutCollector(Node):
                     )
                     robot_state = self._latest[f"{arm.name}.robot_state"][1]
                     tool_position, tool_rotation = schema.pose_from_stamped(robot_state.f_t_ee)
-                    if self.config.backend == 'franky':
-                        position, rotation = schema.pose_from_stamped(robot_state.o_t_ee)
-                    else:
-                        position, rotation = self.servos[arm.name].forward_tcp(
-                            measured, tool_position, tool_rotation)
+                    position, rotation = schema.pose_from_stamped(robot_state.o_t_ee)
                     gripper = _gripper_open_fraction(
                         self._latest[f"{arm.name}.gripper_state"][1],
                         arm.gripper_joint_name,
@@ -2264,7 +2147,7 @@ class RolloutCollector(Node):
                 self._intervention = False
                 self._gamepad_targets = {}
                 self._restore_policy_gripper_speed()
-            self._last_gamepad_tick = time.monotonic()
+            self._last_control_tick = time.monotonic()
             self._last_gamepad_input_log = 0.0
             self._gamepad_stale_reported = False
             self._reset_servo_tracking()

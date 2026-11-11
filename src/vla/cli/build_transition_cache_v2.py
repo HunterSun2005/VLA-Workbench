@@ -225,7 +225,9 @@ def _encoded_to_transitions(
                      and row.get('collector_policy_id') == 0 for row in window[:-1]]
             ends = window_ends(valid, segments=[row['segment_id'] for row in window[:-1]],
                                slots=[row['slot_id'] for row in window[:-1]])
-            if ends[0] != len(valid) or not window[-1]['observation_valid']:
+            if (ends[0] != len(valid) or not window[-1]['observation_valid']
+                    or window[-1]['slot_id'] != window[-2]['slot_id']+1
+                    or window[-1]['segment_id'] != window[-2]['segment_id']):
                 continue
         current = encoded[frame]
         following = encoded[next_frame]

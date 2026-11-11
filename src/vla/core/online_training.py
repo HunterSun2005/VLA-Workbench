@@ -261,6 +261,8 @@ def _timed_critical_specs(annotations, start, stop, chunk_length, stride, fps):
         elapsed = (following["observed_at_ns"] - row["observed_at_ns"]) / 1e9
         if (
             following["segment_id"] != segment
+            or following["slot_id"] != row["slot_id"]+1
+            or not following["observation_valid"]
             or not MIN_STEP_PERIODS / fps <= elapsed <= MAX_STEP_PERIODS / fps
             or not row["observed_at_ns"] <= row["command_at_ns"] < following["observed_at_ns"]
         ):

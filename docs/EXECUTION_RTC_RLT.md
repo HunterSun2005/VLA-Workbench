@@ -17,12 +17,12 @@ Unix socket 使用 NumPy 数组协议 v2，magic 为 `VLARLT02`。旧 magic、�
 
 | 不可变对象 | 主要字段 |
 | --- | --- |
-| ExecutionContract | absolute ActionSpec、30/100 Hz、frame_stride、各策略 horizon、推理／保护预算、控制／URDF／TCP 指纹 |
+| ExecutionContract | absolute ActionSpec、30 Hz 接受与提交、frame_stride、各策略 horizon、推理／保护预算、控制／URDF／TCP 指纹 |
 | PlanRequest | session_id、episode_id、generation、request_id、observation_id、plan_version、model_version、contract_digest、start_slot、replace_slot、deadline_ns、observed_at_ns、anchor、prefix |
 | PlanResponse | 原样回显 PlanRequest、完整 absolute actions、逐动作 sources/phases、实际 vla_reference、state_vec 等上下文 |
 | ExecutionRecord | slot_id、generation、plan_version、action_index、candidate、accepted、source、phase、accepted_at_ns、submitted_at_ns、outcome、diagnostics |
 
-`FixedDeadline` 以同一单调时钟 epoch 计算整数截止时间：30 Hz 接受目标，100 Hz 跟踪。错过时隙只处理当前时隙，不补发历史动作；协调器要求唯一 slot_id，同一时隙幂等，倒序拒绝。C++ 1 kHz 关节阻抗、现有跟踪滤波和限速保持原有实现。
+`FixedDeadline` 以单调时钟计算整数截止时间：一个 30 Hz 回调顺序完成状态读取、人工候选更新、目标接受、提交和记录，不再通过第二个 100 Hz 时钟重复提交目标。错过时隙只处理当前时隙，不补发历史动作；协调器要求唯一 slot_id，同一时隙幂等，倒序拒绝。Franky C++ / libfranka 独立执行 1 kHz 笛卡尔阻抗闭环。worker 的目标步长仍是每次提交的上限，不随频率降低而自动放大；输入、状态、目标流超时仍锁存故障。
 
 默认 `inference_slots=4`、`installation_guard_slots=1`。模型间隔 r 下，最短冻结长度为 `ceil(5/r)`；替换边界对齐动作网格，并受 Actor 已锁定块末限制。d 由实际边界决定，响应提前到达不缩短它。启动时每种策略都必须满足 H ≥ 2d；自动模式发起请求时也按可能返回的最短 horizon 校验。不会自动扩大模型 horizon。
 
@@ -44,7 +44,7 @@ Unix socket 使用 NumPy 数组协议 v2，magic 为 `VLARLT02`。旧 magic、�
 
 接管、暂停、手动模式切换、结束及故障均撤销旧代次。普通 chunk 接续不切控制 segment；中断切段。双臂先整体校验，再顺序提交：一侧发布失败会保留部分提交记录并撤销双臂，**不声称物理原子性**。进程重启只恢复数据与训练，不恢复运动队列。
 
-部署支持启用后的未录制人工摆位，沿用 ROS 30 Hz 接受目标／100 Hz 跟踪和同一协调器，尚未开始回合时不创建 episode journal、不写入训练帧、不请求策略块。人工摆位后开始回合会撤销摆位代次并保持人工 owner，之后的人工帧按接管记录；切换策略才申请新策略块。未录制时归还策略先回待命，须再次启用并开始回合。Web 模式选择为显式、幂等请求；故障、存储阻塞、等待手动恢复、保存／训练处理中及控制器复位未确认时拒绝切换，选项本身不能恢复运动。仅选择下一控制来源与「启用控制」分离，模型协议中的模式仍只有原有策略值。
+部署支持启用后的未录制人工摆位，沿用 ROS 30 Hz 输入、接受和提交和同一协调器，尚未开始回合时不创建 episode journal、不写入训练帧、不请求策略块。人工摆位后开始回合会撤销摆位代次并保持人工 owner，之后的人工帧按接管记录；切换策略才申请新策略块。未录制时归还策略先回待命，须再次启用并开始回合。Web 模式选择为显式、幂等请求；故障、存储阻塞、等待手动恢复、保存／训练处理中及控制器复位未确认时拒绝切换，选项本身不能恢复运动。仅选择下一控制来源与「启用控制」分离，模型协议中的模式仍只有原有策略值。
 
 ## 记录、有效窗口和持久化
 
@@ -64,7 +64,7 @@ Unix socket 使用 NumPy 数组协议 v2，magic 为 `VLARLT02`。旧 magic、�
 
 损坏清单、数组或事件，以及媒体检查失败，会终止当前扫描并返回此前的有效前缀；`issues` 给出失败文件和原因。编码写入／结束与帧数检查默认超时 30 秒，最终拼接默认 120 秒。超时保留 staging，并允许停止运动后重试；具体恢复操作见 [工作流](WORKFLOWS.md#执行耗尽与保存恢复)。
 
-实际 TCP、URDF、Python 跟踪参数、C++ 控制器有效参数、执行预算和投影边界绑定契约。控制器要求 1000 Hz；运行中参数变化触发故障。训练与部署比较实际 recording source 和模型声明来源。RLToken 沿用 SFT 归一化并单独记录自己的训练数据指纹；AC 独立校验 Actor horizon。
+实际 TCP、URDF、Python 跟踪参数、C++ 控制器有效参数、执行预算和投影边界绑定契约。Franky 底层闭环设计频率为 1000 Hz；运行中阻抗变化必须通过已有请求确认流程并记录事件。训练与部署比较实际 recording source 和模型声明来源。RLToken 沿用 SFT 归一化并单独记录自己的训练数据指纹；AC 独立校验 Actor horizon。
 
 ## Replay、梯度与奖励
 
@@ -98,3 +98,11 @@ Replay 校验物理时间与折扣字段一致。窗口可重叠；训练额度�
 当前提交的复现命令、自动化报告和未验收范围统一见 [自动化验收](ACCEPTANCE.md)。保存重试、staging 检查与发布操作见 [工作流](WORKFLOWS.md#执行耗尽与保存恢复)。
 
 [首次验收快照](archive/EXECUTION_2026-11-07.md)保留当时的测试数量、十分钟 ROS mock 测量及产物位置，不代表后续提交已经验证。真实相机／GPU 并行负载、实机跟踪和任务成功率仍需单独验收；Actor 模型输出本身的轨迹连续性不在当前保证范围内。
+
+## 单个应用控制循环
+
+采集、部署和姿态恢复统一使用单个 30 Hz 回调，异步 IPC 最多一条在途目标，无待发目标队列。等待确认时冻结人工积分和记录，恢复后不补算；策略按当前真实时隙取动作。Franky 保持独立 1000 Hz 阻抗闭环，固定 wheel/libfranka 0.19.0。新会话只接受 Franky/TCP，旧独立 tracking rate 和 IK 执行参数明确报错。
+
+启用先准备全部 tracker；停止、故障、恢复后须显式启用。目标请求／流默认 100 ms、通信／状态 500 ms，健康查询不能代替目标确认。运行调参暂停目标，匹配请求确认才结束等待，代际变化使迟到确认失效。worker 通信失败有界关闭，不自动恢复运动。
+
+相机偶发缺帧跳过整条记录，连续过期超过 `sync_tolerance_ms` 才停控。提交时冻结数据，匹配 IPC v2 确认后记录；实际参考和应用时间写入审计。缺帧和 IPC 等待形成 slot／segment 缺口，训练和 Replay 不跨缺口。旧指纹的 checkpoint 需使用匹配的新数据训练，不做静默转换。详见 [动作契约](ROS_ACTION_CONTRACT.md)。

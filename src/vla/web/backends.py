@@ -65,8 +65,6 @@ class BaseBackend:
             args += ['--tasks', *rollout.tasks]
         if config.handover_path:
             args += ['--handover-path',config.handover_path]
-        if rollout.rtc_deployment_config is not None and config.policy_kind == 'rlt':
-            args += ['--rtc-deployment-config',str(rollout.rtc_deployment_config)]
         env = clean_environment(self.root, config.model_python)
         self.children.start('policy', interpreter_command(config.model_python,args), env)
         from vla_rollout_protocol import recv_packet, send_packet
@@ -295,12 +293,11 @@ class ROSBackend(BaseBackend):
             from .config import collection_camera_serials
             self.camera_serials = collection_camera_serials(config, self.hardware)
         rollout = self.rollout_config()
-        if rollout.backend == 'franky':
-            from vla.core.franky_runtime import check_worker
-            self._worker_python, self._worker_binding = check_worker(self.root, rollout.worker_python)
+        from vla.core.franky_runtime import check_worker
+        self._worker_python, self._worker_binding = check_worker(self.root, rollout.worker_python)
         from vla.core.hardware_lease import HardwareLease
         for arm in self.arms:
-            lease = HardwareLease(None if rollout.backend == 'franky' else self.hardware[f'{arm.upper()}_ROBOT_IP'],
+            lease = HardwareLease(None,
                                   self.hardware[f'{arm.upper()}_ROBOTIQ_PORT'])
             self.resources.callback(lease.close)
         self.resources.callback(self.children.close)
@@ -322,8 +319,7 @@ class ROSBackend(BaseBackend):
         if config.workflow == 'deploy' and config.policy_path:
             rollout = self.start_policy(rollout)
         self._worker_client = None
-        if rollout.backend == 'franky':
-            self._start_franky_worker(rollout)
+        self._start_franky_worker(rollout)
         # Both arm/gripper command routes go through managed coordinators, including GELLO.
         env = clean_environment(root,'/usr/bin/python3',ros=True)
         env.update(self.hardware, VLA_RUN_MODE='managed', CONTROL_OWNER='rollout', TELEOP_MODE='duo' if config.arms == 'dual' else 'single_left',
@@ -332,7 +328,7 @@ class ROSBackend(BaseBackend):
                    LOG_DIR=str(self.directory/'ros'), STATE_DIR=str(self.directory/'ros-state'), START_CAMERAS='0',
                    VLA_WORKER_SESSION_ID=self.directory.name,
                    VLA_ROLLOUT_CONFIG=str(self.config.default_config()),
-                   FRANKY_OWNER='1' if rollout.backend == 'franky' else '0')
+                   FRANKY_OWNER='1')
         self.children.start('hardware',['/bin/bash',str(resource('datacollection/start_teleop/start_teleop.sh'))],env)
         deadline = time.monotonic()+180
         while not (self.directory/'hardware.ready').exists():
@@ -389,7 +385,8 @@ class ROSBackend(BaseBackend):
         )
         from vla.control.franky.ipc import FrankyWorkerClient
         deadline = time.monotonic() + 30
-        client = FrankyWorkerClient(rollout.worker_socket_path, timeout_s=1.)
+        client = FrankyWorkerClient(rollout.worker_socket_path, timeout_s=rollout.gamepad_state_timeout_s,
+                                    target_timeout_s=rollout.control_discontinuity_timeout_s)
         self._worker_client = client
         while time.monotonic() < deadline:
             self.check_children()
@@ -463,6 +460,11 @@ class ROSBackend(BaseBackend):
         return self.collector_command(op, args)
 
     def tick(self):
+        client = getattr(self, '_worker_client', None)
+        if client is not None and client.transport_failed:
+            self.collector._latch_fault(RuntimeError(client.fault or 'Franky IPC unavailable'))
+            self._close_franky_worker()
+            raise RuntimeError('Franky worker communication failed; worker released, explicit new session required')
         node = self.collector
         if node._faulted or node._storage_blocked or node._waiting_resume or node._saving or node._processing:
             self.enabled = self._policy_armed = False

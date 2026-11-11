@@ -33,7 +33,7 @@ def main(argv=None):
     parser.add_argument('--config', type=Path)
     parser.add_argument('--arms', choices=['single_left', 'dual'], default='single_left')
     parser.add_argument('--source', choices=['gello', 'gamepad'])
-    parser.add_argument('--action-space', choices=['joint', 'tcp'])
+    parser.add_argument('--action-space', choices=['tcp'])
     parser.add_argument('--workflow', choices=['collect', 'deploy'], default='collect')
     parser.add_argument('--dataset-root', type=Path)
     parser.add_argument('--task')
@@ -75,6 +75,8 @@ def main(argv=None):
         from vla.actions import ActionSpec
         from vla.actions.metadata import checkpoint_contract
         spec = ActionSpec.from_dict(checkpoint_contract(config.policy_path)['action_spec'])
+        if spec.space != 'tcp':
+            raise ValueError('new sessions require Franky TCP checkpoints')
         if spec.arms != tuple(arm.name for arm in rollout.arms):
             raise ValueError('checkpoint arms do not match ROS configuration')
         config = replace(config, action_space=spec.space)

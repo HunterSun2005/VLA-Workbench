@@ -298,7 +298,7 @@ prepare_runtime_configs() {
   ARM_RUNTIME_CONFIG=arms.yaml
   GRIPPER_RUNTIME_CONFIG=grippers.yaml
 }
-bash() { :; }
+bash() { printf 'game_controller_node\n'; }
 start_task() { TASK_PIDS[$1]=fake; event "start ${TASK_NAMES[$1]}"; }
 task_is_alive() { [[ "$1" == fake ]]; }
 wait_for_action() { event "action $1"; }
@@ -316,7 +316,7 @@ shutdown_all
 trap - EXIT INT TERM
 '''
     env = {**os.environ, "TELEOP_MODE": mode, "CONTROL_OWNER": owner,
-           "CHECK_ONLY": check_only, "START_CAMERAS": "1",
+           "CHECK_ONLY": check_only, "START_CAMERAS": "1", "FRANKY_OWNER": "1",
            "SET_FULL_COLLISION_BEHAVIOR": "1"}
     result = subprocess.run(
         ["bash", "-c", script, "_", str(TELEOP_DIR / "start_teleop.sh")],
@@ -331,12 +331,11 @@ trap - EXIT INT TERM
     inputs = ([f"gello_{mode}_fine", "xbox_joy"] if owner == "teleop"
               else [f"{side}_rollout_gamepad" for side in sides])
     tasks = [*inputs, "camera_base", *[f"camera_{side}_wrist" for side in sides],
-             f"robotiq_{mode}", f"fr3_{mode}_controllers"]
-    expected = [f"start {task}" for task in tasks[:-1]]
+             f"robotiq_{mode}"]
+    expected = [f"start {task}" for task in tasks]
     expected += [f"action /{side}/gripper/robotiq_gripper_controller/gripper_cmd"
                  for side in sides]
     expected += [f"speed {side}" for side in (["left"] if owner == "teleop" else sides)]
-    expected += [f"start {tasks[-1]}", *[f"collision {side}" for side in sides]]
     if owner == "teleop":
         tasks.append("left_fine_teleop")
         expected += ["start left_fine_teleop", "service /left/left_fine_teleop/set_fine_mode"]

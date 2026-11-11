@@ -163,6 +163,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
     # Production now requires an explicit, ready connection. These collector
     # tests fake only IPC; real-wheel/process tests cover the transport itself.
     original_init = cls.__init__
+    production_publish = cls._coordinated_publish
     from vla.control.franky.ipc import WorkerState
     binding = {'franky': 'test', 'libfranka': '0.19.0', 'numpy': np.__version__,
                'binding_sha256': 'a'*64, 'tracker_sha256': 'b'*64,
@@ -170,17 +171,28 @@ def collector(ros_module, monkeypatch, tmp_path, request):
     def initialize(self, config, **kwargs):
         states = {a.name: WorkerState(a.name, time.monotonic_ns(), (0., 0., 0., 0., 0., 0., 1.),
                                     (0.,)*7, (0.,)*7) for a in config.arms}
-        client = SimpleNamespace(fault=None, states=lambda: states, close=lambda: None,
+        client = SimpleNamespace(fault=None, target_available=True, result=lambda key:self._test_receipts.get(key), states=lambda: states, close=lambda: None,
             request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 3},
             compliance_values=lambda: config.franky_compliance)
+        self._test_receipts = {}
+        self._production_publish = production_publish.__get__(self, cls)
         original_init(self, config, worker_client=client, worker_session_id='collector-test', **kwargs)
     monkeypatch.setattr(cls, '__init__', initialize)
-    for name in ("_setup_ros_io", "_start_cameras", "_stop_grippers_at_measured_position"):
+    for name in ("_setup_ros_io", "_start_cameras", "_stop_grippers_at_measured_position", "_poll_worker_states"):
         monkeypatch.setattr(cls, name, lambda self: None)
-    monkeypatch.setattr(cls, "_controller_parameters", lambda self: {})
     monkeypatch.setattr(cls, "_load_kinematic_model", lambda self, arm: None)
     monkeypatch.setattr(cls, "_preflight_problems", lambda self: [])
-    monkeypatch.setattr(cls, "_coordinated_publish", lambda *args, **kwargs: None)
+    def publish(self, name, target, gripper, generation, command_id):
+        if name != self.config.arms[-1].name:
+            return
+        key = str(command_id)
+        stamp = module.time.monotonic_ns()
+        self._pending_submission = dict(request_id=key, generation=generation,
+            sequence=command_id, slot_id=self._slot_id, started_ns=stamp, frame=None)
+        self._test_receipts[key] = dict(request_status='applied', session_id='collector-test',
+            request_id=key, generation=generation, sequence=command_id, slot_id=self._slot_id,
+            applied_at_ns=stamp, references={a.name: [0,0,0,0,0,0,1] for a in self.config.arms})
+    monkeypatch.setattr(cls, "_coordinated_publish", publish)
     monkeypatch.setattr(cls, "_tool_definition", lambda self: {a.name: {'position': [0,0,0], 'rotation': np.eye(3).tolist()} for a in self.config.arms})
     def reset(self, generation):
         self._observe_control()
@@ -191,7 +203,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
     monkeypatch.setattr(cls, "_publish_gripper_speed", lambda *args: None)
     monkeypatch.setattr(cls, "_restore_policy_gripper_speed", lambda self: pytest.fail("demo used policy gripper"))
     monkeypatch.setattr(module, "AsyncPolicyClient", lambda *args: pytest.fail("demo opened policy socket"))
-    monkeypatch.setattr(module, "CartesianServo", lambda *args: SimpleNamespace(
+    monkeypatch.setattr(module, "ForwardKinematics", lambda *args: SimpleNamespace(
         reset_tracking=lambda: None, model=SimpleNamespace(joint_names=[f"j{i}" for i in range(7)], lower_limits=np.full(7,-3.), upper_limits=np.full(7,3.)),
         step=lambda *args: np.zeros(7),
         forward_tcp=lambda *args: (np.array([.4, 0., .3]), np.eye(3))))
@@ -240,8 +252,10 @@ def record_command(c, action, state, values, images):
     return command
 
 
-def test_demo_enable_record_pause_and_fault(collector):
+def test_demo_enable_record_pause_and_fault(collector, monkeypatch):
     c = collector
+    monkeypatch.setattr(c, '_validate_robot_health', lambda _: None)
+    monkeypatch.setattr(c, '_raw_state', lambda *args: np.zeros(100))
     c.start_episode()
     assert not c._recording
     c._latest["right.gamepad"][1].axes[1] = 1.
@@ -263,7 +277,7 @@ def test_demo_enable_record_pause_and_fault(collector):
     c._save_worker.join(30)  # Discard must finish before another explicit enable.
     c.enable_teleop()
     c._latest.pop("right.gamepad")
-    c._gamepad_tick()
+    c._tick()
     assert c._faulted and not c._teleop_enabled and not c._intervention
     c.enable_teleop()
     assert not c._teleop_enabled
@@ -274,8 +288,8 @@ def test_standby_never_publishes_unowned_commands(collector, monkeypatch):
     c.coordinator.publish = lambda *args: pytest.fail('standby submitted a command')
     c._joint_publishers = {arm.name: SimpleNamespace(
         publish=lambda _: pytest.fail('bypassed coordinator')) for arm in c.config.arms}
-    monkeypatch.setattr(c._tracking_clock, 'poll', lambda _: 0)
-    c._gamepad_tick()
+    monkeypatch.setattr(c._slot_clock, 'poll', lambda _: 0)
+    c._tick()
     assert c.coordinator.owner is None and not c._faulted
 
 
@@ -395,16 +409,14 @@ def test_demo_camera_poll_does_not_duplicate_images_and_faults_on_gap(collector,
     c._input_action = np.tile([.4,0,.3,1,0,0,0,1,0,1], 2)
     c.coordinator.clock = lambda: clock[0]
     c._tick()
-    c._gamepad_tick()
     c._tick()
-    assert recorded == [clock[0]]
+    assert recorded == []  # Submission is not a training label until ACK is consumed.
     clock[0] += 33_333_334
     for camera in c.config.cameras:
         c._latest[f"camera.{camera.name}"] = (clock[0], None)
     c._tick()
-    c._gamepad_tick()
-    assert len(recorded) == 2
-    clock[0] += 100_000_000
+    assert len(recorded) == 1
+    clock[0] += 133_333_334
     c._tick()
     assert c._faulted and not c._recording and not c._teleop_enabled
 
@@ -571,3 +583,192 @@ def test_stopped_collector_recovers_only_durable_prefix(collector, damage):
     np.testing.assert_allclose(np.stack(frame['action']), np.tile(target,(expected,1)))
     assert recover_episode(c.config.dataset_root,staging,outcome='success')['episode_index'] == 0
     assert not c._recording and not c._teleop_enabled
+
+
+def test_single_loop_accepts_submits_and_records_once_per_slot(collector, ros_module, monkeypatch):
+    from vla.control.execution import FixedDeadline
+    c = collector
+    c.enable_teleop()
+    c.start_episode()
+    now = [time.monotonic_ns()]
+    epoch = now[0]
+    c._slot_clock = FixedDeadline(epoch, 30)
+    c._last_control_tick = epoch/1e9 - 1/30
+    monkeypatch.setattr(ros_module, 'time', SimpleNamespace(
+        monotonic_ns=lambda:now[0], monotonic=lambda:now[0]/1e9))
+    c.coordinator.clock = lambda: now[0]
+    monkeypatch.setattr(c, '_validate_robot_health', lambda _: None)
+    monkeypatch.setattr(c, '_raw_state', lambda *args: np.zeros(100))
+    events = []
+    original = c.coordinator.publish
+    def publish(arm, pose, grip, gen, cid):
+        events.append(('submit', cid, arm, pose.copy()))
+        original(arm, pose, grip, gen, cid)
+    c.coordinator.publish = publish
+    monkeypatch.setattr(c, '_record_frame', lambda *a, **kw: events.append(('record', c.coordinator.command_id)))
+    # Call faster than the deadline: neither calls within a slot nor repeated
+    # poses may cause duplicate submissions. A recorded row follows both arms.
+    for index in range(120):
+        now[0] = epoch + index*1_000_000_000//120
+        c._latest = {key:(now[0], value) for key, (_, value) in c._latest.items()}
+        c._tick()
+    assert not c._faulted
+    submissions = [e for e in events if e[0] == 'submit']
+    rows = [e for e in events if e[0] == 'record']
+    assert len(submissions) == 60 and len(rows) == 29
+    for i in range(30):
+        a,b = submissions[2*i:2*i+2]
+        assert (a[:3],b[:3]) == (('submit', i+1, 'left'), ('submit', i+1, 'right'))
+    assert rows == [('record', i+1) for i in range(29)]
+    np.testing.assert_allclose(submissions[0][3], submissions[-2][3])  # neutral hold
+    c.pause_teleop()
+    count = len(events)
+    now[0] += 1_000_000_000
+    c._tick()
+    assert len(events) == count  # late callback cannot resume motion
+
+
+def test_reused_camera_exposure_does_not_repeat_record_or_skip_control(collector, ros_module, monkeypatch):
+    from vla.control.execution import FixedDeadline
+    c = collector
+    c.enable_teleop(); c.start_episode()
+    now = [time.monotonic_ns()]
+    c._slot_clock = FixedDeadline(now[0],30)
+    monkeypatch.setattr(ros_module, 'time', SimpleNamespace(
+        monotonic_ns=lambda:now[0], monotonic=lambda:now[0]/1e9))
+    c.coordinator.clock = lambda:now[0]
+    monkeypatch.setattr(c, '_validate_robot_health', lambda _:None)
+    monkeypatch.setattr(c, '_raw_state', lambda *a:np.zeros(100))
+    submitted, recorded = [], []
+    original = c.coordinator.publish
+    def publish(*a):
+        submitted.append(a)
+        original(*a)
+    c.coordinator.publish = publish
+    monkeypatch.setattr(c, '_record_frame', lambda *a,**kw:recorded.append(a))
+    for camera in c.config.cameras:
+        c._latest[f'camera.{camera.name}'] = (now[0],None)
+    c._tick()
+    now[0] += 33_333_334
+    c._tick()
+    assert not c._faulted and len(submitted)==4 and len(recorded)==1
+
+
+def clocked_control(c, module, monkeypatch):
+    from vla.control.execution import FixedDeadline
+    c.enable_teleop(); c.start_episode()
+    clock = [time.monotonic_ns()]
+    c._slot_clock = FixedDeadline(clock[0], 30)
+    c._last_control_tick = clock[0]/1e9-1/30
+    monkeypatch.setattr(module, 'time', SimpleNamespace(
+        monotonic_ns=lambda:clock[0], monotonic=lambda:clock[0]/1e9))
+    c.coordinator.clock = lambda:clock[0]
+    monkeypatch.setattr(c, '_validate_robot_health', lambda _:None)
+    raw = np.zeros(50*len(c.config.arms))
+    for offset in range(0,len(raw),50):
+        raw[offset:offset+10] = [.4,0,.3,1,0,0,0,1,0,.04]
+    monkeypatch.setattr(c, '_raw_state', lambda *a:raw.copy())
+    def tick():
+        c._latest = {key:(clock[0], value) for key, (_,value) in c._latest.items()}
+        c._tick()
+        clock[0] += 33_333_334
+    return clock, tick
+
+
+def test_ack_backpressure_skips_slots_without_catching_up_or_losing_pending_row(collector,ros_module,monkeypatch):
+    c=collector
+    clock,tick=clocked_control(c,ros_module,monkeypatch)
+    c._latest['left.gamepad'][1].axes[1]=1.
+    tick()
+    assert not c._states  # Local submission alone cannot create a record.
+    first=c.coordinator.accepted.target.copy()
+    key=c._pending_submission['request_id']
+    receipt=c._test_receipts.pop(key)
+    tick()
+    assert c.coordinator.command_id == 1 and not c._states
+    np.testing.assert_array_equal(c.coordinator.accepted.target, first)
+    c._test_receipts[key]=receipt
+    tick()
+    assert not c._faulted and c.coordinator.command_id == 3
+    assert c._annotations['complementary_info.slot_id'] == [[0]]
+    assert c._annotations['complementary_info.action_valid'] == [[0]]
+    delta=c.coordinator.accepted.target[:3]-first[:3]
+    assert np.linalg.norm(delta) <= c.config.gamepad_xy_speed/30+1e-8
+    tick()
+    assert c._annotations['complementary_info.slot_id'] == [[0],[2]]
+    assert c._annotations['complementary_info.segment_id'][0] != c._annotations['complementary_info.segment_id'][1]
+
+
+@pytest.mark.parametrize('failure', ['timeout','wrong_sequence','revoked'])
+def test_failed_or_revoked_target_never_becomes_training_action(collector,ros_module,monkeypatch,failure):
+    c=collector
+    clock,tick=clocked_control(c,ros_module,monkeypatch)
+    tick()
+    key=c._pending_submission['request_id']
+    if failure == 'timeout':
+        c._test_receipts.pop(key)
+        clock[0] += 100_000_001
+    elif failure == 'wrong_sequence':
+        c._test_receipts[key]['sequence'] += 1
+    else:
+        c._control_boundary(reason='operator stop')
+    tick()
+    assert not c._states and not c._actions
+    if failure != 'revoked':
+        assert c._faulted and c.coordinator.owner is None
+
+
+def test_finish_without_new_exposure_does_not_fabricate_terminal_row(collector,ros_module,monkeypatch):
+    c=collector
+    clock,tick=clocked_control(c,ros_module,monkeypatch)
+    tick()
+    c._pending_finish='success'
+    finished=[]
+    monkeypatch.setattr(c,'finish_episode',lambda outcome,**kw:finished.append(outcome))
+    # Keep exactly the original exposures while allowing the target ACK through.
+    c._tick()
+    assert finished == ['success']
+    assert len(c._states) == 1
+    assert c._annotations['complementary_info.task_terminal'] == [[0]]
+    assert c._annotations['complementary_info.action_valid'] == [[0]]
+
+
+def test_collector_single_loop_through_unix_ipc_to_real_tracker_fake_robot(collector,ros_module,monkeypatch):
+    from tests.control.test_franky_process import process_worker, wait_for
+    from vla.control.franky.ipc import FrankyWorkerClient
+    c=collector
+    c.enable_teleop(); c.start_episode()
+    fake=c._worker_client
+    original_publish=c.coordinator.publish
+    raw=np.zeros(50*len(c.config.arms))
+    for off in range(0,len(raw),50):
+        raw[off:off+10]=[.4,0,.3,1,0,0,0,1,0,.04]
+    monkeypatch.setattr(c,'_raw_state',lambda *a:raw.copy())
+    monkeypatch.setattr(c,'_validate_robot_health',lambda _:None)
+    monkeypatch.setattr(ros_module,'Float32',SimpleNamespace)
+    c._gripper_publishers={a.name:SimpleNamespace(publish=lambda _:None) for a in c.config.arms}
+    with process_worker(tuple(a.name for a in c.config.arms),target_timeout=.1,state_timeout=.5) as (root,_,__):
+        client=FrankyWorkerClient(root/'w.sock',session_id='s')
+        try:
+            reset=client.reset('s',c.coordinator.generation)
+            wait_for(lambda:client.result(reset))
+            c._worker_client=client; c._worker_session_id='s'
+            c.coordinator.publish=c._production_publish
+            for _ in range(6):
+                now=time.monotonic_ns()
+                c._latest={key:(now,value) for key,(_,value) in c._latest.items()}
+                c._tick()
+                time.sleep(1/30)
+            assert not c._faulted, c._fault_reason
+            assert len(c._states) >= 4
+            assert all(row==[1] for row in c._annotations['complementary_info.action_valid'][:-1])
+            assert len(set(row[0] for row in c._annotations['complementary_info.slot_id']))==len(c._states)
+            assert all(s.tracker_running for s in client.states().values())
+            stop=client.stop('s',c.coordinator.generation+1)
+            wait_for(lambda:client.result(stop))
+            assert not any(s.tracker_running for s in client.states().values())
+        finally:
+            client.close()
+            c._worker_client=fake; c._worker_session_id='collector-test'
+            c.coordinator.publish=original_publish
+            c._pending_submission=None

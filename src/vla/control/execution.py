@@ -34,11 +34,10 @@ class ExecutionContract:
     inference_slots: int = 4
     guard_slots: int = 1
     control_hz: int = 30
-    tracking_hz: int = 100
     version: int = 2
 
     def __post_init__(self):
-        if self.version != 2 or (self.control_hz, self.tracking_hz) != (30, 100):
+        if self.version != 2 or self.control_hz != 30:
             raise ValueError('unsupported execution contract')
         if self.action_spec.representation != 'absolute':
             raise ValueError('executor requires absolute targets')
@@ -199,7 +198,6 @@ class Executor:
     def __init__(self, contract, *, session_id, model_version, epoch_ns, project=None):
         self.contract, self.session_id, self.model_version = contract, session_id, model_version
         self.control_clock = FixedDeadline(epoch_ns, contract.control_hz)
-        self.tracking_clock = FixedDeadline(epoch_ns, contract.tracking_hz)
         self.state = ExecutionState.STANDBY
         self.generation = self.plan_version = self.request_id = 0
         self.episode_id = ''

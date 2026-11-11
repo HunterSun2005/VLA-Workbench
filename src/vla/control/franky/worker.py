@@ -166,6 +166,7 @@ class FrankyArm:
                 "external_joint_torque": tau_ext.tolist(), "target_joints": qd.tolist(),
                 "flange_to_tcp_pose": flange_pose.tolist(),
                 "desired_tcp_pose": desired_pose.tolist() if desired_pose is not None else [],
+                "reference_tcp_pose": self.target_pose.tolist() if self.target_pose is not None else [],
                 "force": force[:3].tolist(), "torque": force[3:].tolist(),
                 "generation": self.target_generation, "sequence": self.target_sequence,
                 "tracker_running": bool(self.tracker is not None and self._tracker_running()),
@@ -194,7 +195,7 @@ class FrankyArm:
                 self.fault = "Cartesian tracker stopped unexpectedly"
             raise RuntimeError(self.fault)
 
-    def _ensure_tracker(self) -> None:
+    def _start_tracker(self) -> None:
         self._check_tracker()
         if self.tracker is not None:
             return
@@ -219,7 +220,9 @@ class FrankyArm:
         self.target_pose = _affine_pose(self.robot.state.O_T_EE)
 
     def set_target(self, pose: list[float], generation: int, sequence: int) -> None:
-        self._ensure_tracker()
+        self._check_tracker()
+        if self.tracker is None:
+            raise RuntimeError("tracker is not armed; explicit reset required")
         pose_array = np.array(pose, dtype=np.float64, copy=True)
         pose_array[3:] /= np.linalg.norm(pose_array[3:])
         if self.target_pose is not None:
@@ -246,6 +249,7 @@ class FrankyArm:
             raise RuntimeError(self.fault)
         self.target_generation = generation
         self.target_sequence = -1
+        self._start_tracker()
 
     def stop(self, *, recover: bool = False) -> None:
         if self.tracker is not None:
@@ -284,6 +288,7 @@ class FrankyArm:
             self.stop()
             self.compliance = next_value
             if pose is not None:
+                self._start_tracker()
                 self.set_target(pose.tolist(), self.target_generation, self.target_sequence)
         else:
             self.compliance = next_value
@@ -309,7 +314,7 @@ class FrankyArm:
 
 class FrankyWorker:
     """One generation-fenced owner, with a watchdog independent of client traffic."""
-    IMPLEMENTATION_VERSION = 4
+    IMPLEMENTATION_VERSION = 5
 
     def __init__(self, arms, *, session_id, compliance=None, target_timeout_s=.1,
                  state_timeout_s=.5):
@@ -321,7 +326,7 @@ class FrankyWorker:
                                     compliance=Compliance.from_mapping({}, base))
                      for name, value in arms.items()}
         self._lock = threading.RLock()
-        self.generation = self.sequence = self.timestamp_ns = -1
+        self.generation = self.sequence = self.timestamp_ns = self.slot_id = -1
         self.fault = None
         self.binding_fingerprint = {}
         self.target_timeout_s, self.state_timeout_s = float(target_timeout_s), float(state_timeout_s)
@@ -408,6 +413,7 @@ class FrankyWorker:
             self._last_contact = time.monotonic()
             self._connected = True
             status = 'applied'
+            receipt = {}
             error = None
             try:
                 if kind == 'health':
@@ -419,6 +425,8 @@ class FrankyWorker:
                 elif kind == 'stop':
                     self._stop_all()
                     self.generation = generation
+                    for arm in self.arms.values():
+                        arm.target_generation, arm.target_sequence = generation, -1
                 elif kind == 'recover':
                     # join_motion may report the already-latched control error.
                     # Recovery is allowed only once all control threads stopped.
@@ -433,7 +441,7 @@ class FrankyWorker:
                         arm.update_compliance(self._compliance)
                     self.fault = None
                     self.generation = generation
-                    self.sequence = self.timestamp_ns = -1
+                    self.sequence = self.timestamp_ns = self.slot_id = -1
                 elif self.fault:
                     raise RuntimeError(f'explicit recovery required: {self.fault}')
                 elif kind == 'reset':
@@ -444,19 +452,27 @@ class FrankyWorker:
                         for arm in self.arms.values():
                             arm.reset(generation)
                         self.generation = generation
-                        self.sequence = self.timestamp_ns = -1
-                        self._armed = True
+                        self.sequence = self.timestamp_ns = self.slot_id = -1
+                        self._armed = self._streaming = True
+                        self._last_target = time.monotonic()
                 elif generation != self.generation:
                     raise ValueError('target/compliance generation has not been reset')
                 elif kind == 'target':
+                    slot = message.get('slot_id')
+                    if type(slot) is not int or slot < 0:
+                        raise ValueError('invalid target slot_id')
                     sequence, stamp = message.get('sequence'), message.get('timestamp_ns')
                     if type(sequence) is not int or sequence < 0 or type(stamp) is not int:
                         raise ValueError('invalid target sequence/timestamp')
                     if sequence <= self.sequence or stamp <= self.timestamp_ns:
                         status = 'ignored'
                     else:
+                        if slot <= self.slot_id:
+                            raise ValueError('expired or out of order target slot')
                         if not self._armed:
                             raise RuntimeError('worker requires a new reset before targets')
+                        if self._streaming and time.monotonic() - self._last_target > self.target_timeout_s:
+                            raise RuntimeError('Franky target stream expired')
                         age = (time.monotonic_ns() - stamp) / 1e9
                         if not 0 <= age <= self.target_timeout_s:
                             raise ValueError('stale or future Franky target')
@@ -465,11 +481,17 @@ class FrankyWorker:
                             raise ValueError('target must contain every configured Franky arm')
                         from .ipc import _validate_pose
                         poses = {name: _validate_pose(value['pose']) for name, value in targets.items()}
+                        receipt['partial_application'] = {}
                         for name, pose in poses.items():
                             self.arms[name].set_target(pose, generation, sequence)
-                        self.sequence, self.timestamp_ns = sequence, stamp
+                            receipt['partial_application'][name] = {
+                                'reference': self.arms[name].target_pose.tolist(),
+                                'applied_at_ns': time.monotonic_ns()}
+                        self.sequence, self.timestamp_ns, self.slot_id = sequence, stamp, slot
                         self._last_target = time.monotonic()
                         self._streaming = True
+                        receipt.update({'slot_id': slot, 'applied_at_ns': time.monotonic_ns(),
+                                   'references': {n: a.target_pose.tolist() for n, a in self.arms.items()}})
                 elif kind == 'compliance':
                     values = message.get('values', {})
                     next_value = Compliance.from_mapping(values, Compliance.from_mapping(self._compliance))
@@ -481,7 +503,7 @@ class FrankyWorker:
                 error = str(exc)
                 if kind != 'health':
                     self.latch_fault(f'{kind}: {error}')
-            response = {**self.snapshot(), 'request_id': key,
+            response = {**self.snapshot(), **receipt, 'request_id': key,
                         'request_status': 'failed' if error else status}
             if error:
                 response['error'] = error

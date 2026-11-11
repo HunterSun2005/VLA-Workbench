@@ -8,48 +8,34 @@
 
 Workbench 分为 **数据采集 → 模型训练 → 部署推理** 三个部分。采集和部署共用一套 ROS 控制系统，训练通过数据集和 checkpoint 与两端衔接。部署回合经持久回放进入在线 RLT，更新后的 checkpoint 再用于推理。
 
-![VLA Workbench 总览：数据采集、模型训练、部署推理与共享 ROS 控制](docs/diagrams/workbench.svg)
+```mermaid
+flowchart TD
+  G[Gamepad 实测工具轴积分 / GELLO FK] --> C[ROS 单个 30 Hz 控制循环]
+  M[模型进程：候选动作块] --> Q[ROS 唯一策略执行队列]
+  Q --> C
+  P[姿态库：登记恢复目标] --> C
+  C --> I[异步 Unix IPC：最多一条在途目标]
+  I --> W[独立 Franky worker]
+  W --> T[CartesianImpedanceTracker：1000 Hz 阻抗闭环]
+  W --> A[匹配目标确认 + 实测状态]
+  A --> C
+  C --> D[确认后记录：后台视频编码和持久化]
+```
 
-[查看 SVG 大图](docs/diagrams/workbench.svg) · [下载 / 编辑 draw.io 源文件](docs/diagrams/workbench.drawio)
+采集与部署只使用 **Franky + 绝对 TCP**，每臂 10D（位置、rot6d、绝对夹爪开度）。Gamepad、GELLO、策略和姿态恢复共用上述提交入口。ROS 保留输入、夹爪、相机和协调器；独立 Python 3.10 worker 使用固定 Franky wheel 与 libfranka 0.19.0，独占机械臂。模型进程不直接控制硬件。
 
-蓝色为控制命令，绿色为观测与记录，紫色为学习与模型；虚线表示可选更新或诊断链路。圆点表示共用主干的汇合或分叉，没有圆点的交叉不表示连接。共享数据通路按字段分流：记录器保存接受动作、实测状态与图像，模型读取所需观测，跟踪器读取关节状态；RealSense 图像直接来自 SDK。
+30 Hz 回调顺序检查状态和确认、生成候选、接受并非阻塞提交目标。IPC 未确认时跳过当前时隙，不积分、不接受、不生成该时隙记录；不排队积压目标，不补发历史动作。策略队列按真实时隙前进。Gamepad 松杆保持最后参考，Franky 的每次参考变化上限不随频率降低而放大。
 
-<details>
-<summary>局部图 A：RTC——推理与执行并行</summary>
+提交时冻结观察和接受动作，匹配 session、generation、sequence、request ID、slot 的成功确认后才进入记录流程。偶发相机缺帧跳过整行数据，持续过期超过 `sync_tolerance_ms` 才停控；缺口保留真实时隙和 segment，训练与 Replay 不跨缺口拼接。实际应用时间与 tracker 参考写入执行审计，不能用实测位姿替代 action。
 
-RTC（Real-Time Chunking）在当前动作块执行期间异步生成下一块，按请求时固定的承诺边界安装后缀并衔接 ROS 执行队列。每次请求锁存原始实测锚点，模型输出还原为绝对目标后入队；未执行前缀用于新请求时，必须按新锚点重新编码和归一化。推理速率不固定，ROS 目标接受为 30 Hz，稀疏目标按采样间隔保持。
-
-![RTC 详图：请求锚点、异步推理、前缀重编码与绝对动作队列](docs/diagrams/rtc.svg)
-
-[查看 RTC SVG 大图](docs/diagrams/rtc.svg) · [编辑源文件中的 RTC 页](docs/diagrams/workbench.drawio)
-
-</details>
-
-<details>
-<summary>局部图 B：ROS——目标跟踪与关节阻抗闭环</summary>
-
-示教与策略互斥拥有控制权，统一提交绝对 Joint／TCP 目标。关节路径直接提供关节目标，TCP 路径通过同一跟踪器与 IK；上层以 100 Hz 更新目标，C++ 关节阻抗控制器以 1000 Hz 根据位置误差和速度反馈生成力矩，并保留目标滤波、关节限速与力矩变化率保护。夹爪走独立的绝对开度通路。
-
-![ROS 详图：目标接受、Joint 与 TCP 路径、关节阻抗反馈及独立夹爪通路](docs/diagrams/impedance.svg)
-
-训练 action 在公共入口接受后、跟踪与滤波前记录；控制器接收确认及可用的滤波后目标作为独立诊断保存。停止／重置必须等待确认，旧代际推理结果不能重新启用运动。
-
-[查看 ROS 控制 SVG 大图](docs/diagrams/impedance.svg) · [编辑源文件中的 ROS Control 页](docs/diagrams/workbench.drawio)
-
-</details>
-
-检查架构时重点核对以下边界：
-
-- **动作与标签**：joint 为 8D／臂，TCP 为 10D／臂，双臂按左、右拼接。Parquet 始终保存绝对目标与每臂 50D 原始实测状态；`absolute`／`chunk_relative` 是模型表示。相对化在归一化之前进行，使用 chunk 起点实测锚点，旋转通过矩阵组合，夹爪始终是绝对开度。
-- **执行与控制权**：关节模式在公共关节入口记录；TCP 模式在公共 TCP 入口、平滑和 IK 之前记录。输入适配器与模型不能绕过协调器发布机械臂目标；接管、暂停、故障和回合边界使旧代际命令失效。目标接受为 30 Hz，上层跟踪为 100 Hz，C++ 关节阻抗控制为 1000 Hz。
-- **进程与训练**：模型与 Web 使用 Python 3.12，ROS 采集与上层控制使用系统 Python 3.10，通过本地协议交换观测和绝对目标。ROS 进程不加载模型或 Torch，模型进程不直接控制硬件。Web 管理采集和推理会话，在线训练仍由终端入口管理；在线更新须先持久化回合并取得控制器停止确认。
+启用时显式准备 tracker，暂停、接管、故障立即撤销旧代次。目标请求／目标流期限默认 100 ms，通信／状态期限 500 ms；健康查询不刷新目标流。停止、恢复后保持待命，重连和迟到确认不能恢复运动。详细契约见 [动作与记录](docs/ROS_ACTION_CONTRACT.md) 和 [执行闭环](docs/EXECUTION_RTC_RLT.md)。旧 ROS/IK 图保留在 [历史架构图](docs/diagrams/README.md)，不代表当前执行链路。
 
 | 架构职责                 | 主要实现位置                                                                                                                              | 检查入口                                                                                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | 动作契约、变换与统计     | [vla/actions](src/vla/actions/)                                                                                                           | [动作测试](tests/actions/)、[契约说明](docs/ROS_ACTION_CONTRACT.md)                                                |
 | 共用会话与 Web           | [ros_session.py](src/vla/cli/ros_session.py)、[web/backends.py](src/vla/web/backends.py)、[vla/web](src/vla/web/)                         | [Web 测试](tests/web/)、[终端测试](tests/rlt/test_terminal.py)                                                     |
 | 采集、输入适配与控制协调 | [collect_ros.py](src/vla/datacollection/franka_robotiq_rollout/collect_ros.py)、[vla/control/ros](src/vla/control/ros/)                   | [控制测试](tests/control/)、[模拟采集测试](tests/rlt/test_dual_gamepad_record.py)                                  |
-| ROS 实时执行与启动       | [关节阻抗控制器](ros_ws/src/franka_fr3_arm_controllers/)、[ROS 工作空间](ros_ws/)                                                         | [ROS 导入检查](scripts/check_ros.py)、[启动链测试](tests/rlt/test_teleop_entrypoints.py)                           |
+| 历史 ROS 验证与启动       | [关节阻抗控制器](ros_ws/src/franka_fr3_arm_controllers/)、[ROS 工作空间](ros_ws/)                                                         | [ROS 导入检查](scripts/check_ros.py)、[启动链测试](tests/rlt/test_teleop_entrypoints.py)                           |
 | 数据处理、模型与 RTC     | [processing.py](src/vla/datacollection/processing.py)、[LeRobot 适配层](src/vla/adapters/lerobot/)、[vla/deployment](src/vla/deployment/) | [数据处理测试](tests/rlt/test_dataset_processing.py)、[RTC 测试](tests/rlt/test_rlt_ac_rtc.py)                     |
 | 在线 RLT 与持久回放      | [online_training.py](src/vla/core/online_training.py)、[online_replay.py](src/vla/core/online_replay.py)                                  | [在线一致性测试](tests/rlt/test_online_consistency.py)、[稀疏动作时序测试](tests/rlt/test_sparse_action_timing.py) |
 
@@ -157,7 +143,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 `datasets/raw/` 存放人工原始采集，`sft/` 存放训练输入，`transitions/` 存放 transition cache，`rollouts/` 存放部署回合，`online/` 预留在线数据。目录骨架由 Git 管理，数据内容忽略。Web 自动预填相对输出路径，按采集配置调整；详见 [目录与命名说明](datasets/README.md)。
 
-完整原始状态为 **50D／臂、双臂 100D**，包含 TCP 位姿、夹爪实测开口、TCP 外力／外力矩估计、TCP 速度、关节位置／力矩／外部力矩估计／速度。`action` 按采集选择为 joint 8D／16D 或 TCP 10D／20D，始终是绝对目标。先保存完整状态，再按训练需求提取；旧 `_31d` 入口同样写完整 50D。旧数据仅作历史资料；采集、训练和部署新链路只接受 schema 5 及新模型契约，不提供旧资产转换。字段、单位及转换示例见 [采集格式说明](docs/DATA_COLLECTION_FORMAT.md)。
+完整原始状态为 **50D／臂、双臂 100D**，包含 TCP 位姿、夹爪实测开口、TCP 外力／外力矩估计、TCP 速度、关节位置／力矩／外部力矩估计／速度。当前 `action` 为 TCP 10D／20D，始终是绝对目标。先保存完整状态，再按训练需求提取；旧 `_31d` 入口同样写完整 50D。旧数据仅作历史资料；采集、训练和部署新链路只接受 schema 5 及新模型契约，不提供旧资产转换。字段、单位及转换示例见 [采集格式说明](docs/DATA_COLLECTION_FORMAT.md)。
 
 ## 训练与评估产物
 

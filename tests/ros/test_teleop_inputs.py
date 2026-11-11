@@ -132,10 +132,11 @@ def test_input_through_coordinator_to_real_tracker_fake_process(profile,source):
         c._publish_gamepad(values,.01)
         action=c._input_action
         if source=='gello':
-            c.coordinator.servos={name:NS(forward_tcp=lambda q,tp,tr:(np.array([.41,.02,.3]),np.eye(3))) for name in names}
+            c.coordinator.servos={name:NS(reset_tracking=lambda:None, forward_tcp=lambda q,tp,tr:(np.array([.41,.02,.3]),np.eye(3))) for name in names}
             action=c.coordinator.gello_target({n:np.zeros(7) for n in names},{n:.5 for n in names})
-        c.coordinator.accept(action,source=source,generation=gen,slot_id=0)
-        for _ in range(32):c.coordinator.tick(.01)
+        for slot in range(32):
+            c.coordinator.accept(action,source=source,generation=gen,slot_id=slot)
+            c.coordinator.tick(1/30)
         captures=[json.loads(line) for line in (root/'targets.jsonl').read_text().splitlines()]
         assert len(captures)==32*len(names)
         for index in range(len(names)):

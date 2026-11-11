@@ -593,21 +593,13 @@ def test_rollout_yaml_profiles_are_single_and_dual() -> None:
     assert single.cameras[1].serial == "346222073620"
     assert single.min_control_command_success_rate == pytest.approx(0.90)
     assert single.low_success_rate_samples == 3
-    assert single.rtc_deployment_config is None
     assert single.max_linear_velocity == pytest.approx(0.04)
     assert single.max_angular_velocity == pytest.approx(0.30)
-    assert single.velocity_tracking_tau_s == pytest.approx(0.15)
-    assert single.target_smoothing_alpha == pytest.approx(0.25)
-    assert single.velocity_smoothing == pytest.approx(0.30)
-    assert single.smooth_angular_velocity is True
     assert single.policy_timeout_s == pytest.approx(30.0)
     assert single.control_discontinuity_timeout_s == pytest.approx(0.1)
     assert single.joy_socket_path == Path("/tmp/vla_rollout_joy.sock")
-    assert single.gamepad_control_rate == pytest.approx(100.0)
     assert single.gamepad_joy_timeout_s == pytest.approx(0.20)
     assert single.gamepad_state_timeout_s == pytest.approx(0.50)
-    assert single.gamepad_position_gain == pytest.approx(8.0)
-    assert single.gamepad_orientation_gain == pytest.approx(3.0)
     assert single.gamepad_max_angular_speed == pytest.approx(0.30)
     assert single.gamepad_gripper_trigger_deadzone == pytest.approx(0.05)
     assert single.policy_gripper_speed == pytest.approx(1.0)
@@ -655,10 +647,10 @@ def test_rollout_yaml_profiles_are_single_and_dual() -> None:
 @pytest.mark.parametrize(
     ("mutation", "error"),
     [
-        (lambda raw: raw["dataset"].update(fps=20), "RTC deployment robot config"),
+        (lambda raw: raw["dataset"].update(fps=20), "removed ROS tracking settings|30 Hz"),
         (
             lambda raw: raw["arms"][0].update(workspace_min=[0.0, -0.45, 0.05]),
-            "RTC deployment robot config",
+            "removed ROS tracking settings|30 Hz",
         ),
     ],
 )
@@ -1063,3 +1055,20 @@ def test_merge_transition_caches_keeps_source_shards_immutable(tmp_path: Path) -
         ][0].item()
         == 1.0
     )
+
+
+@pytest.mark.parametrize('mutation', [
+    lambda raw:raw.update(backend='ros2'),
+    lambda raw:raw.update(action_space='joint'),
+    lambda raw:raw['control'].update(gamepad_control_rate=100),
+    lambda raw:raw['control'].update(max_joint_speed=.3),
+    lambda raw:raw['arms'][0].update(command_joint_topic='/teleop/joint_states'),
+])
+def test_new_sessions_reject_old_execution_settings(tmp_path,mutation):
+    source=Path(__file__).parents[2]/'src/vla/datacollection/franka_robotiq_rollout/configs/single_left.yaml'
+    raw=yaml.safe_load(source.read_text())
+    mutation(raw)
+    target=tmp_path/'rejected.yaml'
+    target.write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError,match='new sessions|removed'):
+        load_rollout_config(target)

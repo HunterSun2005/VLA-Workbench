@@ -24,16 +24,9 @@ control:
     gains_time_constant: 0.1
   sync_tolerance_ms: 100
   policy_timeout_s: 30.0
-  damping: 0.05
   max_linear_velocity: 0.04
   max_angular_velocity: 0.3
-  velocity_tracking_tau_s: 0.15
-  target_smoothing_alpha: 0.25
-  velocity_smoothing: 0.3
-  smooth_angular_velocity: true
-  max_joint_speed: 0.3
   joint_limit_margin: 0.05
-  gamepad_control_rate: 100
   gamepad_joy_timeout_s: 0.2
   gamepad_state_timeout_s: 0.5
   gamepad_deadzone: 0.08
@@ -43,8 +36,6 @@ control:
   gamepad_gripper_speed: 0.4
   policy_gripper_speed: 1.0
   gamepad_gripper_trigger_deadzone: 0.05
-  gamepad_position_gain: 8.0
-  gamepad_orientation_gain: 3.0
   gamepad_max_angular_speed: 0.3
   min_control_command_success_rate: 0.9
   low_success_rate_samples: 3
@@ -59,7 +50,6 @@ arms:
     joint7_button_sign: -1.0
     left_stick_x_sign: 1.0
     left_stick_y_sign: 1.0
-  command_joint_topic: /left/teleop/joint_states
   command_gripper_topic: /left/teleop/gripper_action_width_percent
   gripper_action_topic: /left/gripper/robotiq_gripper_controller/gripper_cmd
   gripper_speed_topic: /left/gripper/left_gripper_speed_controller/commands
@@ -88,7 +78,6 @@ arms:
     joint7_button_sign: -1.0
     left_stick_x_sign: 1.0
     left_stick_y_sign: 1.0
-  command_joint_topic: /right/teleop/joint_states
   command_gripper_topic: /right/teleop/gripper_action_width_percent
   gripper_action_topic: /right/gripper/robotiq_gripper_controller/gripper_cmd
   gripper_speed_topic: /right/gripper/right_gripper_speed_controller/commands

@@ -17,7 +17,7 @@
 
 ## Architecture and contracts
 
-- ROS owns the only execution queue and the 30 Hz action / 100 Hz tracking timeline; model services return candidate chunks. Web and terminal routes share the ROS collector/coordinator.
+- ROS owns the only execution queue and the single 30 Hz input / action acceptance / target submission timeline; Franky owns the independent 1000 Hz impedance loop; model services return candidate chunks. Web and terminal routes share the ROS collector/coordinator.
 - Preserve manual recovery after queue exhaustion, storage blockage or faults. Late inference results, reconnects and successful storage recovery must not re-enable motion.
 - Keep model inference and control messages independent. Generation changes revoke old results; committed prefixes and installed Actor suffixes must remain protected.
 - Accept only current contracts: wire/model/statistics v2, recording schema 5, training semantics/online run v3, Replay v4. Do not add old asset/protocol conversion or fallback paths. Official base weights may initialize new training.

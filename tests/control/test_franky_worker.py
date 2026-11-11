@@ -43,6 +43,9 @@ class _FakeWorker:
         self.requests.append(dict(message))
         return {'kind': 'state', 'session_id': message.get('session_id'),
                 'request_id': str(message.get('request_id')), 'generation': message.get('generation', -1),
+                'sequence': message.get('sequence'), 'slot_id': message.get('slot_id'),
+                'applied_at_ns': time.monotonic_ns(),
+                'references': {name: value['pose'] for name, value in message.get('arms', {}).items()},
                 'request_status': 'applied', 'states': [{
             'arm': 'left', 'observed_at_ns': 1,
             'tcp_pose': [0, 0, 0, 0, 0, 0, 1],
@@ -70,7 +73,7 @@ def test_worker_ipc_client_receives_state(tmp_path):
     while not client.states() and time.monotonic() < deadline:
         time.sleep(.01)
     assert client.states()['left'].joints == (0.0,) * 7
-    client.target('session', 3, 4, {'left': {'pose': [0, 0, 0, 0, 0, 0, 1]}})
+    client.target('session', 3, 4, {'left': {'pose': [0, 0, 0, 0, 0, 0, 1]}}, slot_id=0)
     time.sleep(.05)
     client.close()
     server.close()
@@ -124,7 +127,9 @@ def test_fake_cartesian_tracker_gains_rebuild_and_recover():
     fake = type('Franky', (), {'Affine': Affine, 'CartesianImpedanceTracker': Tracker})
     arm = FrankyArm('left', '127.0.0.1')
     arm.franky, arm.robot = fake, Robot()
-    arm._ensure_tracker()
+    with pytest.raises(RuntimeError, match='tracker'):
+        arm.set_target([0, 0, 0, 0, 0, 0, 1], 2, 1)
+    arm.reset(2)
     arm.set_target([.01, 0, 0, 0, 0, 0, 1], 2, 3)
     assert len(arm.tracker.targets) == 1
     original = arm.tracker
@@ -161,6 +166,7 @@ def test_worker_drops_stale_targets_and_requires_atomic_dual_arm_packet():
             self.binding_fingerprint = {}
 
         def set_target(self, pose, generation, sequence):
+            self.target_pose = np.asarray(pose)
             self.calls.append((pose, generation, sequence))
 
         def reset(self, generation):
@@ -196,7 +202,7 @@ def test_worker_drops_stale_targets_and_requires_atomic_dual_arm_packet():
     pose = [0, 0, 0, 0, 0, 0, 1]
     worker.request({'kind': 'reset', 'session_id': 's', 'generation': 1, 'request_id': 'reset'})
     base = {'kind': 'target', 'session_id': 's', 'generation': 1, 'request_id': 'target1',
-            'sequence': 1, 'timestamp_ns': time.monotonic_ns(),
+            'sequence': 1, 'slot_id': 0, 'timestamp_ns': time.monotonic_ns(),
             'arms': {'left': {'pose': pose}, 'right': {'pose': pose}}}
     worker.request(base)
     assert [call[2] for call in worker.arms['left'].calls] == [1]
@@ -204,7 +210,7 @@ def test_worker_drops_stale_targets_and_requires_atomic_dual_arm_packet():
     stale = dict(base, sequence=0, timestamp_ns=time.monotonic_ns(), request_id='stale')
     worker.request(stale)
     assert len(worker.arms['left'].calls) == 1
-    incomplete = dict(base, sequence=2, timestamp_ns=time.monotonic_ns(), request_id='incomplete',
+    incomplete = dict(base, sequence=2, slot_id=1, timestamp_ns=time.monotonic_ns(), request_id='incomplete',
                       arms={'left': {'pose': pose}})
     result = worker.request(incomplete)
     assert 'every configured' in result['error']
@@ -223,7 +229,7 @@ def test_lifecycle_fence_cancels_dequeued_target(tmp_path):
     client = Client(tmp_path/'unused')
     try:
         with client._request_lock:
-            client.target('s', 1, 1, {'left': [0, 0, 0, 0, 0, 0, 1]})
+            client.target('s', 1, 1, {'left': [0, 0, 0, 0, 0, 0, 1]}, slot_id=0)
             deadline = time.monotonic()+2
             while time.monotonic() < deadline:
                 with client._lock:

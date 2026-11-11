@@ -13,9 +13,9 @@ def configured_backend(path: str | Path) -> str:
     value = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"rollout config must be a YAML mapping: {config_path}")
-    backend = str(value.get("backend", "ros2"))
-    if backend not in ("ros2", "franky"):
-        raise ValueError("backend must be ros2 or franky")
+    backend = str(value.get("backend", ""))
+    if backend != "franky":
+        raise ValueError("backend must be franky (TCP only)")
     return backend
 
 

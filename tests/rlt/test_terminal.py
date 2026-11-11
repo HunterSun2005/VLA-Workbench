@@ -201,7 +201,7 @@ def test_shared_terminal_preserves_yaml_control_choices(tmp_path, capsys, overri
     from vla.paths import resource
     from vla.cli.ros_session import main
     raw = yaml.safe_load(resource('datacollection/franka_robotiq_rollout/configs/single_left.yaml').read_text())
-    raw.update(input_source='gello', action_space='joint')
+    raw.update(input_source='gello', action_space='tcp')
     raw['dataset']['root'] = str(tmp_path/'dataset')
     path = tmp_path/'ros.yaml'
     path.write_text(yaml.safe_dump(raw))
@@ -209,4 +209,4 @@ def test_shared_terminal_preserves_yaml_control_choices(tmp_path, capsys, overri
     if override:
         args += ['--source', 'gamepad', '--action-space', 'tcp']
     main(args)
-    assert ('gamepad, tcp' if override else 'gello, joint') in capsys.readouterr().out
+    assert ('gamepad, tcp' if override else 'gello, tcp') in capsys.readouterr().out

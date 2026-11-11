@@ -28,10 +28,10 @@ class ArmMeasurement:
 
 
 class ControlCoordinator:
-    """30 Hz accepted actions, 100 Hz tracking; safety transitions bypass both clocks.
+    """30 Hz acceptance and submission; safety transitions bypass the control clock.
 
-    publish receives absolute joint targets. reset requests a measured-position
-    reset in each controller's real-time loop. A transition completes only after
+    Franky publish receives absolute TCP targets; historical harnesses use joints.
+    Reset explicitly prepares every tracker from measurements. A transition completes only after
     all controllers acknowledge its generation. No model or ROS imports here.
     """
     def __init__(self, spec, servos, bounds, publish, reset, *, state_timeout_s=.5,
@@ -60,6 +60,7 @@ class ControlCoordinator:
         self._last_accept = None
         self._last_slot = -1
         self.partial_submission = {}
+        self._last_submitted_command = None
         self._pending_owner = None
         self._lock = RLock()
 
@@ -83,6 +84,7 @@ class ControlCoordinator:
             self.generation += 1
             self.command_id = 0
             self.accepted = None
+            self._last_submitted_command = None
             self.submitted = {}
             self._last_accept = None
             self._last_slot = -1
@@ -185,7 +187,7 @@ class ControlCoordinator:
                 parts.append(np.r_[p, matrix_to_rot6d(r), gripper])
         return np.concatenate(parts)
 
-    def tick(self, dt=.01):
+    def tick(self, dt=1/30):
         with self._lock:
             now = self.clock()
             if self.mode == 'resetting' and now-self._reset_started > self.reset_timeout_ns:
@@ -197,7 +199,8 @@ class ControlCoordinator:
             try:
                 self._fresh()
                 command = self.accepted
-                if command is None:
+                if command is None or (self.backend == 'franky' and
+                        self._last_submitted_command == (command.generation, command.command_id)):
                     return None
                 if now-command.accepted_at_ns > self.command_timeout_ns:
                     raise RuntimeError('accepted command stream expired')
@@ -234,6 +237,7 @@ class ControlCoordinator:
                                      command.generation, command.command_id)
                     self.partial_submission[arm] = target
                 self.submitted = submitted
+                self._last_submitted_command = (command.generation, command.command_id)
                 return command
             except Exception as error:
                 self.transition(reason=str(error), fault=True)
