@@ -36,11 +36,11 @@ def fake_binding(monkeypatch, tmp_path):
 
 
 def test_verified_library_and_implementation_hashes(fake_binding, monkeypatch, tmp_path):
-    library = tmp_path / "libfranka-6ee8c992.so.0.18.0"
-    library.write_bytes(b"mock libfranka 0.18.0")
+    library = tmp_path / "libfranka-f9564df3.so.0.19.0"
+    library.write_bytes(b"mock libfranka 0.19.0")
     monkeypatch.setattr(binding, "_loaded_libfranka_paths", lambda: {library})
     result = binding.check_binding()
-    assert result["libfranka"] == "0.18.0"
+    assert result["libfranka"] == "0.19.0"
     assert result["libfranka_library_sha256"] == hashlib.sha256(library.read_bytes()).hexdigest()
     assert result["binding"].endswith("_franky.so")
     assert result["tracker"].endswith("tracker.py")
@@ -49,19 +49,19 @@ def test_verified_library_and_implementation_hashes(fake_binding, monkeypatch, t
 
 
 def test_affine_conversion_failure_rejected(fake_binding, monkeypatch, tmp_path):
-    library = tmp_path / "libfranka.so.0.18.0"
+    library = tmp_path / "libfranka.so.0.19.0"
     monkeypatch.setattr(binding, "_loaded_libfranka_paths", lambda: {library})
     fake_binding.Affine = lambda matrix: SimpleNamespace(translation=[1., 0., 0.], quaternion=[0., 0., 0., 1.])
     with pytest.raises(RuntimeError, match="NumPy/Affine binding incompatible"):
         binding.check_binding()
 
 
-@pytest.mark.parametrize("names", [[], ["libfranka.so.0.19.0"], ["libfranka.so.0.20.4"],
-                                    ["libfranka.so"], ["libfranka.so.0.18"],
-                                    ["libfranka.so.0.18.0", "libfranka.so.0.19.0"]])
+@pytest.mark.parametrize("names", [[], ["libfranka.so.0.18.0"], ["libfranka.so.0.20.4"],
+                                    ["libfranka.so"], ["libfranka.so.0.19"],
+                                    ["libfranka.so.0.19.0", "libfranka.so.0.20.4"]])
 def test_unknown_wrong_or_mixed_versions_rejected(fake_binding, monkeypatch, tmp_path, names):
     monkeypatch.setattr(binding, "_loaded_libfranka_paths", lambda: {tmp_path / n for n in names})
-    with pytest.raises(RuntimeError, match="libfranka 0.18.0"):
+    with pytest.raises(RuntimeError, match="libfranka 0.19.0"):
         binding.check_binding()
 
 
@@ -78,7 +78,7 @@ def test_incomplete_tracker_rejected(fake_binding, monkeypatch):
 
 
 def test_maps_resolves_symlink_and_deduplicates_segments(monkeypatch, tmp_path):
-    library = tmp_path / "libfranka.so.0.18.0"
+    library = tmp_path / "libfranka.so.0.19.0"
     library.touch()
     alias = tmp_path / "libfranka.so.0.18"
     alias.symlink_to(library)
@@ -90,17 +90,17 @@ def test_maps_resolves_symlink_and_deduplicates_segments(monkeypatch, tmp_path):
 
 def test_deleted_loaded_library_rejected(monkeypatch):
     monkeypatch.setattr(binding.Path, "read_text", lambda _:
-                        "100-200 r-xp 0000 08:01 123 /tmp/libfranka.so.0.18.0 (deleted)")
+                        "100-200 r-xp 0000 08:01 123 /tmp/libfranka.so.0.19.0 (deleted)")
     with pytest.raises(RuntimeError, match="deleted"):
         binding._loaded_libfranka_paths()
 
 
 def test_check_only_needs_no_config_and_opens_no_worker(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["worker_main", "--check-only"])
-    monkeypatch.setattr(worker_main, "check_binding", lambda: {"libfranka": "0.18.0"})
+    monkeypatch.setattr(worker_main, "check_binding", lambda: {"libfranka": "0.19.0"})
     monkeypatch.setattr(worker_main, "FrankyWorker", lambda *a, **k: pytest.fail("worker opened"))
     worker_main.main()
-    assert json.loads(capsys.readouterr().out) == {"libfranka": "0.18.0"}
+    assert json.loads(capsys.readouterr().out) == {"libfranka": "0.19.0"}
 
 
 def test_normal_start_checks_binding_before_reading_config(monkeypatch, tmp_path):

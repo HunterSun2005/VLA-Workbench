@@ -2,7 +2,7 @@
 
 运行 `vla-web --root "$VLA_ROOT"`；只看界面可使用 `--demo`。服务监听本机，启动页面本身不连接设备，创建真实会话才启动 ROS。模型 Python 3.12 与 ROS Python 3.10 分开运行。
 
-Franky worker 必须使用含 `CartesianImpedanceTracker` 且实际链接 **libfranka 0.18.0** 的独立解释器，由 `transport.worker_python` 或 `FRANKY_PYTHON` 指定；两者都未设置时当前回退到 `/usr/bin/python3`，但仍必须通过版本/API 检查。启动前可运行不连接硬件的 `--check-only`，步骤见 [Franky 环境](FRANKY_ENVIRONMENT.md)。缺少 tracker 或加载其他 libfranka 版本会拒绝会话启动，不会自动安装或修复环境。
+Franky worker 必须使用含 `CartesianImpedanceTracker` 且实际链接 **libfranka 0.19.0** 的独立解释器，由 `transport.worker_python` 或 `FRANKY_PYTHON` 指定；两者都未设置时当前回退到 `/usr/bin/python3`，但仍必须通过版本/API 检查。启动前可运行不连接硬件的 `--check-only`，步骤见 [Franky 环境](FRANKY_ENVIRONMENT.md)。缺少 tracker 或加载其他 libfranka 版本会拒绝会话启动，不会自动安装或修复环境。
 
 采集与部署按「配置 → 运行 → 结束」组织。首次打开先确认现有会话；无会话时显示宽版配置总览，桌面双列、小屏单列，分为任务与记录、Franka 与输入设备、相机、模型与推理（仅部署）和默认折叠的高级环境。底部操作栏保持可见，可检查配置或启动会话；检查结果、错误和连接提示共用反馈区域。检查／启动请求期间锁定重复操作，明确失败后保留输入供修改。
 

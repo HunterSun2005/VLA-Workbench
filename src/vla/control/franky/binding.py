@@ -7,7 +7,7 @@ import importlib.metadata
 from pathlib import Path
 import re
 
-REQUIRED_LIBFRANKA_VERSION = "0.18.0"
+REQUIRED_LIBFRANKA_VERSION = "0.19.0"
 
 
 def _loaded_libfranka_paths() -> set[Path]:

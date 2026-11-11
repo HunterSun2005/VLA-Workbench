@@ -10,7 +10,7 @@ repositories:
   src/third_party/libfranka:
     type: git
     url: https://github.com/frankarobotics/libfranka.git
-    version: c5c66bb25a987f122bb424549f5e3b283a41d2f2
+    version: 4df37dd2b527f41ef34b76d6d4d3805864b09993
   src/third_party/libfranka/common:
     type: git
     url: https://github.com/frankarobotics/libfranka-common.git
