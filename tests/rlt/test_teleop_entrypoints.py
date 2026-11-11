@@ -122,6 +122,57 @@ def test_rollout_runtime_configs_do_not_require_or_write_gello(tmp_path: Path) -
     assert not gello_output.exists()
 
 
+@pytest.mark.parametrize("mode", ["single_left", "duo"])
+@pytest.mark.parametrize("franky_owner", ["0", "1"])
+def test_shell_runtime_configs_with_nounset(tmp_path, mode, franky_owner):
+    """Exercise the real shell branch; resolving packages must not launch ROS."""
+    _, arms, grippers = _sources(tmp_path)
+    script = r'''
+set -euo pipefail
+unset arm_source
+source "$1/lib/environment.sh"
+config_source_path() {
+  printf '%s\n' "$1" >> "$STATE_DIR/lookups"
+  printf '%s\n' "$2"
+}
+package_share() {
+  printf '%s\n' "$1" >> "$STATE_DIR/lookups"
+  printf '%s/share\n' "$STATE_DIR"
+}
+CONTROL_OWNER=rollout
+MODE_LABEL=test
+PREPARE_CONFIGS="$1/prepare_runtime_configs.py"
+ROBOT_CONFIG="$2"
+GRIPPER_CONFIG="$3"
+LEFT_GELLO_SERIAL_ID=mock-left-gello
+RIGHT_GELLO_SERIAL_ID=mock-right-gello
+LEFT_ROBOT_IP=mock-left
+RIGHT_ROBOT_IP=mock-right
+LEFT_ROBOTIQ_PORT=/mock/left-gripper
+RIGHT_ROBOTIQ_PORT=/mock/right-gripper
+RUNTIME_FILES=()
+prepare_runtime_configs
+'''
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", script, "config-test", str(TELEOP_DIR), str(arms), str(grippers)],
+        env={**os.environ, "STATE_DIR": str(tmp_path), "TELEOP_MODE": mode, "FRANKY_OWNER": franky_owner},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    outputs = [Path(line) for line in (tmp_path / "runtime_files").read_text().splitlines()]
+    assert all(path.is_file() for path in outputs)
+    gripper_output, = [path for path in outputs if path.name.endswith("_grippers.yaml")]
+    assert list(yaml.safe_load(gripper_output.read_text())) == (
+        ["LEFT"] if mode == "single_left" else ["LEFT", "RIGHT"])
+    arm_outputs = [path for path in outputs if path.name.endswith("_arms.yaml")]
+    lookups = (tmp_path / "lookups").read_text()
+    if franky_owner == "1":
+        assert not arm_outputs and "franka_fr3_arm_controllers" not in lookups
+    else:
+        assert len(arm_outputs) == 1 and "franka_fr3_arm_controllers" in lookups
+    assert "franka_gello_state_publisher" not in lookups
+
+
 def test_explicit_teleop_entrypoints_are_executable_and_syntax_valid() -> None:
     scripts = [
         TELEOP_DIR / "start_teleop.sh",

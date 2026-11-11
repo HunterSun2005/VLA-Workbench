@@ -175,7 +175,7 @@ add_runtime_file() {
 }
 
 prepare_runtime_configs() {
-  local gello_source="" arm_source gripper_source
+  local gello_source="" arm_source="" gripper_source
   local arm_share gripper_share suffix
   if [[ "$CONTROL_OWNER" == "teleop" ]]; then
     gello_source="$(config_source_path franka_gello_state_publisher "$GELLO_CONFIG")"
