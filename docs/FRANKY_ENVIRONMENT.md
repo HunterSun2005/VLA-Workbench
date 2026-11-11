@@ -42,6 +42,8 @@ env -u PYTHONHOME -u LD_LIBRARY_PATH -u LD_PRELOAD \
 
 ## 会话与故障
 
+Franky 模式的运动学模型默认从当前 ROS 工作区安装的 `franka_description` 离线展开，按左右臂添加 `left_` / `right_` 前缀，关闭 `ros2_control` 和手部模型；此过程不启动节点或连接机械臂。可用 `FRANKA_URDF` 显式指定展开后的 URDF，文件须包含配置中的 base/tip 链接；指定文件缺失或模型不匹配时直接报错，不改用其他模型。有效模型写入运动学指纹。
+
 启动顺序为离线依赖预检 → worker 全部机械臂 ready → ROS 外设 ready → collector。worker 独占机械臂租约，ROS 仅持有夹爪等外设资源；ready 必须携带全部有效状态、binding 指纹和阻抗参数，collector 使用显式会话 ID 和已验证连接生成 recording contract。关闭或启动失败时先撤销目标、停止 tracker、等待 worker 退出释放租约，再关闭外设。
 
 Unix IPC 校验会话、generation、sequence 和 request ID。生命周期命令清空旧目标；重复或过期消息不能重新启动运动。独立 watchdog 分别检查 `control_discontinuity_timeout_s` 目标流和 `gamepad_state_timeout_s` 通信/状态期限，健康轮询不能掩盖目标中断。正常的一次请求一次连接不算失联；半包、超时、状态失效、异步 tracker 异常或任一臂失败都停止双臂并锁存故障。

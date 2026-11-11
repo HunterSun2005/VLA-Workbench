@@ -13,6 +13,7 @@ from vla.terminal import (console_print as print, console_status, console_debug,
                           TerminalConfirmation, diagnostic_path, current_reporter)
 
 import os
+from pathlib import Path
 from dataclasses import asdict
 import sys
 import threading
@@ -582,20 +583,23 @@ class RolloutCollector(Node):
 
     def _load_kinematic_model(self, arm: ArmConfig):
         if self.config.backend == 'franky':
-            candidates = []
             if os.environ.get('FRANKA_URDF'):
-                candidates.append(os.environ['FRANKA_URDF'])
-            candidates.append(str(Path(__file__).parents[4] / 'ros_ws/src/third_party/libfranka/test/fr3.urdf'))
-            for candidate in candidates:
-                path = Path(candidate).expanduser()
-                if path.is_file():
-                    description = path.read_text(encoding='utf-8')
-                    self._kinematics_identity[arm.name] = fingerprint(description)
-                    return build_kinematic_model(
-                        description, arm.base_link, arm.tip_link,
-                        self.config.joint_limit_margin,
-                    )
-            raise FileNotFoundError('Franky mode requires FRANKA_URDF or the bundled FR3 URDF')
+                # An explicit model must exist and match the configured links;
+                # never substitute a different robot model on configuration error.
+                description = Path(os.environ['FRANKA_URDF']).expanduser().read_text(encoding='utf-8')
+            else:
+                import xacro
+                from ament_index_python.packages import get_package_share_directory
+                source = Path(get_package_share_directory('franka_description')) / 'robots/fr3/fr3.urdf.xacro'
+                # Expand the installed description offline, with the same arm
+                # names as the ROS configuration but without a control plugin.
+                description = xacro.process_file(str(source), mappings={
+                    'hand': 'false', 'arm_prefix': arm.name, 'ros2_control': 'false',
+                }).toxml()
+            model = build_kinematic_model(description, arm.base_link, arm.tip_link,
+                                          self.config.joint_limit_margin)
+            self._kinematics_identity[arm.name] = fingerprint(description)
+            return model
         service_name = f"{arm.robot_state_publisher.rstrip('/')}/get_parameters"
         client = self.create_client(GetParameters, service_name)
         if not client.wait_for_service(timeout_sec=30.0):
