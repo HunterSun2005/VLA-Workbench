@@ -48,6 +48,8 @@ Franky 模式的运动学模型默认从当前 ROS 工作区安装的 `franka_de
 
 Unix IPC 校验会话、generation、sequence 和 request ID。生命周期命令清空旧目标；重复或过期消息不能重新启动运动。独立 watchdog 分别检查 `control_discontinuity_timeout_s` 目标流和 `gamepad_state_timeout_s` 通信/状态期限，健康轮询不能掩盖目标中断。正常的一次请求一次连接不算失联；半包、超时、状态失效、异步 tracker 异常或任一臂失败都停止双臂并锁存故障。
 
+IPC 收包使用配置中的通信期限（默认 0.5 秒），整包的头部与正文共享截止时间，不使用独立的 50 毫秒短超时。连接后短暂调度延迟在通信期限内可继续收包；等待收包不会延长目标流期限（默认 0.1 秒）。客户端报错包含连接/发送/接收阶段、请求 ID、generation、耗时和 socket 路径，worker 日志记录首次锁存故障及其来源。重试查询不会清除故障或恢复运动。
+
 运行中调参按 request ID 确认，等待期间暂停新目标。刚度通过 `set_gains` 更新，结构参数停止并重建 tracker；任一臂失败则整体 fault，保留上次完整确认的参数。重连、健康查询、普通目标及重建不会隐式恢复；必须显式“恢复”，再启用控制。Gamepad 松杆保留最后 TCP 参考，GELLO FK 和策略更新同一 tracker。真实接触前仍需核实工具、负载和安全设置。
 
 ## ROS 与旧安装

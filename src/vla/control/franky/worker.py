@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import socket
+import sys
 import threading
 import time
 from typing import Any, Mapping
@@ -353,11 +354,15 @@ class FrankyWorker:
 
     def latch_fault(self, reason):
         with self._lock:
+            first_fault = self.fault is None
             self.fault = self.fault or str(reason)
             try:
                 self._stop_all()
             except Exception as error:
                 self.fault += f'; stop failed: {error}'
+            if first_fault:
+                print(f'Franky worker fault session={self.session_id} generation={self.generation} '
+                      f'sequence={self.sequence}: {self.fault}', file=sys.stderr, flush=True)
 
     def _watch(self):
         while not self._closed.wait(.01):
@@ -550,13 +555,23 @@ class FrankyWorkerServer:
                         break
                     raise
                 with connection:
-                    connection.settimeout(.05)
+                    # Receive a whole frame within the configured communication
+                    # deadline. A hard-coded 50 ms wait used to close healthy
+                    # clients paused briefly after connect (e.g. by the GIL).
+                    deadline = time.monotonic() + self.worker.state_timeout_s
+                    stage = 'receive'
+                    message = {}
                     try:
-                        message = decode_packet(connection)
+                        message = decode_packet(connection, deadline=deadline)
+                        stage = 'dispatch'
                         response = self.worker.request(message)
+                        stage = 'respond'
+                        connection.settimeout(self.worker.state_timeout_s)
                         connection.sendall(encode_packet(response))
                     except (OSError, ValueError, KeyError, TypeError) as error:
-                        self.worker.latch_fault(f'IPC: {error}')
+                        self.worker.latch_fault(
+                            f'IPC {stage} kind={message.get("kind")} request_id={message.get("request_id")}: '
+                            f'{type(error).__name__}: {error}')
         finally:
             listener.close()
             try:

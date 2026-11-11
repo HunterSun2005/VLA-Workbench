@@ -251,3 +251,46 @@ def test_dual_worker_100hz_with_production_watchdog_deadlines():
             assert not result['fault']
             assert all(s['sequence'] == sequence and s['tracker_running'] for s in result['states'])
         assert not request(root, 'stop', 2)['fault']
+
+
+def test_idle_health_connection_tolerates_scheduler_delay_within_state_deadline():
+    with process_worker(target_timeout=.1, state_timeout=.5) as (root, _, _):
+        assert not request(root)['fault']
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            sock.connect(str(root/'w.sock'))
+            # Simulate the ROS thread holding the GIL after connect returns.
+            time.sleep(.12)
+            sock.sendall(encode_packet({'kind': 'health', 'session_id': 's',
+                                      'generation': -1, 'request_id': 'delayed-health'}))
+            result = decode_packet(sock)
+        assert not result['fault']
+        assert not any(s['tracker_running'] for s in result['states'])
+
+
+def test_waiting_for_health_frame_does_not_extend_target_watchdog():
+    with process_worker(target_timeout=.1, state_timeout=.5) as (root, _, _):
+        request(root, 'reset', 1)
+        assert not target(root)['fault']
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            sock.connect(str(root/'w.sock'))
+            time.sleep(.18)
+            sock.sendall(encode_packet({'kind': 'health', 'session_id': 's',
+                                      'generation': 1, 'request_id': 'late-health'}))
+            result = decode_packet(sock)
+        assert 'target stream expired' in result['fault']
+        assert not any(s['tracker_running'] for s in result['states'])
+        assert target(root, sequence=2)['fault']  # No implicit resumption.
+
+
+def test_incomplete_frame_exceeding_state_deadline_faults_and_logs_source():
+    with process_worker(state_timeout=.12) as (root, _, _):
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            sock.connect(str(root/'w.sock'))
+            sock.sendall(b'\x00\x00')
+            assert sock.recv(1) == b''  # Server expires the incomplete header.
+        result = request(root)
+        assert 'IPC receive' in result['fault'] and 'TimeoutError' in result['fault']
+        assert 'Franky worker fault session=s' in (root/'process.log').read_text()

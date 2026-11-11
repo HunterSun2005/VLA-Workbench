@@ -37,9 +37,14 @@ def encode_packet(value: Mapping[str, Any]) -> bytes:
     return struct.pack("!I", len(payload)) + payload
 
 
-def _read_exact(sock: socket.socket, size: int) -> bytes:
+def _read_exact(sock: socket.socket, size: int, deadline: float | None = None) -> bytes:
     value = bytearray()
     while len(value) < size:
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f'worker packet deadline exceeded ({len(value)}/{size} bytes)')
+            sock.settimeout(remaining)
         chunk = sock.recv(size - len(value))
         if not chunk:
             raise ConnectionError("worker connection closed")
@@ -47,11 +52,11 @@ def _read_exact(sock: socket.socket, size: int) -> bytes:
     return bytes(value)
 
 
-def decode_packet(sock: socket.socket) -> dict[str, Any]:
-    length = struct.unpack("!I", _read_exact(sock, 4))[0]
+def decode_packet(sock: socket.socket, *, deadline: float | None = None) -> dict[str, Any]:
+    length = struct.unpack("!I", _read_exact(sock, 4, deadline))[0]
     if not 0 < length <= MAX_PACKET:
         raise ValueError("worker packet is too large")
-    value = json.loads(_read_exact(sock, length).decode("utf-8"))
+    value = json.loads(_read_exact(sock, length, deadline).decode("utf-8"))
     if not isinstance(value, dict) or value.get("version") != IPC_VERSION:
         raise ValueError("unsupported Franky worker IPC version")
     return value
@@ -225,11 +230,29 @@ class FrankyWorkerClient:
                                     request_id=str(request_id), values=dict(values)))
 
     def _request(self, message):
+        # Serialize before connecting: the peer should not wait for local work.
+        packet = encode_packet(message)
+        started = time.monotonic()
+        deadline = started + self.timeout_s
+        stage = 'connect'
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(self.timeout_s)
-            sock.connect(str(self.path))
-            sock.sendall(encode_packet(message))
-            return decode_packet(sock)
+            try:
+                sock.settimeout(self.timeout_s)
+                sock.connect(str(self.path))
+                stage = 'send'
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError('request deadline exceeded before send')
+                sock.settimeout(remaining)
+                sock.sendall(packet)
+                stage = 'receive'
+                return decode_packet(sock, deadline=deadline)
+            except (OSError, ValueError) as error:
+                raise RuntimeError(
+                    f'Franky IPC {message.get("kind")} {stage} failed '
+                    f'(request_id={message.get("request_id")}, generation={message.get("generation")}, '
+                    f'elapsed={time.monotonic()-started:.3f}s, socket={self.path}): '
+                    f'{type(error).__name__}: {error}') from error
 
     def _exchange(self, message):
         result = self._request(message)

@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from vla.actions import ActionSpec, matrix_to_rot6d
 from vla.control.franky import Compliance, FrankyWorkerClient
@@ -28,6 +29,8 @@ def test_compliance_defaults_and_safety_bounds():
 
 
 class _FakeWorker:
+    state_timeout_s = .5
+
     def __init__(self):
         self.opened = False
         self.closed = False
@@ -226,5 +229,38 @@ def test_lifecycle_fence_cancels_dequeued_target(tmp_path):
         while not sent and time.monotonic() < deadline:
             time.sleep(.001)
         assert sent == ['stop']
+    finally:
+        client.close()
+
+
+def test_packet_deadline_is_shared_by_header_and_body(monkeypatch):
+    from vla.control.franky import ipc
+    clock = [0.]
+    monkeypatch.setattr(ipc.time, 'monotonic', lambda: clock[0])
+    packet = encode_packet({'kind': 'health'})
+
+    class DelayedSocket:
+        def settimeout(self, timeout):
+            self.timeout = timeout
+
+        def recv(self, size):
+            if self.timeout < .06:
+                clock[0] += self.timeout
+                raise TimeoutError('timed out')
+            clock[0] += .06
+            return packet[:4] if size == 4 else packet[4:]
+
+    with pytest.raises(TimeoutError):
+        decode_packet(DelayedSocket(), deadline=.1)
+    assert clock[0] == pytest.approx(.1)
+
+
+def test_client_transport_error_identifies_request_and_stage(tmp_path):
+    client = FrankyWorkerClient(tmp_path/'missing.sock')
+    try:
+        with pytest.raises(RuntimeError, match='Franky IPC health connect failed.*request_id=probe'):
+            client.request_now({'kind': 'health', 'session_id': 's', 'generation': -1, 'request_id': 'probe'})
+        assert 'FileNotFoundError' in client.fault
+        assert str(tmp_path/'missing.sock') in client.fault
     finally:
         client.close()
