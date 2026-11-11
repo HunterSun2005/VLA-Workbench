@@ -84,6 +84,10 @@ def main(argv=None):
         from vla.datacollection.franka_robotiq_dual.gamepad_record import validate_dataset_root
         validate_dataset_root(config.dataset_root, resume=args.resume)
     if not args.execute:
+        if rollout.backend == 'franky':
+            from vla.core.franky_runtime import check_worker
+            python, binding = check_worker(root, rollout.worker_python)
+            print(f'Franky Python: {python}; libfranka {binding["libfranka"]}; tracker/Affine passed')
         print(f'ROS2 configuration valid: {arms}, {config.source}, {config.action_space}, '
               f'{50*len(rollout.arms)}D measured state, absolute storage; hardware not started')
         return

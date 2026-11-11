@@ -38,7 +38,9 @@ class _FakeWorker:
 
     def request(self, message):
         self.requests.append(dict(message))
-        return {'kind': 'state', 'states': [{
+        return {'kind': 'state', 'session_id': message.get('session_id'),
+                'request_id': str(message.get('request_id')), 'generation': message.get('generation', -1),
+                'request_status': 'applied', 'states': [{
             'arm': 'left', 'observed_at_ns': 1,
             'tcp_pose': [0, 0, 0, 0, 0, 0, 1],
             'joints': [0] * 7, 'joint_velocity': [0] * 7,
@@ -171,7 +173,7 @@ def test_worker_drops_stale_targets_and_requires_atomic_dual_arm_packet():
                 'joint_velocity': [0] * 7,
             }
 
-    worker = FrankyWorker.__new__(FrankyWorker)
+    worker = FrankyWorker({'left': {'robot_ip': 'mock'}, 'right': {'robot_ip': 'mock2'}}, session_id='s')
     worker.session_id = 's'
     worker.arms = {'left': Arm('left'), 'right': Arm('right')}
     worker._lock = threading.RLock()
@@ -181,20 +183,48 @@ def test_worker_drops_stale_targets_and_requires_atomic_dual_arm_packet():
     worker.fault = None
     worker.binding_fingerprint = {}
     pose = [0, 0, 0, 0, 0, 0, 1]
-    base = {'kind': 'target', 'session_id': 's', 'generation': 1,
-            'sequence': 1, 'timestamp_ns': 10,
+    worker.request({'kind': 'reset', 'session_id': 's', 'generation': 1, 'request_id': 'reset'})
+    base = {'kind': 'target', 'session_id': 's', 'generation': 1, 'request_id': 'target1',
+            'sequence': 1, 'timestamp_ns': time.monotonic_ns(),
             'arms': {'left': {'pose': pose}, 'right': {'pose': pose}}}
     worker.request(base)
     assert [call[2] for call in worker.arms['left'].calls] == [1]
     assert [call[2] for call in worker.arms['right'].calls] == [1]
-    stale = dict(base, sequence=0, timestamp_ns=11)
+    stale = dict(base, sequence=0, timestamp_ns=time.monotonic_ns(), request_id='stale')
     worker.request(stale)
     assert len(worker.arms['left'].calls) == 1
-    incomplete = dict(base, sequence=2, timestamp_ns=12,
+    incomplete = dict(base, sequence=2, timestamp_ns=time.monotonic_ns(), request_id='incomplete',
                       arms={'left': {'pose': pose}})
+    result = worker.request(incomplete)
+    assert 'every configured' in result['error']
+    assert worker.fault
+
+
+def test_lifecycle_fence_cancels_dequeued_target(tmp_path):
+    """A target waiting for the IPC mutex must not slip past stop."""
+    class Client(FrankyWorkerClient):
+        def _request(self, message):
+            sent.append(message['kind'])
+            return {'kind': 'state', 'session_id': message['session_id'],
+                    'request_id': message['request_id'], 'generation': message['generation'],
+                    'request_status': 'applied', 'states': []}
+    sent = []
+    client = Client(tmp_path/'unused')
     try:
-        worker.request(incomplete)
-    except ValueError as error:
-        assert 'every configured' in str(error)
-    else:
-        raise AssertionError('incomplete dual-arm target was accepted')
+        with client._request_lock:
+            client.target('s', 1, 1, {'left': [0, 0, 0, 0, 0, 0, 1]})
+            deadline = time.monotonic()+2
+            while time.monotonic() < deadline:
+                with client._lock:
+                    if not client._queue:
+                        break
+                time.sleep(.001)
+            else:
+                raise AssertionError('IPC thread did not dequeue target')
+            client.stop('s', 2)
+        deadline = time.monotonic()+2
+        while not sent and time.monotonic() < deadline:
+            time.sleep(.001)
+        assert sent == ['stop']
+    finally:
+        client.close()

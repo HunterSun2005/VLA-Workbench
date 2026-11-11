@@ -41,3 +41,11 @@ Gamepad 的俯仰／滚转以 TCP 为旋转中心。关节约束统一缩放整�
 动作、时间与故障契约见 [ROS 动作契约](ROS_ACTION_CONTRACT.md)，恢复操作见 [工作流](WORKFLOWS.md#执行耗尽与保存恢复)。当前结果使用 [自动化验收](ACCEPTANCE.md) 生成；[Web 历史记录](archive/WEB_VALIDATION.md)仅用于追溯旧版本。
 
 浏览器回归可用 `VLA_PYTHON=/path/to/existing/model/python bash scripts/test.sh tests/web/test_session_ui.py -q`。测试使用已有 Firefox（可设置 `VLA_FIREFOX`），临时浏览器配置、模拟设备及短路径隔离 Demo 根目录；不下载浏览器或连接硬件。缺少浏览器会明确跳过，不算验证通过。普通 Web 回归运行 `bash scripts/test.sh tests/web -q`，同样使用模型 Python 环境。
+
+## Franky worker 环境与调参
+
+首次启动前在仓库根目录执行 `/usr/bin/python3 scripts/install_franky_worker.py`。Web 和终端默认使用持久环境 `runtime/franky/current/bin/python`（libfranka 0.19.0）；`transport.worker_python`、`FRANKY_PYTHON` 可以依次覆盖。Web“检查配置”执行与实际启动相同的无硬件预检，失败时不启动硬件。来源锁文件、解释器隔离和安装说明见 [Franky 环境](FRANKY_ENVIRONMENT.md)。
+
+机械臂由独立 worker 唯一控制，ROS 负责外设和协调器；collector 在 worker 与外设均 ready 后启动。TCP 绝对位姿是统一动作空间，Gamepad 松杆保持最后参考，GELLO FK 和模型策略更新同一个阻抗 tracker。
+
+配置页设置初值，工作台显示有效参数及 pending/ack/failure。调参按 request ID 确认，期间暂停新目标；平移刚度上限 1200 N/m、旋转刚度上限 80 Nm/rad，平移/旋转裁剪下限分别为 0.005 m / 0.02 rad。结构参数修改会停止并重建 tracker，任一臂失败会停止全部机械臂。连接恢复和参数查询不会恢复运动，需显式恢复后再次启用控制。运行前的离线检查不能证明 FCI 连通性、负载设置或实际运动安全。

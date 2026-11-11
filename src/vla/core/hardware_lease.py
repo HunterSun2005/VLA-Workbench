@@ -11,13 +11,15 @@ from vla.core.lease_metadata import release_owned_streams
 
 
 class HardwareLease:
-    def __init__(self, robot_ip: str, gripper_port: str | None = None, *, directory: Path | None = None):
+    def __init__(self, robot_ip: str | None, gripper_port: str | None = None, *, directory: Path | None = None):
         directory = directory or Path("/tmp/vla-hardware-locks")
         directory.mkdir(mode=0o755, parents=True, exist_ok=True)
         self._streams = []
-        resources = [f"franka:{robot_ip}"]
+        resources = [f"franka:{robot_ip}"] if robot_ip else []
         if gripper_port:
             resources.append(f"serial:{Path(gripper_port).resolve()}")
+        if not resources:
+            raise ValueError('HardwareLease requires an arm or a peripheral')
         resources.sort()
         try:
             for resource in resources:

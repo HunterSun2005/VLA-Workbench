@@ -160,6 +160,21 @@ def ros_module(monkeypatch):
 def collector(ros_module, monkeypatch, tmp_path, request):
     module = ros_module
     cls = module.RolloutCollector
+    # Production now requires an explicit, ready connection. These collector
+    # tests fake only IPC; real-wheel/process tests cover the transport itself.
+    original_init = cls.__init__
+    from vla.control.franky.ipc import WorkerState
+    binding = {'franky': 'test', 'libfranka': '0.19.0', 'numpy': np.__version__,
+               'binding_sha256': 'a'*64, 'tracker_sha256': 'b'*64,
+               'libfranka_library_sha256': 'c'*64}
+    def initialize(self, config, **kwargs):
+        states = {a.name: WorkerState(a.name, time.monotonic_ns(), (0., 0., 0., 0., 0., 0., 1.),
+                                    (0.,)*7, (0.,)*7) for a in config.arms}
+        client = SimpleNamespace(fault=None, states=lambda: states, close=lambda: None,
+            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 3},
+            compliance_values=lambda: config.franky_compliance)
+        original_init(self, config, worker_client=client, worker_session_id='collector-test', **kwargs)
+    monkeypatch.setattr(cls, '__init__', initialize)
     for name in ("_setup_ros_io", "_start_cameras", "_stop_grippers_at_measured_position"):
         monkeypatch.setattr(cls, name, lambda self: None)
     monkeypatch.setattr(cls, "_controller_parameters", lambda self: {})
@@ -189,11 +204,14 @@ def collector(ros_module, monkeypatch, tmp_path, request):
     pose = SimpleNamespace(pose=SimpleNamespace(
         position=SimpleNamespace(x=0., y=0., z=0.),
         orientation=SimpleNamespace(x=0., y=0., z=0., w=1.)))
+    measured_pose = SimpleNamespace(pose=SimpleNamespace(
+        position=SimpleNamespace(x=.4, y=0., z=.3),
+        orientation=SimpleNamespace(x=0., y=0., z=0., w=1.)))
     now = time.monotonic_ns()
     for arm in config.arms:
         for key, value in {
             "measured_joint": SimpleNamespace(name=[f"j{i}" for i in range(7)], position=[0.] * 7),
-            "robot_state": SimpleNamespace(f_t_ee=pose),
+            "robot_state": SimpleNamespace(f_t_ee=pose, o_t_ee=measured_pose, o_t_ee_d=measured_pose),
             "gripper_state": SimpleNamespace(name=[arm.gripper_joint_name], position=[0.]),
             "gamepad": SimpleNamespace(axes=[0., 0., 1., 0., 0., 1.], buttons=[0] * 11),
         }.items():
@@ -288,6 +306,11 @@ def test_demo_save_preserves_stage_and_is_cache_demonstration(collector, monkeyp
     frame = pd.read_parquet(c.writer.data_path(0))
     assert info["features"]["action"]["shape"] == [20]
     assert info["features"]["observation.state"]["shape"] == [100]
+    assert info['recording_contract']['backend'] == 'franky_cartesian_impedance'
+    assert info['franky_binding_diagnostics']['libfranka'] == '0.19.0'
+    assert info['recording_contract']['control_fingerprint']
+    assert np.stack(frame['diagnostic.actual_tcp']).shape == (12, 14)
+    assert np.stack(frame['diagnostic.target_joint']).shape == (12, 14)
     assert frame["complementary_info.subtask_index"].tolist() == [0] * 6 + [1] * 6
     assert frame["complementary_info.collector_policy_id"].tolist() == [0]*12
     data = SimpleNamespace(hf_dataset=Dataset.from_pandas(frame), meta=SimpleNamespace(info=info))
@@ -435,8 +458,8 @@ def test_online_save_waits_for_terminal_observation_and_controller_reset(collect
     c._online_worker.join(1)
 
 
-@pytest.mark.parametrize('space,arms', [('joint',1),('joint',2),('tcp',1),('tcp',2)])
-def test_native_labels_are_accepted_commands_for_every_ros_contract(collector,ros_module,monkeypatch,space,arms):
+@pytest.mark.parametrize('space,arms', [('tcp',1),('tcp',2)])
+def test_native_labels_are_accepted_commands_for_franky_contract(collector,ros_module,monkeypatch,space,arms):
     base=collector
     config=replace(base.config,action_space=space,arms=base.config.arms[:arms],
         cameras=tuple(cam for cam in base.config.cameras if arms==2 or cam.name!='right_wrist'),
@@ -465,7 +488,11 @@ def test_native_labels_are_accepted_commands_for_every_ros_contract(collector,ro
         np.testing.assert_allclose(np.stack(table['action']),np.tile(target,(12,1)))
         assert np.stack(table['observation.anchor']).shape==(12,config.action_dim)
         if space=='tcp':
-            assert not np.allclose(np.stack(table['action']),np.stack(table['command.fk_tcp']))
+            np.testing.assert_allclose(np.stack(table['action']), np.stack(table['command.target_tcp']))
+            # An accepted reference is not the stationary fake robot's TCP.
+            actual = np.stack(table['diagnostic.actual_tcp']).reshape(12, arms, 7)
+            accepted = np.stack(table['action']).reshape(12, arms, 10)
+            assert not np.allclose(accepted[:, :, :3], actual[:, :, :3])
         else:
             np.testing.assert_allclose(np.stack(table['action']),np.stack(table['command.joint']))
     finally:

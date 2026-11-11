@@ -70,7 +70,7 @@ def refresh(c):
     c._latest = {key: (now, value) for key, (_, value) in c._latest.items()}
 
 
-@pytest.mark.parametrize('space', ['tcp', 'joint'])
+@pytest.mark.parametrize('space', ['tcp'])
 def test_manual_input_reaches_transport_before_recording(deployment, ros_module, monkeypatch, space):
     """Exercise both timer callbacks, reset acknowledgement and unrecorded motion."""
     b, c, *_ = deployment
@@ -119,7 +119,7 @@ def test_manual_input_reaches_transport_before_recording(deployment, ros_module,
     assert not c._states
     if c.config.input_source == 'gamepad':
         assert sent[-1][1][0] > sent[0][1][0] + .001
-        assert periods and np.allclose(periods, .01)  # input IK runs at 100 Hz, too
+        assert not periods  # Franky accepts TCP directly; no outer IK tracking.
     else:
         assert sent[-1][2] == pytest.approx(.7)
         for arm in c.config.arms:

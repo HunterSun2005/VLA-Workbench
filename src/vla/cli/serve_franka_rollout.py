@@ -143,7 +143,7 @@ def _load_rollout_rtc_profile(
             f"RTC deployment config must be a YAML mapping: {profile_path}"
         )
     rtc_values = values.get("rtc")
-    deployment = values.get("dataset") if values.get("backend") == "ros2" else values.get("deployment")
+    deployment = values.get("dataset") if values.get("backend") in ("ros2", "franky") else values.get("deployment")
     if not isinstance(rtc_values, dict) or not isinstance(deployment, dict):
         raise ValueError(
             "RTC deployment config must contain rtc and deployment mappings"

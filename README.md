@@ -132,7 +132,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 系统前提是 ROS 2 Humble、MoveIt/ros2_control、Robotiq description/controllers、Joy、PyKDL，以及本机 `/opt/openrobots` 的原生依赖。Dynamixel SDK、串口库和 ROS 采集用的 NumPy/OpenCV/相机等依赖安装在 `ros_ws/python_deps`，版本固定在 `ros_ws/requirements-python.lock`；不改动系统 Python，也不引入模型 Conda 环境。版本快照见 `ros_ws/system-packages.lock`；第三方源码精确提交见 `ros_ws/dependencies.repos`。本轮没有安装或更改系统 ROS。
 
-`CHECK_ONLY=1` 只校验配置；真实启动必须显式传入 `--execute`。统一路线由 ROS 协调器管理控制权，独立 Franky worker 使用 `CartesianImpedanceTracker` 执行 TCP 目标。libfranka 统一锁定为 **0.19.0**，worker 会在连接硬件前核对实际加载的动态库；依赖来源、wheel 选择、离线检查与现有安装迁移边界见 [Franky 环境](docs/FRANKY_ENVIRONMENT.md)。
+首次使用先执行 `/usr/bin/python3 scripts/install_franky_worker.py`，将锁定 wheel 安装到独立的 `runtime/franky/current` 环境。`CHECK_ONLY=1` 校验配置及 worker 依赖，不连接硬件；真实启动必须显式传入 `--execute`。统一路线由 ROS 协调器管理控制权，独立 Franky worker 使用 `CartesianImpedanceTracker` 执行 TCP 目标。libfranka 统一锁定为 **0.19.0**，worker 会在连接硬件前核对实际加载的动态库；依赖来源、wheel 选择、离线检查与现有安装迁移边界见 [Franky 环境](docs/FRANKY_ENVIRONMENT.md)。
 
 ## 功能入口
 

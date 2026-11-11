@@ -283,12 +283,15 @@ class ROSBackend(BaseBackend):
         if config.workflow == 'collect':
             from .config import collection_camera_serials
             self.camera_serials = collection_camera_serials(config, self.hardware)
-        if getattr(config, 'backend', 'ros2') != 'franky':
-            from vla.core.hardware_lease import HardwareLease
-            for arm in self.arms:
-                lease = HardwareLease(self.hardware[f'{arm.upper()}_ROBOT_IP'],
-                                      self.hardware[f'{arm.upper()}_ROBOTIQ_PORT'])
-                self.resources.callback(lease.close)
+        rollout = self.rollout_config()
+        if rollout.backend == 'franky':
+            from vla.core.franky_runtime import check_worker
+            self._worker_python, self._worker_binding = check_worker(self.root, rollout.worker_python)
+        from vla.core.hardware_lease import HardwareLease
+        for arm in self.arms:
+            lease = HardwareLease(None if rollout.backend == 'franky' else self.hardware[f'{arm.upper()}_ROBOT_IP'],
+                                  self.hardware[f'{arm.upper()}_ROBOTIQ_PORT'])
+            self.resources.callback(lease.close)
         self.resources.callback(self.children.close)
         legacy = self.root / 'runtime' / f'fr3_fine_teleop_{os.getuid()}' / 'launcher.pid'
         if legacy.exists():
@@ -296,7 +299,6 @@ class ROSBackend(BaseBackend):
             old_pid = int(legacy.read_text().strip())
             if process_identity(old_pid) is not None:
                 raise RuntimeError('an existing ROS launcher owns the hardware; stop it before starting a Web session')
-        rollout = self.rollout_config()
         if rollout is not None:
             keys = {'base':'BASE_CAMERA_SERIAL','left_wrist':'LEFT_WRIST_CAMERA_SERIAL','right_wrist':'RIGHT_WRIST_CAMERA_SERIAL'}
             rollout = replace(rollout,cameras=tuple(replace(cam,serial=self.hardware.get(keys.get(cam.name, ''),cam.serial))
@@ -308,6 +310,7 @@ class ROSBackend(BaseBackend):
             rollout = replace(rollout, cameras=tuple(CameraConfig(role, serial) for role, serial in self.camera_serials.items()))
         if config.workflow == 'deploy' and config.policy_path:
             rollout = self.start_policy(rollout)
+        self._worker_client = None
         if rollout.backend == 'franky':
             self._start_franky_worker(rollout)
         # Both arm/gripper command routes go through managed coordinators, including GELLO.
@@ -332,7 +335,10 @@ class ROSBackend(BaseBackend):
         if config.source == 'gello':
             self._start_gello(env)
         from vla.datacollection.franka_robotiq_rollout.collect_ros import RolloutCollector
-        self.collector = RolloutCollector(rollout, demonstration=config.workflow == 'collect')
+        self.collector = RolloutCollector(rollout, demonstration=config.workflow == 'collect',
+                                          worker_client=self._worker_client,
+                                          worker_session_id=self.directory.name,
+                                          worker_shutdown=self._close_franky_worker if self._worker_client else None)
         self.executor.add_node(self.collector)
         self.resources.callback(self.collector.destroy_node)
         self.resources.callback(self.collector.close)
@@ -342,8 +348,7 @@ class ROSBackend(BaseBackend):
     def _start_franky_worker(self, rollout):
         """Start the isolated Franky process before any ROS peripherals."""
         import json
-        worker_python = (rollout.worker_python or
-                         Path(os.environ.get('FRANKY_PYTHON', '/usr/bin/python3')))
+        worker_python = self._worker_python
         worker_config = self.directory / 'franky-worker.json'
         arms = {
             arm: {
@@ -355,8 +360,12 @@ class ROSBackend(BaseBackend):
             'session_id': self.directory.name,
             'arms': arms,
             'compliance': rollout.franky_compliance,
+            'target_timeout_s': rollout.control_discontinuity_timeout_s,
+            'state_timeout_s': rollout.gamepad_state_timeout_s,
         }, indent=2) + '\n')
-        env = clean_environment(self.root, worker_python)
+        from vla.core.franky_runtime import worker_environment
+        env = worker_environment(self.root, worker_python)
+        self.resources.callback(self._close_franky_worker)
         self.children.start(
             'franky-worker',
             interpreter_command(worker_python, [
@@ -369,20 +378,51 @@ class ROSBackend(BaseBackend):
         from vla.control.franky.ipc import FrankyWorkerClient
         deadline = time.monotonic() + 30
         client = FrankyWorkerClient(rollout.worker_socket_path, timeout_s=1.)
-        self.resources.callback(client.close)
+        self._worker_client = client
         while time.monotonic() < deadline:
             self.check_children()
             if rollout.worker_socket_path.exists():
                 try:
-                    response = client._request({'kind': 'health', 'session_id': self.directory.name})
-                    if response.get('kind') == 'state' and not response.get('fault'):
-                        client.close()
+                    import uuid
+                    from vla.control.franky.ipc import WorkerState
+                    from vla.core.franky_runtime import semantic_binding
+                    message = {'kind': 'health', 'session_id': self.directory.name,
+                               'generation': -1, 'request_id': uuid.uuid4().hex}
+                    response = client._request(message)
+                    states = {v['arm']: WorkerState.from_dict(v) for v in response.get('states', ())}
+                    if (response.get('kind') == 'state' and not response.get('fault')
+                            and response.get('request_id') == message['request_id']
+                            and response.get('session_id') == self.directory.name
+                            and set(states) == set(self.arms)
+                            and all(v.state_valid and not v.fault for v in states.values())
+                            and semantic_binding(response.get('binding_fingerprint', {})) == semantic_binding(self._worker_binding)
+                            and response.get('compliance') == rollout.franky_compliance):
+                        client.request_now(message)
+                        client._session_id = self.directory.name
                         return
-                except (OSError, RuntimeError, TimeoutError):
+                except (OSError, RuntimeError, TimeoutError, ValueError, KeyError):
                     pass
             time.sleep(.1)
         client.close()
         raise TimeoutError('Franky worker startup timed out; see franky-worker.log')
+
+    def _close_franky_worker(self):
+        import uuid
+        client = getattr(self, '_worker_client', None)
+        try:
+            if client is not None and not client._closed.is_set():
+                client.request_now({'kind': 'stop', 'session_id': self.directory.name,
+                                    'generation': client._generation,
+                                    'request_id': uuid.uuid4().hex})
+        except (OSError, RuntimeError) as error:
+            # Startup can be cancelled before the socket exists. Always reap
+            # the worker below; an IPC cleanup error must not mask that cause.
+            self.report(f'Franky stop acknowledgement unavailable: {error}; waiting for worker exit')
+        finally:
+            if client is not None:
+                client.close()
+            # This callback runs before the general peripheral children cleanup.
+            self.children.close_one('franky-worker')
 
     def _start_gello(self, env):
         import yaml

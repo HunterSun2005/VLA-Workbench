@@ -543,7 +543,7 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         inference_slots=inference_slots, installation_guard_slots=guard_slots,
         backend=backend,
         worker_socket_path=Path(str(transport.get("worker_socket_path", "/tmp/vla_franky_worker.sock"))).expanduser().resolve(),
-        worker_python=(Path(str(transport["worker_python"])).expanduser().resolve()
+        worker_python=(Path(str(transport["worker_python"])).expanduser().absolute()
                        if transport.get("worker_python") else None),
         franky_compliance=franky_compliance,
         action_space=str(raw.get("action_space", "tcp")),

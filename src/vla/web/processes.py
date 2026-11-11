@@ -40,7 +40,7 @@ def process_failure(name, code, path):
 def clean_environment(root, python, *, ros=False, workspace=None):
     env = dict(os.environ)
     for key in ('PYTHONHOME','PYTHONPATH','AMENT_PREFIX_PATH','COLCON_PREFIX_PATH','CMAKE_PREFIX_PATH',
-                'LD_LIBRARY_PATH','ROS_DISTRO','ROS_VERSION','ROS_PYTHON_VERSION','CONDA_PREFIX','CONDA_DEFAULT_ENV'):
+                'LD_LIBRARY_PATH','LD_PRELOAD','VIRTUAL_ENV','ROS_DISTRO','ROS_VERSION','ROS_PYTHON_VERSION','CONDA_PREFIX','CONDA_DEFAULT_ENV'):
         env.pop(key, None)
     env.update(VLA_RUN_MODE='managed', VLA_ROOT=str(root), VLA_PYTHON=str(python), PYTHONNOUSERSITE='1',
                PYTHONPATH=str(Path(__file__).resolve().parents[2]),
@@ -91,3 +91,8 @@ class Children:
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait(timeout=5)
+
+    def close_one(self, name):
+        selected = Children(self.directory)
+        selected.items = [item for item in self.items if item[0] == name]
+        selected.close()

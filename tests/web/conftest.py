@@ -3,8 +3,10 @@ import json
 import pytest
 
 @pytest.fixture
-def ros_ready():
+def ros_ready(monkeypatch):
     """Configuration-only ROS installation; never source or start these placeholders."""
+    from vla.core import franky_runtime
+    monkeypatch.setattr(franky_runtime, "check_worker", lambda root, configured=None: (root/"fake-python", {"libfranka": "0.19.0"}))
     def configure(root, config):
         from vla.web.hardware import preset
         target = root/'ros_ws/install/local_setup.bash'

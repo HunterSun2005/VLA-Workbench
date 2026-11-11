@@ -27,6 +27,8 @@ def main() -> None:
         config["arms"],
         session_id=str(config["session_id"]),
         compliance=config.get("compliance"),
+        target_timeout_s=config.get("target_timeout_s", .1),
+        state_timeout_s=config.get("state_timeout_s", .5),
     )
     server = FrankyWorkerServer(worker, args.socket_path)
     # Managed ROS shutdown sends SIGTERM to child process groups. Convert it

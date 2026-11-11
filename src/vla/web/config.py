@@ -195,6 +195,15 @@ def preflight(config, *, demo=False, root=None):
     if demo:
         return {'ok': True, 'checks': ['模拟模式：不访问硬件、不写数据集'], 'errors': [],
                 'modes': config.modes(True), 'cameras': config.cameras, 'dataset_root': str(target)}
+    try:
+        from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
+        rollout = load_rollout_config(config.default_config())
+        if rollout.backend == 'franky':
+            from vla.core.franky_runtime import check_worker
+            python, binding = check_worker(root, rollout.worker_python)
+            checks.append(f'Franky Python: {python}; libfranka {binding["libfranka"]}; tracker/Affine passed')
+    except (RuntimeError, ValueError, OSError) as error:
+        errors.append(f'Franky 环境检查失败: {error}')
     for label, path, directory in [('配置', str(config.default_config()), False),
                                    ('模型 Python', config.model_python, False)]:
         p = Path(path).expanduser()

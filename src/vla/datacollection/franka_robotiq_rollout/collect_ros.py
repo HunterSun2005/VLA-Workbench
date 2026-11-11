@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 import rclpy
 from control_msgs.action import GripperCommand
 from franka_msgs.msg import FrankaRobotState
@@ -171,7 +172,11 @@ from vla.control.ros.cartesian_servo import CARTESIAN_TRACKING, CartesianServo
 
 
 class RolloutCollector(Node):
-    def __init__(self, config: RolloutConfig, *, demonstration: bool = False) -> None:
+    def __init__(self, config: RolloutConfig, *, demonstration: bool = False,
+                 worker_client=None, worker_session_id=None, worker_shutdown=None) -> None:
+        self._worker_client = worker_client
+        self._worker_session_id = worker_session_id
+        self._worker_shutdown = worker_shutdown
         try:
             self._initialize(config, demonstration=demonstration)
         except BaseException:
@@ -184,6 +189,8 @@ class RolloutCollector(Node):
             client = getattr(self, 'policy_client', None)
             if client is not None:
                 client.close()
+            if self._worker_client is not None:
+                self._worker_client.close()
             self.destroy_node()
             raise
 
@@ -321,15 +328,19 @@ class RolloutCollector(Node):
             arm.name: CartesianServo(self._load_kinematic_model(arm), config)
             for arm in config.arms
         }
-        self._worker_client = None
         self._pending_compliance = None
         self._pending_worker_targets = {}
-        self._worker_session_id = os.environ.get('VLA_WORKER_SESSION_ID', '')
         if config.backend == 'franky':
-            if not self._worker_session_id:
-                raise RuntimeError('Franky rollout requires VLA_WORKER_SESSION_ID')
-            self._worker_client = FrankyWorkerClient(
-                config.worker_socket_path, session_id=self._worker_session_id)
+            if self._worker_client is None or not self._worker_session_id:
+                raise RuntimeError('Franky collector requires an explicit ready worker connection')
+            import uuid
+            ready = self._worker_client.request_now({'kind': 'health', 'session_id': self._worker_session_id,
+                                                    'generation': -1, 'request_id': uuid.uuid4().hex})
+            from vla.core.franky_runtime import semantic_binding
+            binding_identity = semantic_binding(ready['binding_fingerprint'])
+            if (set(self._worker_client.states()) != {a.name for a in config.arms}
+                    or not all(v.state_valid and not v.fault for v in self._worker_client.states().values())):
+                raise RuntimeError('Franky worker is not ready for all arms')
         self._setup_ros_io()
         self.coordinator = ControlCoordinator(
             config.action_spec, self.servos,
@@ -366,8 +377,11 @@ class RolloutCollector(Node):
             'cartesian_tracking': CARTESIAN_TRACKING,
             'execution': {'version': 2, 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots},
             'franky': controller_parameters if config.backend == 'franky' else None,
-            'binding': self._worker_client.binding_fingerprint() if self._worker_client else None})
+            'binding': binding_identity if self._worker_client else None,
+            'franky_implementation': ready['implementation_version'] if self._worker_client else None})
         metadata['effective_controller_parameters'] = controller_parameters
+        if self._worker_client is not None:
+            metadata['franky_binding_diagnostics'] = ready['binding_fingerprint']
         metadata['execution_projection'] = {
             'lower': np.concatenate([self.servos[a.name].model.lower_limits if config.action_space == 'joint'
                                      else np.asarray(a.workspace_min) for a in config.arms]).tolist(),
@@ -794,19 +808,17 @@ class RolloutCollector(Node):
     def update_compliance(self, values):
         if self._worker_client is None:
             raise RuntimeError('Franky worker is not active')
+        if self._pending_compliance is not None or self._worker_client.fault:
+            raise RuntimeError('compliance update is pending or worker is faulted')
         from vla.control.franky.worker import Compliance
-        self._pending_compliance = asdict(Compliance.from_mapping(values, Compliance.from_mapping(self.config.franky_compliance)))
-        self._worker_client.compliance(
-            self._worker_session_id, self.coordinator.generation,
-            str(time.monotonic_ns()), values)
+        current = self._worker_client.compliance_values() or self.config.franky_compliance
+        Compliance.from_mapping(values, Compliance.from_mapping(current))
+        import uuid
+        request_id = uuid.uuid4().hex
+        self._pending_compliance = {'request_id': request_id, 'started': time.monotonic()}
+        self._worker_client.compliance(self._worker_session_id, self.coordinator.generation, request_id, values)
 
     def compliance_status(self):
-        current = (self._worker_client.compliance_values()
-                   if self._worker_client else {})
-        if self._pending_compliance and all(
-                abs(current.get(key, float('nan')) - value) < 1e-9
-                for key, value in self._pending_compliance.items()):
-            self._pending_compliance = None
         return {
             'backend': self.config.backend,
             'pending': self._pending_compliance is not None,
@@ -916,7 +928,10 @@ class RolloutCollector(Node):
 
     def _request_controller_reset(self, generation):
         if self._worker_client is not None:
-            self._worker_client.reset(self._worker_session_id, generation)
+            if self.coordinator.mode == 'fault':
+                self._worker_client.stop(self._worker_session_id, generation)
+            else:
+                self._worker_client.reset(self._worker_session_id, generation)
             return
         for publisher in self._reset_publishers.values():
             message = UInt64()
@@ -1247,12 +1262,25 @@ class RolloutCollector(Node):
     def _poll_worker_states(self):
         if self._worker_client is None:
             return
+        if self._pending_compliance is not None:
+            pending = self._pending_compliance
+            result = self._worker_client.result(pending['request_id'])
+            if result is not None:
+                self._pending_compliance = None
+                if result.get('request_status') != 'applied' or result.get('error') or result.get('fault'):
+                    self._latch_fault(RuntimeError(result.get('error') or result.get('fault') or 'compliance update rejected'))
+                    return
+            elif time.monotonic() - pending['started'] > self.config.gamepad_state_timeout_s:
+                self._pending_compliance = None
+                self._latch_fault(RuntimeError('compliance acknowledgement timed out'))
+                return
         fault = self._worker_client.fault
         if fault:
             self._latch_fault(RuntimeError(fault))
             return
         for arm, state in self._worker_client.states().items():
-            if not state.state_valid:
+            if (not state.state_valid or not 0 <= time.monotonic_ns() - state.observed_at_ns
+                    <= self.config.gamepad_state_timeout_s * 1e9):
                 self._latch_fault(RuntimeError(f"Franky worker state for {arm} is invalid"))
                 continue
             message = self._worker_robot_state(state)
@@ -2203,6 +2231,18 @@ class RolloutCollector(Node):
             self._control_boundary(reason='session close; retain staging')
             self._teleop_enabled = False
             self._closed = True
+        # Release FCI before waiting on storage or closing peripheral devices.
+        # The backend callback also reaps the worker after a failed IPC stop.
+        if self._worker_client is not None:
+            if self._worker_shutdown is not None:
+                self._worker_shutdown()
+            else:
+                try:
+                    self._worker_client.request_now({'kind': 'stop', 'session_id': self._worker_session_id,
+                                                     'generation': self.coordinator.generation,
+                                                     'request_id': str(time.monotonic_ns())})
+                finally:
+                    self._worker_client.close()
         if getattr(self, '_save_worker', None) is not None:
             self._save_worker.join()
         if self._journal is not None:
@@ -2212,13 +2252,6 @@ class RolloutCollector(Node):
                 pass  # Recover only the durable matching prefix after restart.
         if self.policy_client is not None:
             self.policy_client.close()
-        if self._worker_client is not None:
-            try:
-                self._worker_client.request_now({'kind': 'stop', 'session_id': self._worker_session_id,
-                                                 'generation': self.coordinator.generation,
-                                                 'request_id': str(time.monotonic_ns())})
-            finally:
-                self._worker_client.close()
         for camera in reversed(tuple(self._cameras.values())):
             camera.close()
 

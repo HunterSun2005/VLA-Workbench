@@ -18,8 +18,9 @@ ACTION_ENCODING = "ros_accepted_absolute_target_v1"
 
 
 def validate_dual_config(config):
-    if config.backend != "ros2" or tuple(arm.name for arm in config.arms) not in (("left",), ("left", "right")):
-        raise ValueError("dual gamepad recording requires ROS2 arms ordered left, right")
+    if (config.backend != "franky" or config.action_space != "tcp"
+            or tuple(arm.name for arm in config.arms) not in (("left",), ("left", "right"))):
+        raise ValueError("gamepad recording requires Franky TCP arms ordered left, right")
     if len(config.arms) == 2 and tuple(camera.name for camera in config.cameras) not in (("base", "left_wrist", "right_wrist"), ("base", "left_wrist", "right_wrist", "side")):
         raise ValueError("dual cameras must be ordered base, left_wrist, right_wrist, with optional side last")
     if len({camera.serial for camera in config.cameras}) != len(config.cameras):

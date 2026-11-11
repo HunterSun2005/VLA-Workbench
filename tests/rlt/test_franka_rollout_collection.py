@@ -586,8 +586,8 @@ def test_rollout_yaml_profiles_are_single_and_dual() -> None:
     assert [arm.name for arm in single.arms] == ["left"]
     assert [arm.gamepad.joy_topic for arm in single.arms] == ["/left/gamepad/joy"]
     assert single.policy_state_dim == single.action_dim == 10
-    assert single.backend == "ros2"
-    assert dual.backend == "ros2"
+    assert single.backend == "franky"
+    assert dual.backend == "franky"
     assert single.task == "Place the white lid firmly onto the jig."
     assert single.image_size == (224, 224)
     assert single.cameras[1].serial == "346222073620"
@@ -746,8 +746,8 @@ def test_rollout_collector_does_not_import_fine_teleop_node() -> None:
 
 def test_rollout_dispatcher_selects_backends() -> None:
     root = Path(__file__).parents[2] / "src/vla/datacollection/franka_robotiq_rollout/configs"
-    assert configured_backend(root / "single_left.yaml") == "ros2"
-    assert configured_backend(root / "dual.yaml") == "ros2"
+    assert configured_backend(root / "single_left.yaml") == "franky"
+    assert configured_backend(root / "dual.yaml") == "franky"
 
 
 def test_joy_bridge_packet_round_trip_and_validation() -> None:

@@ -11,7 +11,8 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import queue
+from collections import deque
+import uuid
 import socket
 import struct
 import threading
@@ -100,6 +101,12 @@ class WorkerState:
         if ((joint_torque and len(joint_torque) != 7)
                 or (external_torque and len(external_torque) != 7)):
             raise ValueError("worker state torques must contain seven joints when present")
+        import math
+        for key, width in (('joints', 7), ('joint_velocity', 7), ('joint_torque', 7),
+                           ('external_joint_torque', 7), ('target_joints', 7), ('force', 3), ('torque', 3)):
+            values = value.get(key, ())
+            if values and (len(values) != width or not all(math.isfinite(float(x)) for x in values)):
+                raise ValueError(f'invalid worker state {key}')
         return cls(
             arm=str(value["arm"]),
             observed_at_ns=int(value["observed_at_ns"]),
@@ -122,162 +129,179 @@ class WorkerState:
 
 
 class FrankyWorkerClient:
-    """Non-blocking target client with a bounded latest-target queue."""
-
-    def __init__(self, path: str | os.PathLike[str], *, timeout_s: float = .5,
-                 queue_size: int = 8, session_id: str | None = None) -> None:
+    """Bounded background IPC; lifecycle fences also cancel dequeued targets."""
+    def __init__(self, path, *, timeout_s=.5, queue_size=8, session_id=None):
         self.path = Path(path).expanduser().resolve()
         self.timeout_s = float(timeout_s)
-        self._queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=queue_size)
-        self._states: dict[str, WorkerState] = {}
-        self._compliance: dict[str, float] = {}
-        self._binding_fingerprint: dict[str, str] = {}
-        self._lock = threading.RLock()
+        self._queue = deque()
+        self._queue_size = queue_size
+        self._condition = threading.Condition(threading.RLock())
+        self._lock = self._condition
         self._request_lock = threading.Lock()
-        self._fault: str | None = None
-        self._session_id = str(session_id) if session_id is not None else None
+        self._states = {}
+        self._compliance = {}
+        self._binding_fingerprint = {}
+        self._results = {}
+        self._fault = None
+        self._session_id = session_id
         self._generation = -1
-        self._request_id = 0
-        self._last_health = 0.0
+        self._epoch = 0
         self._closed = threading.Event()
-        self._thread = threading.Thread(target=self._run, name="franky-ipc", daemon=True)
+        self._thread = threading.Thread(target=self._run, name='franky-ipc', daemon=True)
         self._thread.start()
-        if session_id is not None:
-            self._request_id += 1
-            self._enqueue({"kind": "health", "session_id": self._session_id,
-                           "generation": self._generation, "request_id": self._request_id})
 
     @property
-    def fault(self) -> str | None:
+    def fault(self):
         with self._lock:
             return self._fault
 
-    def states(self) -> dict[str, WorkerState]:
+    def states(self):
         with self._lock:
             return dict(self._states)
 
-    def compliance_values(self) -> dict[str, float]:
+    def compliance_values(self):
         with self._lock:
             return dict(self._compliance)
 
-    def binding_fingerprint(self) -> dict[str, str]:
+    def binding_fingerprint(self):
         with self._lock:
             return dict(self._binding_fingerprint)
 
-    def _enqueue(self, message: dict[str, Any]) -> None:
-        try:
-            self._queue.put_nowait(message)
-        except queue.Full:
-            # Targets are replaceable; lifecycle requests are not.
-            if message["kind"] == "target":
-                try:
-                    with self._queue.mutex:
-                        index = next((i for i, item in enumerate(self._queue.queue)
-                                      if item.get("kind") == "target"), None)
-                        if index is None:
-                            return
-                        del self._queue.queue[index]
-                        self._queue.not_full.notify()
-                    self._queue.put_nowait(message)
-                except (queue.Empty, ValueError):
-                    return
-            else:
-                with self._queue.mutex:
-                    index = next((i for i, item in enumerate(self._queue.queue)
-                                  if item.get("kind") == "target"), None)
-                    if index is None:
-                        raise RuntimeError("Franky worker command queue is full")
-                    del self._queue.queue[index]
-                    self._queue.not_full.notify()
-                self._queue.put_nowait(message)
+    def result(self, request_id):
+        with self._lock:
+            return self._results.get(str(request_id))
 
-    def target(self, session_id: str, generation: int, sequence: int,
-               arms: Mapping[str, Any], timestamp_ns: int | None = None) -> None:
-        targets = {}
-        for arm, value in arms.items():
-            pose = value["pose"] if isinstance(value, Mapping) else value
-            targets[str(arm)] = {"pose": _validate_pose(pose)}
-        self._generation = int(generation)
-        self._request_id += 1
-        self._enqueue({"kind": "target", "request_id": self._request_id, "session_id": str(session_id),
-                       "generation": int(generation), "sequence": int(sequence),
-                       "timestamp_ns": int(timestamp_ns or time.monotonic_ns()),
-                       "arms": targets})
+    def _message(self, kind, session_id=None, generation=None, **values):
+        return {'kind': kind, 'session_id': session_id or self._session_id,
+                'generation': self._generation if generation is None else int(generation),
+                'request_id': uuid.uuid4().hex, **values}
 
-    def reset(self, session_id: str, generation: int) -> None:
-        self._generation = int(generation)
-        self._request_id += 1
-        self._enqueue({"kind": "reset", "session_id": str(session_id),
-                       "generation": int(generation), "request_id": self._request_id})
+    def _fence(self, message):
+        # Called under the condition lock, before the lifecycle message is visible.
+        self._generation = max(self._generation, int(message['generation']))
+        self._epoch += 1
+        self._queue = deque(item for item in self._queue if item[1]['kind'] != 'target')
 
-    def stop(self, session_id: str, generation: int) -> None:
-        self._generation = int(generation)
-        self._request_id += 1
-        self._enqueue({"kind": "stop", "session_id": str(session_id),
-                       "generation": int(generation), "request_id": self._request_id})
+    def _enqueue(self, message):
+        with self._condition:
+            if self._closed.is_set():
+                raise RuntimeError('worker client is closed')
+            lifecycle = message['kind'] in ('stop', 'reset', 'recover', 'compliance')
+            if lifecycle:
+                self._fence(message)
+            if len(self._queue) >= self._queue_size:
+                for item in self._queue:
+                    if item[1]['kind'] in ('target', 'health'):
+                        self._queue.remove(item)
+                        break
+                else:
+                    if message['kind'] == 'target':
+                        return
+                    self._fault = 'Franky worker lifecycle queue is full'
+                    raise RuntimeError(self._fault)
+            self._queue.append((self._epoch, message))
+            self._condition.notify()
 
-    def recover(self, session_id: str, generation: int) -> None:
-        self._generation = int(generation)
-        self._request_id += 1
-        self._enqueue({"kind": "recover", "session_id": str(session_id),
-                       "generation": int(generation), "request_id": self._request_id})
+    def target(self, session_id, generation, sequence, arms, timestamp_ns=None):
+        targets = {str(name): {'pose': _validate_pose(value['pose'] if isinstance(value, Mapping) else value)}
+                   for name, value in arms.items()}
+        with self._lock:
+            if self._fault:
+                return
+        self._enqueue(self._message('target', session_id, generation, sequence=int(sequence), arms=targets,
+                                    timestamp_ns=time.monotonic_ns() if timestamp_ns is None else int(timestamp_ns)))
 
-    def compliance(self, session_id: str, generation: int,
-                   request_id: str, values: Mapping[str, Any]) -> None:
-        self._enqueue({"kind": "compliance", "session_id": str(session_id),
-                       "generation": int(generation), "request_id": str(request_id),
-                       "values": dict(values)})
+    def reset(self, session_id, generation):
+        self._enqueue(self._message('reset', session_id, generation))
 
-    def _request(self, message: Mapping[str, Any]) -> dict[str, Any]:
+    def stop(self, session_id, generation):
+        self._enqueue(self._message('stop', session_id, generation))
+
+    def recover(self, session_id, generation):
+        self._enqueue(self._message('recover', session_id, generation))
+
+    def compliance(self, session_id, generation, request_id, values):
+        self._enqueue(self._message('compliance', session_id, generation,
+                                    request_id=str(request_id), values=dict(values)))
+
+    def _request(self, message):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(self.timeout_s)
             sock.connect(str(self.path))
             sock.sendall(encode_packet(message))
             return decode_packet(sock)
 
-    def request_now(self, message: Mapping[str, Any]) -> dict[str, Any]:
-        """Perform a lifecycle request synchronously and publish its state."""
-        if message.get("kind") in {"stop", "recover", "reset"}:
-            with self._queue.mutex:
-                retained = [item for item in self._queue.queue if item.get("kind") != "target"]
-                self._queue.queue.clear()
-                self._queue.queue.extend(retained)
-        with self._request_lock:
-            result = self._request(message)
-        if result.get("error"):
-            raise RuntimeError(str(result["error"]))
+    def _exchange(self, message):
+        result = self._request(message)
+        if (result.get('session_id') != message['session_id']
+                or result.get('request_id') != str(message['request_id'])
+                or result.get('kind') != 'state'
+                or type(result.get('generation')) is not int
+                or result['generation'] < message['generation']):
+            raise RuntimeError('worker response identity mismatch')
+        states = {value['arm']: WorkerState.from_dict(value) for value in result.get('states', ())}
+        error = result.get('error') or result.get('fault')
+        if any(not value.state_valid or value.fault for value in states.values()):
+            error = error or 'invalid Franky state'
         with self._lock:
-            for value in result.get("states", ()):
-                state = WorkerState.from_dict(value)
-                self._states[state.arm] = state
-            if isinstance(result.get("compliance"), dict):
-                self._compliance = {str(k): float(v) for k, v in result["compliance"].items()}
-            if isinstance(result.get("binding_fingerprint"), dict):
-                self._binding_fingerprint = {str(k): str(v) for k, v in result["binding_fingerprint"].items()}
-            self._fault = str(result["fault"]) if result.get("fault") else None
+            self._states = states
+            self._compliance = dict(result.get('compliance', {}))
+            self._binding_fingerprint = dict(result.get('binding_fingerprint', {}))
+            self._results[str(message['request_id'])] = result
+            while len(self._results) > 128:
+                self._results.pop(next(iter(self._results)))
+            if error:
+                self._fault = self._fault or str(error)
+            elif message['kind'] == 'recover' and result.get('request_status') == 'applied':
+                self._fault = None
+        if error:
+            raise RuntimeError(str(error))
         return result
 
-    def _run(self) -> None:
+    def request_now(self, message):
+        message = dict(message)
+        with self._lock:
+            if message['kind'] in ('stop', 'reset', 'recover', 'compliance'):
+                self._fence(message)
+        try:
+            with self._request_lock:
+                return self._exchange(message)
+        except Exception as error:
+            with self._lock:
+                self._fault = self._fault or str(error)
+            raise
+
+    def _run(self):
         while not self._closed.is_set():
+            with self._condition:
+                if not self._queue:
+                    self._condition.wait(.1)
+                if self._closed.is_set():
+                    break
+                if self._queue:
+                    epoch, message = self._queue.popleft()
+                elif self._session_id:
+                    epoch, message = self._epoch, self._message('health')
+                else:
+                    continue
             try:
-                message = self._queue.get(timeout=.1)
-            except queue.Empty:
-                if self._session_id and time.monotonic() - self._last_health >= .2:
-                    self._last_health = time.monotonic()
-                    try:
-                        self._request_id += 1
-                        self._queue.put_nowait({"kind": "health", "session_id": self._session_id,
-                                                "generation": self._generation,
-                                                "request_id": self._request_id})
-                    except queue.Full:
-                        pass
-                continue
-            try:
-                self.request_now(message)
+                with self._request_lock:
+                    with self._lock:
+                        if message['kind'] == 'target' and (epoch != self._epoch or self._fault):
+                            continue
+                    self._exchange(message)
             except Exception as error:
                 with self._lock:
-                    self._fault = str(error)
+                    self._fault = self._fault or str(error)
+                    self._queue = deque(item for item in self._queue if item[1]['kind'] != 'target')
+                    self._results[str(message['request_id'])] = {'request_status': 'failed', 'error': str(error)}
+                    while len(self._results) > 128:
+                        self._results.pop(next(iter(self._results)))
 
-    def close(self) -> None:
-        self._closed.set()
-        self._thread.join(timeout=max(.2, self.timeout_s + .2))
+    def close(self):
+        with self._condition:
+            self._closed.set()
+            self._epoch += 1
+            self._queue.clear()
+            self._condition.notify_all()
+        self._thread.join(timeout=self.timeout_s + .2)
