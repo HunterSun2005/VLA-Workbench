@@ -2,7 +2,6 @@ action_space: tcp
 arms:
 - base_link: left_fr3_link0
   command_gripper_topic: /left/teleop/gripper_action_width_percent
-  command_joint_topic: /left/teleop/joint_states
   gamepad:
     joint7_button_sign: -1.0
     joy_topic: /left/gamepad/joy
@@ -48,16 +47,18 @@ control:
   gamepad_deadzone: 0.08
   gamepad_gripper_speed: 0.4
   gamepad_gripper_trigger_deadzone: 0.05
-  gamepad_joint7_speed: 0.3
+  gamepad_joint7_speed: 0.45
   gamepad_joy_timeout_s: 0.2
-  gamepad_max_angular_speed: 0.3
+  gamepad_max_angular_speed: 0.45
+  gamepad_tilt_speed: 0.225
+  gamepad_roll_speed: 0.45
   gamepad_state_timeout_s: 0.5
-  gamepad_xy_speed: 0.02
-  gamepad_z_speed: 0.01
+  gamepad_xy_speed: 0.03
+  gamepad_z_speed: 0.015
   joint_limit_margin: 0.05
   low_success_rate_samples: 3
-  max_angular_velocity: 0.3
-  max_linear_velocity: 0.04
+  max_angular_velocity: 0.45
+  max_linear_velocity: 0.06
   min_control_command_success_rate: 0.9
   policy_gripper_speed: 1.0
   policy_timeout_s: 30.0

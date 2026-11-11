@@ -123,8 +123,8 @@ class RolloutConfig:
     gamepad_max_angular_speed: float
     min_control_command_success_rate: float
     low_success_rate_samples: int
-    gamepad_tilt_speed: float = 0.15
-    gamepad_roll_speed: float = 0.30
+    gamepad_tilt_speed: float = 0.225
+    gamepad_roll_speed: float = 0.45
     action_space: str = "tcp"
     input_source: str = "gamepad"
     gamepad_profile: str | None = None
@@ -336,21 +336,21 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         "sync_tolerance_ms": float(control.get("sync_tolerance_ms", 100.0)),
         "policy_timeout_s": float(control.get("policy_timeout_s", 2.0)),
         "control_discontinuity_timeout_s": float(control.get("control_discontinuity_timeout_ms", 100.0)) / 1000.0,
-        "max_linear_velocity": float(control.get("max_linear_velocity", .04)),
-        "max_angular_velocity": float(control.get("max_angular_velocity", .3)),
+        "max_linear_velocity": float(control.get("max_linear_velocity", 0.06)),
+        "max_angular_velocity": float(control.get("max_angular_velocity", 0.45)),
         "joint_limit_margin": float(control.get("joint_limit_margin", 0.05)),
         "gamepad_joy_timeout_s": float(control.get("gamepad_joy_timeout_s", 0.2)),
         "gamepad_state_timeout_s": float(control.get("gamepad_state_timeout_s", 0.5)),
         "gamepad_deadzone": float(control.get("gamepad_deadzone", 0.08)),
-        "gamepad_xy_speed": float(control.get("gamepad_xy_speed", 0.02)),
-        "gamepad_z_speed": float(control.get("gamepad_z_speed", 0.01)),
-        "gamepad_joint7_speed": float(control.get("gamepad_joint7_speed", 0.30)),
-        "gamepad_tilt_speed": float(control.get("gamepad_tilt_speed", 0.15)),
-        "gamepad_roll_speed": float(control.get("gamepad_roll_speed", control.get("gamepad_joint7_speed", 0.30))),
+        "gamepad_xy_speed": float(control.get("gamepad_xy_speed", 0.03)),
+        "gamepad_z_speed": float(control.get("gamepad_z_speed", 0.015)),
+        "gamepad_joint7_speed": float(control.get("gamepad_joint7_speed", 0.45)),
+        "gamepad_tilt_speed": float(control.get("gamepad_tilt_speed", 0.225)),
+        "gamepad_roll_speed": float(control.get("gamepad_roll_speed", control.get("gamepad_joint7_speed", 0.45))),
         "gamepad_gripper_speed": float(control.get("gamepad_gripper_speed", 0.40)),
         "policy_gripper_speed": float(control.get("policy_gripper_speed", 1.0)),
         "gamepad_max_angular_speed": float(
-            control.get("gamepad_max_angular_speed", 0.30)
+            control.get("gamepad_max_angular_speed", 0.45)
         ),
     }
     invalid = [name for name, value in positive.items() if not math.isfinite(value) or value <= 0]

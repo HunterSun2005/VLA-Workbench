@@ -593,14 +593,14 @@ def test_rollout_yaml_profiles_are_single_and_dual() -> None:
     assert single.cameras[1].serial == "346222073620"
     assert single.min_control_command_success_rate == pytest.approx(0.90)
     assert single.low_success_rate_samples == 3
-    assert single.max_linear_velocity == pytest.approx(0.04)
-    assert single.max_angular_velocity == pytest.approx(0.30)
+    assert single.max_linear_velocity == pytest.approx(0.06)
+    assert single.max_angular_velocity == pytest.approx(0.45)
     assert single.policy_timeout_s == pytest.approx(30.0)
     assert single.control_discontinuity_timeout_s == pytest.approx(0.1)
     assert single.joy_socket_path == Path("/tmp/vla_rollout_joy.sock")
     assert single.gamepad_joy_timeout_s == pytest.approx(0.20)
     assert single.gamepad_state_timeout_s == pytest.approx(0.50)
-    assert single.gamepad_max_angular_speed == pytest.approx(0.30)
+    assert single.gamepad_max_angular_speed == pytest.approx(0.45)
     assert single.gamepad_gripper_trigger_deadzone == pytest.approx(0.05)
     assert single.policy_gripper_speed == pytest.approx(1.0)
     assert single.arms[0].gripper_action_topic == (
