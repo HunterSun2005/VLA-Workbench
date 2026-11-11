@@ -54,6 +54,7 @@ arms:
   measured_joint_topic: /left/franka_robot_state_broadcaster/measured_joint_states
   gripper_state_topic: /left/gripper/joint_state_broadcaster_robotiq/joint_states
   gamepad:
+    input_layout: standard_sdl
     joy_topic: /left/gamepad/joy
     joint7_button_sign: -1.0
     left_stick_x_sign: 1.0
@@ -82,6 +83,7 @@ arms:
   measured_joint_topic: /right/franka_robot_state_broadcaster/measured_joint_states
   gripper_state_topic: /right/gripper/joint_state_broadcaster_robotiq/joint_states
   gamepad:
+    input_layout: standard_sdl
     joy_topic: /right/gamepad/joy
     joint7_button_sign: -1.0
     left_stick_x_sign: 1.0

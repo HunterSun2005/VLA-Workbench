@@ -218,6 +218,9 @@ class DynamixelDriver(DynamixelDriverProtocol):
         self._port = port
         self._baudrate = baudrate
         self._buffered_joint_positions = None
+        self._joint_sample = None
+        self._sample_sequence = 0
+        self._sample_lock = Lock()
         self._lock = Lock()
 
         # Load motor configuration
@@ -378,22 +381,35 @@ class DynamixelDriver(DynamixelDriverProtocol):
             # without continuously saturating a CPU core with serial polling.
             time.sleep(0.005)
             try:
-                self._buffered_joint_positions = np.array(
-                    self.read_value_by_name("present_position"), dtype=int
-                )
+                values = np.array(self.read_value_by_name("present_position"), dtype=int)
+                self._cache_joint_sample(values, time.monotonic_ns())
             except RuntimeError as e:
                 print(f"Warning: {e}")
                 continue
 
+    def _cache_joint_sample(self, values, captured_at_ns):
+        with self._sample_lock:
+            self._sample_sequence += 1
+            self._joint_sample = (values.copy(), captured_at_ns, self._sample_sequence)
+
+    def get_joint_sample(self):
+        """Nonblocking immutable snapshot; failed serial reads never renew its age."""
+        with self._sample_lock:
+            if self._joint_sample is None:
+                return None
+            values, captured_at_ns, sequence = self._joint_sample
+            return self._pulses_to_rad(values.copy()), captured_at_ns, sequence
+
     def get_joints(self) -> np.ndarray:
-        if self._is_polling:
-            # If polling, return _buffered_joint_positions array, use copy to avoid race conditions
-            while self._buffered_joint_positions is None:
-                time.sleep(0.01)
-            return self._pulses_to_rad(self._buffered_joint_positions.copy())
-        else:
-            joint_positions = np.array(self.read_value_by_name("present_position"), dtype=int)
-            return self._pulses_to_rad(joint_positions)
+        if not self._is_polling:
+            return self._pulses_to_rad(np.array(self.read_value_by_name("present_position"), dtype=int))
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            sample = self.get_joint_sample()
+            if sample is not None and time.monotonic_ns() - sample[1] <= 200_000_000:
+                return sample[0]
+            time.sleep(.01)
+        raise RuntimeError("GELLO joint sample unavailable or stale")
 
     def close(self) -> None:
         self.stop_joint_polling()

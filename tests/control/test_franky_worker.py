@@ -127,7 +127,15 @@ def test_fake_cartesian_tracker_gains_rebuild_and_recover():
     arm._ensure_tracker()
     arm.set_target([.01, 0, 0, 0, 0, 0, 1], 2, 3)
     assert len(arm.tracker.targets) == 1
-    arm.update_compliance({'translational_stiffness': 900})
+    original = arm.tracker
+    from dataclasses import asdict
+    arm.update_compliance({**asdict(arm.compliance), 'translational_stiffness': 900})
+    assert arm.tracker is original  # unchanged structural fields do not restart tracking
+    count = len(arm.tracker.gains)
+    arm.update_compliance(asdict(arm.compliance))
+    assert len(arm.tracker.gains) == count
+    arm.update_compliance({'max_step': .025})
+    assert arm.tracker is original and len(arm.tracker.gains) == count
     assert arm.tracker.gains[-1]['translational_stiffness'] == 900
     arm.update_compliance({'translational_clip': .01})
     assert arm.tracker is not None and arm.tracker.kwargs['translational_error_clip'][0] == .01

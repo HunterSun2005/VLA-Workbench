@@ -1,3 +1,4 @@
+import time
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -17,7 +18,7 @@ class GelloPublisher(Node):
 
     def __init__(self) -> None:
         super().__init__("gello_publisher")
-        self.PUBLISHING_RATE = 25  # Hz
+        self.PUBLISHING_RATE = 100  # Poll the latest sample; never repeat stale samples.
 
         hardware_params: GelloHardwareParams = self._setup_hardware_parameters()
 
@@ -27,7 +28,7 @@ class GelloPublisher(Node):
             self.get_logger().error(f"Failed to initialize GELLO hardware: {e}")
             raise
 
-        self.arm_joint_publisher = self.create_publisher(JointState, "gello/joint_states", 10)
+        self.arm_joint_publisher = self.create_publisher(JointState, "gello/joint_states", 1)
         self.gripper_joint_publisher = self.create_publisher(
             Float32, "gripper/gripper_client/target_gripper_width_percent", 10
         )
@@ -63,13 +64,22 @@ class GelloPublisher(Node):
             "fr3_joint6",
             "fr3_joint7",
         ]
-        [gello_arm_joints, gripper_position] = self.gello_hardware.get_joint_and_gripper_positions()
+        sample = self.gello_hardware.get_position_sample()
+        if sample is None:
+            return
+        gello_arm_joints, gripper_position, captured_at_ns, _sequence = sample
+        age_ns = time.monotonic_ns() - captured_at_ns
+        if not 0 <= age_ns <= 200_000_000:
+            return
+        # Preserve acquisition time in the ROS clock domain, not publication time.
+        from rclpy.time import Time
+        stamp = Time(nanoseconds=self.get_clock().now().nanoseconds - age_ns).to_msg()
 
         arm_joint_states = JointState()
-        arm_joint_states.header.stamp = self.get_clock().now().to_msg()
-        arm_joint_states.name = JOINT_NAMES
+        arm_joint_states.header.stamp = stamp
+        arm_joint_states.name = JOINT_NAMES + ["gello_gripper"]
         arm_joint_states.header.frame_id = "fr3_link0"
-        arm_joint_states.position = gello_arm_joints.tolist()
+        arm_joint_states.position = gello_arm_joints.tolist() + [gripper_position]
 
         gripper_joint_states = Float32()
         gripper_joint_states.data = gripper_position

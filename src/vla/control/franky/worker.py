@@ -60,6 +60,8 @@ class Compliance:
         for key, value in (values or {}).items():
             if key not in asdict(result):
                 raise ValueError(f"unknown Franky compliance parameter: {key}")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{key} must be a number")
             setattr(result, key, float(value))
         return result.validate()
 
@@ -272,8 +274,12 @@ class FrankyArm:
 
     def update_compliance(self, values: Mapping[str, Any]) -> Compliance:
         next_value = Compliance.from_mapping(values, self.compliance)
-        if self.tracker is not None and any(key in values for key in (
-                "translational_clip", "rotational_clip", "max_delta_tau", "gains_time_constant")):
+        changed = {key for key, value in asdict(next_value).items()
+                   if value != getattr(self.compliance, key)}
+        if not changed:
+            return self.compliance
+        if self.tracker is not None and changed.intersection({
+                "translational_clip", "rotational_clip", "max_delta_tau", "gains_time_constant"}):
             pose = self.target_pose.copy() if self.target_pose is not None else None
             self.stop()
             self.compliance = next_value
@@ -281,7 +287,8 @@ class FrankyArm:
                 self.set_target(pose.tolist(), self.target_generation, self.target_sequence)
         else:
             self.compliance = next_value
-            if self.tracker is not None:
+            if self.tracker is not None and changed.intersection({
+                    "translational_stiffness", "rotational_stiffness", "nullspace_stiffness"}):
                 self.tracker.set_gains(
                     translational_stiffness=next_value.translational_stiffness,
                     rotational_stiffness=next_value.rotational_stiffness,
@@ -302,7 +309,7 @@ class FrankyArm:
 
 class FrankyWorker:
     """One generation-fenced owner, with a watchdog independent of client traffic."""
-    IMPLEMENTATION_VERSION = 3
+    IMPLEMENTATION_VERSION = 4
 
     def __init__(self, arms, *, session_id, compliance=None, target_timeout_s=.1,
                  state_timeout_s=.5):

@@ -4,6 +4,7 @@ arms:
   command_gripper_topic: /left/teleop/gripper_action_width_percent
   command_joint_topic: /left/teleop/joint_states
   gamepad:
+    input_layout: standard_sdl
     joint7_button_sign: -1.0
     joy_topic: /left/gamepad/joy
     left_stick_x_sign: 1.0

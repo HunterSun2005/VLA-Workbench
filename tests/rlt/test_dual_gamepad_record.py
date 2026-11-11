@@ -94,11 +94,11 @@ def test_explicit_resume_and_recording_contract(tmp_path):
 
 def test_two_gamepad_mapping_and_neutral_gate():
     config = load_rollout_config(DEFAULT_CONFIG)
-    axes, buttons = [0., 0., 1., 0., 0., 1.], [0] * 11
+    axes, buttons = [0., 0., 0., 0., 0., 0.], [0] * 11
     for arm in config.arms:
         assert gamepad_is_neutral(axes, buttons, arm.gamepad, config)
         pressed = axes.copy()
-        pressed[2] = pressed[5] = -1.
+        pressed[4] = pressed[5] = -1.
         assert not gamepad_is_neutral(pressed, buttons, arm.gamepad, config)
         with pytest.raises(ValueError, match="invalid gamepad"):
             gamepad_is_neutral([float("nan")] * 6, buttons, arm.gamepad, config)
@@ -213,7 +213,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
             "measured_joint": SimpleNamespace(name=[f"j{i}" for i in range(7)], position=[0.] * 7),
             "robot_state": SimpleNamespace(f_t_ee=pose, o_t_ee=measured_pose, o_t_ee_d=measured_pose),
             "gripper_state": SimpleNamespace(name=[arm.gripper_joint_name], position=[0.]),
-            "gamepad": SimpleNamespace(axes=[0., 0., 1., 0., 0., 1.], buttons=[0] * 11),
+            "gamepad": SimpleNamespace(axes=[0., 0., 0., 0., 0., 0.], buttons=[0] * 11),
         }.items():
             c._latest[f"{arm.name}.{key}"] = (now, value)
     for camera in config.cameras:

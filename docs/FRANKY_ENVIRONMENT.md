@@ -50,7 +50,7 @@ Unix IPC 校验会话、generation、sequence 和 request ID。生命周期命�
 
 IPC 收包使用配置中的通信期限（默认 0.5 秒），整包的头部与正文共享截止时间，不使用独立的 50 毫秒短超时。连接后短暂调度延迟在通信期限内可继续收包；等待收包不会延长目标流期限（默认 0.1 秒）。客户端报错包含连接/发送/接收阶段、请求 ID、generation、耗时和 socket 路径，worker 日志记录首次锁存故障及其来源。重试查询不会清除故障或恢复运动。
 
-运行中调参按 request ID 确认，等待期间暂停新目标。刚度通过 `set_gains` 更新，结构参数停止并重建 tracker；任一臂失败则整体 fault，保留上次完整确认的参数。重连、健康查询、普通目标及重建不会隐式恢复；必须显式“恢复”，再启用控制。Gamepad 松杆保留最后 TCP 参考，GELLO FK 和策略更新同一 tracker。真实接触前仍需核实工具、负载和安全设置。
+运行中调参按 request ID 确认，等待期间暂停新目标。刚度通过 `set_gains` 更新；只在结构参数实际变化时停止并重建 tracker，整表提交中未变化的字段不触发重建；任一臂失败则整体 fault，保留上次完整确认的参数。重连、健康查询、普通目标及重建不会隐式恢复；必须显式“恢复”，再启用控制。Gamepad 以实测 TCP 初始化参考、沿实测工具轴积分姿态，松杆保留最后 TCP 参考；GELLO FK 和策略更新同一 tracker。Web 的启动初值与有效参数、草稿和请求确认分离，详见 [Web 使用说明](WEB_PANEL.md)。真实接触前仍需核实工具、负载和安全设置。
 
 ## ROS 与旧安装
 
@@ -87,3 +87,5 @@ bash scripts/test_ros.sh \
   tests/control/test_franky_binding.py tests/control/test_franky_worker.py \
   tests/control/test_libfranka_source.py -q
 ```
+
+GELLO 启动器将本检出的 `ros_ws/src/franka_gello_state_publisher` 放在子节点 Python 搜索路径首位，以免旧的复制安装遮蔽采样新鲜度修复；不修改已有 ROS 安装环境。驱动缓存保存采样时间和序号；JointState 的 stamp 为采样时间，最后一个 `gello_gripper` 位置为同帧夹爪开度，collector 不再从独立无时间戳的 Float32 消息刷新 GELLO 夹爪输入。

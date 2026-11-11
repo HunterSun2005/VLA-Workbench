@@ -29,18 +29,18 @@ def config():
 
 def decode(config, axes=None, buttons=None, mapping=None):
     return decode_cartesian_gamepad_values(
-        [0, 0, 1, 0, 0, 1] if axes is None else axes,
+        [0, 0, 0, 0, 0, 0] if axes is None else axes,
         [0] * 11 if buttons is None else buttons,
         config.arms[0].gamepad if mapping is None else mapping, config,
     )
 
 
 @pytest.mark.parametrize("axis,value,expected", [
-    (3, -1, [0, .15, 0]), (3, 1, [0, -.15, 0]),
-    (4, 1, [.15, 0, 0]), (4, -1, [-.15, 0, 0]),
+    (2, -1, [0, .15, 0]), (2, 1, [0, -.15, 0]),
+    (3, 1, [.15, 0, 0]), (3, -1, [-.15, 0, 0]),
 ])
 def test_right_stick_directions_keep_translation_zero(config, axis, value, expected):
-    axes = [0, 0, 1, 0, 0, 1]
+    axes = [0, 0, 0, 0, 0, 0]
     axes[axis] = value
     command = decode(config, axes)
     np.testing.assert_allclose(command.linear_velocity_base, 0)
@@ -50,23 +50,23 @@ def test_right_stick_directions_keep_translation_zero(config, axis, value, expec
 def test_combined_inputs_and_opposite_buttons(config):
     buttons = [0] * 11
     buttons[2] = buttons[3] = 1
-    command = decode(config, [1, 1, -1, -1, 1, 1], buttons)
+    command = decode(config, [1, 1, -1, 1, -1, 0], buttons)
     np.testing.assert_allclose(command.linear_velocity_base, [.02, .02, .01])
     expected = np.array([.15, .15, -.3])
     expected *= .3 / np.linalg.norm(expected)
     np.testing.assert_allclose(command.angular_velocity_tool, expected)
     assert command.gripper_motion == 1
     buttons[0] = buttons[1] = 1
-    command = decode(config, [0, 0, -1, 0, 0, -1], buttons)
+    command = decode(config, [0, 0, 0, 0, -1, -1], buttons)
     np.testing.assert_allclose(command.angular_velocity_tool, 0)
     np.testing.assert_allclose(command.linear_velocity_base, 0)
     assert command.gripper_motion == 0
 
 
 def test_deadzone_signs_and_legacy_decoder(config):
-    np.testing.assert_allclose(decode(config, [0, 0, 1, .08, -.08, 1]).angular_velocity_tool, 0)
+    np.testing.assert_allclose(decode(config, [0, 0, .08, -.08, 0, 0]).angular_velocity_tool, 0)
     mapping = replace(config.arms[0].gamepad, right_stick_x_sign=1., right_stick_y_sign=-1.)
-    np.testing.assert_allclose(decode(config, [0, 0, 1, -1, 1, 1], mapping=mapping).angular_velocity_tool, [-.15, -.15, 0])
+    np.testing.assert_allclose(decode(config, [0, 0, -1, 1, 0, 0], mapping=mapping).angular_velocity_tool, [-.15, -.15, 0])
     legacy = decode_gamepad_values([0, 0, 1, 1, 1, 1], [0, 0, 1, 0], mapping, config)
     np.testing.assert_allclose(legacy[0], 0)
     assert legacy[1:] == (1, 0, 0)
@@ -100,7 +100,7 @@ def test_old_configuration_defaults_and_explicit_override(tmp_path):
     assert write_config(tmp_path, raw).arms[0].gamepad.tool_roll_button_sign == -1
 
 
-@pytest.mark.parametrize("field,value", [("right_stick_x_axis", -1), ("right_stick_x_axis", 2), ("right_stick_y_sign", 0)])
+@pytest.mark.parametrize("field,value", [("right_stick_x_axis", -1), ("right_stick_x_axis", 4), ("right_stick_y_sign", 0)])
 def test_invalid_axis_configuration(tmp_path, field, value):
     raw = yaml.safe_load(CONFIG.read_text())
     raw["arms"][0]["gamepad"][field] = value

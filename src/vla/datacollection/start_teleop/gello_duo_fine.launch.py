@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 
 import yaml
 from launch import LaunchDescription, LaunchService
@@ -38,6 +39,9 @@ def _nodes_from_config(config_path: str):
                 name="gello_publisher",
                 namespace=namespace,
                 output="screen",
+                # Use this checkout's input adapter, not an older copied install.
+                additional_env={"PYTHONPATH": str(Path(__file__).resolve().parents[4] /
+                    "ros_ws/src/franka_gello_state_publisher") + os.pathsep + os.environ.get("PYTHONPATH", "")},
                 on_exit=Shutdown(),
                 remappings=remappings,
                 parameters=[

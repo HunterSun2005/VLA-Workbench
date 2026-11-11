@@ -35,14 +35,21 @@ class GamepadConfig:
     joint7_button_sign: float
     left_stick_x_sign: float
     left_stick_y_sign: float
-    right_stick_x_axis: int = 3
-    right_stick_y_axis: int = 4
+    right_stick_x_axis: int = 2
+    right_stick_y_axis: int = 3
     right_stick_x_sign: float = -1.0
     right_stick_y_sign: float = 1.0
     tool_roll_button_sign: float = -1.0
     right_stick_rotation_deg: float = 0.0
+    input_layout: str = "standard_sdl"
+    speed_button: int = 9
+    phase_button: int = 10
+    upright_button: int = 4
+    reset_pose_button: int = 6
 
     def __post_init__(self):
+        if self.input_layout not in ("standard_sdl", "raw_joy"):
+            raise ValueError("gamepad input_layout must be standard_sdl or raw_joy")
         angle = self.right_stick_rotation_deg
         if isinstance(angle, bool) or not isinstance(angle, (int, float)) or not math.isfinite(angle):
             raise ValueError("right_stick_rotation_deg must be a finite angle")
@@ -306,6 +313,10 @@ def _arm(value: Any) -> ArmConfig:
         raise ValueError(f"{raw['name']}.gripper open and closed positions must differ")
     if gripper_max_effort < 0.0:
         raise ValueError(f"{raw['name']}.gripper_max_effort must be non-negative")
+    layout = gamepad_raw.get("input_layout", "standard_sdl")
+    from .gamepad_layout import axis_buttons, validate_layout
+    validate_layout(gamepad_raw)
+    defaults = axis_buttons(layout)
     return ArmConfig(
         name=str(raw["name"]),
         robot_state_topic=str(raw["robot_state_topic"]),
@@ -313,19 +324,21 @@ def _arm(value: Any) -> ArmConfig:
         gripper_state_topic=str(raw["gripper_state_topic"]),
         gamepad=GamepadConfig(
             joy_topic=str(gamepad_raw["joy_topic"]),
-            left_stick_x_axis=int(gamepad_raw.get("left_stick_x_axis", 0)),
-            left_stick_y_axis=int(gamepad_raw.get("left_stick_y_axis", 1)),
-            left_trigger_axis=int(gamepad_raw.get("left_trigger_axis", 2)),
-            right_trigger_axis=int(gamepad_raw.get("right_trigger_axis", 5)),
-            a_button=int(gamepad_raw.get("a_button", 0)),
-            b_button=int(gamepad_raw.get("b_button", 1)),
-            x_button=int(gamepad_raw.get("x_button", 2)),
-            y_button=int(gamepad_raw.get("y_button", 3)),
+            input_layout=layout,
+            **{k: int(gamepad_raw.get(k, defaults[k])) for k in ("speed_button", "phase_button", "upright_button", "reset_pose_button")},
+            left_stick_x_axis=int(gamepad_raw.get("left_stick_x_axis", defaults["left_stick_x_axis"])),
+            left_stick_y_axis=int(gamepad_raw.get("left_stick_y_axis", defaults["left_stick_y_axis"])),
+            left_trigger_axis=int(gamepad_raw.get("left_trigger_axis", defaults["left_trigger_axis"])),
+            right_trigger_axis=int(gamepad_raw.get("right_trigger_axis", defaults["right_trigger_axis"])),
+            a_button=int(gamepad_raw.get("a_button", defaults["a_button"])),
+            b_button=int(gamepad_raw.get("b_button", defaults["b_button"])),
+            x_button=int(gamepad_raw.get("x_button", defaults["x_button"])),
+            y_button=int(gamepad_raw.get("y_button", defaults["y_button"])),
             joint7_button_sign=float(gamepad_raw.get("joint7_button_sign", -1.0)),
             left_stick_x_sign=float(gamepad_raw.get("left_stick_x_sign", 1.0)),
             left_stick_y_sign=float(gamepad_raw.get("left_stick_y_sign", 1.0)),
-            right_stick_x_axis=int(gamepad_raw.get("right_stick_x_axis", 3)),
-            right_stick_y_axis=int(gamepad_raw.get("right_stick_y_axis", 4)),
+            right_stick_x_axis=int(gamepad_raw.get("right_stick_x_axis", defaults["right_stick_x_axis"])),
+            right_stick_y_axis=int(gamepad_raw.get("right_stick_y_axis", defaults["right_stick_y_axis"])),
             right_stick_x_sign=float(gamepad_raw.get("right_stick_x_sign", -1.0)),
             right_stick_y_sign=float(gamepad_raw.get("right_stick_y_sign", 1.0)),
             right_stick_rotation_deg=gamepad_raw.get("right_stick_rotation_deg", 0.0),
@@ -515,9 +528,13 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
             arm.gamepad.b_button,
             arm.gamepad.x_button,
             arm.gamepad.y_button,
+            arm.gamepad.speed_button, arm.gamepad.phase_button,
+            arm.gamepad.upright_button, arm.gamepad.reset_pose_button,
         )
         if any(index < 0 for index in indices):
             raise ValueError(f"{arm.name}.gamepad axis/button indices must be non-negative")
+        if len(set(indices[6:])) != len(indices[6:]):
+            raise ValueError(f"{arm.name}.gamepad buttons must be distinct")
         if len(set(indices[:6])) != 6:
             raise ValueError(f"{arm.name}.gamepad stick and trigger axes must be distinct")
         if arm.gamepad.joint7_button_sign not in {-1.0, 1.0}:

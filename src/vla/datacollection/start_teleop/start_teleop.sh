@@ -171,15 +171,19 @@ main() {
       "${environment} exec ros2 run joy joy_node --ros-args -r joy:=/gamepad/joy -p device_name:='$JOY_DEVICE_NAME' -p deadzone:=0.0 -p autorepeat_rate:=$JOY_AUTOREPEAT_RATE" \
       "group"
   else
-    local side device_id
+    local side device_id joy_node rollout_config
+    rollout_config="${VLA_ROLLOUT_CONFIG:-$SCRIPT_DIR/../franka_robotiq_rollout/configs/$([[ "$TELEOP_MODE" == duo ]] && echo dual || echo single_left).yaml}"
     for side in "${ACTIVE_SIDES[@]}"; do
       if [[ "$side" == "left" ]]; then
         device_id="$LEFT_JOY_DEVICE_ID"
       else
         device_id="$RIGHT_JOY_DEVICE_ID"
       fi
+      joy_node="$(bash --noprofile --norc -c "${environment} /usr/bin/python3 -m vla.datacollection.franka_robotiq_rollout.gamepad_layout \"\$1\" \"\$2\"" bash "$rollout_config" "$side")" || die "Invalid gamepad layout"
+      [[ "$joy_node" == game_controller_node || "$joy_node" == joy_node ]] || die "Invalid gamepad executable"
+      log "$side gamepad input: $joy_node (unrecognized SDL controllers cannot enable control)"
       add_task "${side}_rollout_gamepad" \
-        "${environment} exec ros2 run joy joy_node --ros-args -r __node:=${side}_rollout_joy -r joy:=/${side}/gamepad/joy -p device_id:=$device_id -p deadzone:=0.0 -p autorepeat_rate:=$JOY_AUTOREPEAT_RATE" \
+        "${environment} exec ros2 run joy $joy_node --ros-args -r __node:=${side}_rollout_joy -r joy:=/${side}/gamepad/joy -p device_id:=$device_id -p deadzone:=0.0 -p autorepeat_rate:=$JOY_AUTOREPEAT_RATE" \
         "group"
     done
   fi

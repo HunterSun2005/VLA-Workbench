@@ -330,6 +330,9 @@ class RolloutCollector(Node):
             for arm in config.arms
         }
         self._pending_compliance = None
+        self._compliance_result = None
+        self._input_diagnostics = {}
+        self._input_stamps = {}
         self._pending_worker_targets = {}
         if config.backend == 'franky':
             if self._worker_client is None or not self._worker_session_id:
@@ -376,6 +379,7 @@ class RolloutCollector(Node):
         metadata['recording_contract']['control_fingerprint'] = fingerprint({
             'python': control_parameters, 'cpp': controller_parameters,
             'cartesian_tracking': CARTESIAN_TRACKING,
+            'human_input': {'version': 3, 'gamepads': {a.name: asdict(a.gamepad) for a in config.arms}},
             'execution': {'version': 2, 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots},
             'franky': controller_parameters if config.backend == 'franky' else None,
             'binding': binding_identity if self._worker_client else None,
@@ -644,7 +648,6 @@ class RolloutCollector(Node):
                 (JointState, arm.gripper_state_topic, f"{prefix}.gripper_state"),
                 (Joy, arm.gamepad.joy_topic, f"{prefix}.gamepad"),
                 (JointState, f"/{prefix}/gello/joint_states", f"{prefix}.gello_joint"),
-                (Float32, f"/{prefix}/gello/gripper_width_percent", f"{prefix}.gello_gripper"),
             )
             if self.config.backend != 'franky':
                 subscriptions = ((FrankaRobotState, arm.robot_state_topic, f"{prefix}.robot_state"),
@@ -652,7 +655,9 @@ class RolloutCollector(Node):
                                  *subscriptions)
             for message_type, topic, key in subscriptions:
                 self._subscription_handles.append(
-                    self.create_subscription(message_type, topic, self._callback(key), qos)
+                    self.create_subscription(message_type, topic, self._callback(key),
+                                             QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
+                                             if key.endswith('.gello_joint') else qos)
                 )
             if self.config.backend != 'franky':
                 self._joint_publishers[prefix] = self.create_publisher(
@@ -688,7 +693,38 @@ class RolloutCollector(Node):
             raise
 
     def _callback(self, key: str):
+        if key.endswith('.gello_joint'):
+            return lambda message: self._store_gello_sample(key, message)
         return lambda message: self._store_latest(key, message)
+
+    def _store_gello_sample(self, key, message):
+        """Use acquisition time as the ordered sample identity; receive time is not freshness."""
+        with self._lock:
+            stamp = message.header.stamp.sec * 1_000_000_000 + message.header.stamp.nanosec
+            age = self.get_clock().now().nanoseconds - stamp
+            arm = key.split('.')[0]
+            values = dict(zip(message.name, message.position))
+            problem = None
+            if stamp <= self._input_stamps.get(key, 0):
+                problem = 'duplicate or out-of-order GELLO sample'
+            elif not 0 <= age <= int(self.config.gamepad_joy_timeout_s * 1e9):
+                problem = 'stale or future GELLO sample'
+            elif ('gello_gripper' not in values or len(values) != len(message.name)
+                  or len(message.name) != len(message.position)
+                  or not all(f'fr3_joint{i}' in values for i in range(1, 8))
+                  or not np.isfinite(message.position).all()
+                  or not 0 <= values['gello_gripper'] <= 1):
+                problem = 'GELLO sample requires joints and synchronized gripper'
+            if problem:
+                self._input_diagnostics[arm] = {'error': problem}
+                return
+            observed = time.monotonic_ns() - age
+            self._input_stamps[key] = stamp
+            self._store_latest(key, message, observed)
+            gripper = SimpleNamespace(data=float(values['gello_gripper']))
+            self._store_latest(f'{arm}.gello_gripper', gripper, observed)
+            self._input_diagnostics[arm] = {'sample_stamp_ns': stamp}
+
 
     def _store_latest(self, key: str, value: object, timestamp_ns: int | None = None) -> None:
         with self._lock:
@@ -809,28 +845,103 @@ class RolloutCollector(Node):
         for servo in self.servos.values():
             servo.reset_tracking()
 
-    def update_compliance(self, values):
-        if self._worker_client is None:
-            raise RuntimeError('Franky worker is not active')
-        if self._pending_compliance is not None or self._worker_client.fault:
-            raise RuntimeError('compliance update is pending or worker is faulted')
-        from vla.control.franky.worker import Compliance
-        current = self._worker_client.compliance_values() or self.config.franky_compliance
-        Compliance.from_mapping(values, Compliance.from_mapping(current))
-        import uuid
-        request_id = uuid.uuid4().hex
-        self._pending_compliance = {'request_id': request_id, 'started': time.monotonic()}
-        self._worker_client.compliance(self._worker_session_id, self.coordinator.generation, request_id, values)
+    def update_compliance(self, values, *, request_id=None):
+        with self._lock:
+            if self._worker_client is None:
+                raise RuntimeError('Franky worker is not active')
+            if (self._pending_compliance is not None or self._worker_client.fault
+                    or self._faulted or self.coordinator.mode in ('resetting', 'fault')):
+                raise RuntimeError('compliance update is pending or control is unavailable')
+            from vla.control.franky.worker import Compliance
+            current = self._worker_client.compliance_values() or self.config.franky_compliance
+            Compliance.from_mapping(values, Compliance.from_mapping(current))
+            import uuid
+            request_id = request_id or uuid.uuid4().hex
+            self._pending_compliance = {
+                'request_id': request_id, 'started': time.monotonic(),
+                'generation': self.coordinator.generation, 'values': dict(values)}
+            self._compliance_result = {'request_id': request_id, 'status': 'pending',
+                                       'generation': self.coordinator.generation}
+            history = getattr(self, '_compliance_requests', {})
+            history[request_id] = self._compliance_result
+            while len(history) > 16:
+                history.pop(next(iter(history)))
+            self._compliance_requests = history
+            self._pending_worker_targets.clear()
+            self._input_action = None
+            self._compliance_resume_after = self.coordinator.command_id
+            try:
+                self._worker_client.compliance(self._worker_session_id, self.coordinator.generation, request_id, values)
+            except Exception as error:
+                self._compliance_result.update(status='failed', error=str(error))
+                self._pending_compliance = None
+                self._latch_fault(error)
+                raise
+            return request_id
 
     def compliance_status(self):
-        return {
-            'backend': self.config.backend,
-            'pending': self._pending_compliance is not None,
-            'values': (self._worker_client.compliance_values()
-                       if self._worker_client and self._worker_client.compliance_values()
-                       else dict(getattr(self.config, 'franky_compliance', {}))),
-            'fault': self._worker_client.fault if self._worker_client else None,
-        }
+        with self._lock:
+            return {
+                'backend': self.config.backend,
+                'pending': self._pending_compliance is not None,
+                'values': (self._worker_client.compliance_values()
+                           if self._worker_client and self._worker_client.compliance_values()
+                           else dict(getattr(self.config, 'franky_compliance', {}))),
+                'request': dict(self._compliance_result) if getattr(self, '_compliance_result', None) else None,
+                'requests': [dict(value) for value in getattr(self, '_compliance_requests', {}).values()],
+                'fault': self._worker_client.fault if self._worker_client else None,
+            }
+
+    def input_diagnostics(self):
+        """Low-rate read-only view. Never queries devices or submits control."""
+        from .gamepad import decode_cartesian_gamepad_values
+        from vla.control.geometry import rot6d_to_matrix
+        result = {}
+        with self._lock:
+            now = time.monotonic_ns()
+            for arm in self.config.arms:
+                name = arm.name
+                item = self._latest.get(f'{name}.gamepad' if self.config.input_source == 'gamepad'
+                                        else f'{name}.gello_joint')
+                data = {**self._input_diagnostics.get(name, {}), 'source': self.config.input_source}
+                result[name] = data
+                if item is None:
+                    data['error'] = '等待输入；标准模式需要 SDL 识别的手柄'
+                    continue
+                data['age_ms'] = (now-item[0])/1e6
+                data['fresh'] = 0 <= now-item[0] <= self.config.gamepad_joy_timeout_s*1e9
+                try:
+                    target = self._gamepad_targets.get(name)
+                    if self.config.input_source == 'gamepad':
+                        msg, m = item[1], arm.gamepad
+                        data.update(layout=m.input_layout, axes=[float(v) if np.isfinite(v) else None for v in msg.axes], buttons=list(msg.buttons))
+                        decoded = decode_cartesian_gamepad_values(msg.axes, msg.buttons, m, self.config)
+                        data.update(sticks=[msg.axes[i] for i in (m.left_stick_x_axis, m.left_stick_y_axis,
+                                                                 m.right_stick_x_axis, m.right_stick_y_axis)],
+                                    linear_velocity=decoded.linear_velocity_base.tolist(),
+                                    angular_velocity_tool=decoded.angular_velocity_tool.tolist())
+                    if target is not None and self.config.input_source == 'gamepad':
+                        p, r = target.position, target.rotation
+                        velocity = decoded.linear_velocity_base
+                        data['workspace_clipped'] = [bool((p[i] <= arm.workspace_min[i] and velocity[i] < 0)
+                                                         or (p[i] >= arm.workspace_max[i] and velocity[i] > 0))
+                                                     for i in range(3)]
+                    elif getattr(self, '_input_action', None) is not None:
+                        index = list(self.config.arms).index(arm) * self.config.action_spec.width
+                        block = self._input_action[index:index+self.config.action_spec.width]
+                        p, r = block[:3], rot6d_to_matrix(block[3:9])
+                    else:
+                        continue
+                    data['reference_tcp'] = [*p.tolist(), *Rotation.from_matrix(r).as_quat().tolist()]
+                    state = self._latest.get(f'{name}.robot_state')
+                    if state:
+                        actual_p, actual_r = schema.pose_from_stamped(state[1].o_t_ee)
+                        data['measured_tcp'] = [*actual_p.tolist(), *Rotation.from_matrix(actual_r).as_quat().tolist()]
+                        data['position_error_m'] = float(np.linalg.norm(p-actual_p))
+                        data['rotation_error_rad'] = float(Rotation.from_matrix(r @ actual_r.T).magnitude())
+                except (ValueError, KeyError, IndexError) as error:
+                    data['error'] = str(error)
+        return result
 
     def _invalidate_policy(self) -> None:
         if self.policy_client is not None:
@@ -977,6 +1088,10 @@ class RolloutCollector(Node):
         self._gripper_publishers[name].publish(goal)
 
     def _control_boundary(self, owner=None, *, fault=False, reason='control boundary', execution_state=None):
+        self._compliance_resume_after = None
+        if self._pending_compliance is not None:
+            self._compliance_result.update(status='cancelled', error=reason)
+            self._pending_compliance = None
         if self._execution is not None:
             from vla.control.execution import ExecutionState
             if owner == 'policy' and not fault:
@@ -1009,6 +1124,11 @@ class RolloutCollector(Node):
     def _track_control(self, dt):
         if self._pending_compliance is not None:
             return
+        resume_after = getattr(self, '_compliance_resume_after', None)
+        if resume_after is not None:
+            if self.coordinator.command_id <= resume_after:
+                return
+            self._compliance_resume_after = None
         command = self.coordinator.tick(dt)
         if command is None:
             return
@@ -1269,14 +1389,29 @@ class RolloutCollector(Node):
         if self._pending_compliance is not None:
             pending = self._pending_compliance
             result = self._worker_client.result(pending['request_id'])
-            if result is not None:
+            error = None
+            if pending['generation'] != self.coordinator.generation:
                 self._pending_compliance = None
-                if result.get('request_status') != 'applied' or result.get('error') or result.get('fault'):
-                    self._latch_fault(RuntimeError(result.get('error') or result.get('fault') or 'compliance update rejected'))
-                    return
+                self._compliance_result.update(status='cancelled', error='control generation changed')
+            elif result is not None:
+                self._pending_compliance = None
+                if (result.get('request_id') != pending['request_id']
+                        or result.get('generation') != pending['generation']
+                        or result.get('request_status') != 'applied' or result.get('error') or result.get('fault')):
+                    error = result.get('error') or result.get('fault') or 'compliance acknowledgement rejected'
+                else:
+                    self._compliance_result.update(status='applied', values=result.get('compliance', {}))
+                    self._last_gamepad_tick = time.monotonic()
+                    if self._journal is not None:
+                        self._journal_event(('compliance', pending['request_id'], pending['generation'],
+                                             result.get('sequence'), time.monotonic_ns(),
+                                             dict(result.get('compliance', {}))))
             elif time.monotonic() - pending['started'] > self.config.gamepad_state_timeout_s:
                 self._pending_compliance = None
-                self._latch_fault(RuntimeError('compliance acknowledgement timed out'))
+                error = 'compliance acknowledgement timed out'
+            if error:
+                self._compliance_result.update(status='failed', error=str(error))
+                self._latch_fault(RuntimeError(error))
                 return
         fault = self._worker_client.fault
         if fault:
@@ -1358,7 +1493,6 @@ class RolloutCollector(Node):
 
     def _publish_gamepad(self, values: dict[str, object], dt: float) -> bool:
         commands: dict[str, tuple[np.ndarray, float]] = {}
-        active_inputs = []
         for arm in self.config.arms:
             target = self._gamepad_targets.get(arm.name)
             if target is None:
@@ -1371,13 +1505,13 @@ class RolloutCollector(Node):
             buttons = list(gamepad_message.buttons)
             old = self._previous_buttons.get(arm.name, [0]*len(buttons))
             edge = lambda index: len(buttons) > index and buttons[index] and not (len(old) > index and old[index])
-            if edge(4):
+            if edge(arm.gamepad.speed_button):
                 self._high_speed[arm.name] = not self._high_speed[arm.name]
-            if edge(5) and self._recording:
+            if edge(arm.gamepad.phase_button) and self._recording:
                 self.toggle_phase()
-            if edge(6):
+            if edge(arm.gamepad.upright_button):
                 target.rotation = upright_tcp_rotation(target.rotation)
-            if edge(7):
+            if edge(arm.gamepad.reset_pose_button):
                 target.position, target.rotation = [v.copy() for v in self._initial_pose[arm.name]]
             self._previous_buttons[arm.name] = buttons
             scale = self._speed_scale[arm.name]
@@ -1387,7 +1521,11 @@ class RolloutCollector(Node):
             velocity = _clamp_norm(decoded.linear_velocity_base * scale, self.config.max_linear_velocity)
             angular = _clamp_norm(decoded.angular_velocity_tool * scale, self.config.max_angular_velocity)
             target.position = np.clip(target.position + velocity*dt, arm.workspace_min, arm.workspace_max)
-            target.rotation = target.rotation @ Rotation.from_rotvec(angular*dt).as_matrix()
+            from vla.control.geometry import integrate_human_tool_rotation
+            measured_rotation = schema.pose_from_stamped(values[f"{arm.name}.robot_state"].o_t_ee)[1]
+            target.rotation, _ = integrate_human_tool_rotation(
+                measured_rotation, target.rotation, angular, joint7_velocity=0,
+                dt=dt, max_angular_speed=self.config.max_angular_velocity)
             gripper_motion = decoded.gripper_motion
             target.joints = self.coordinator._measurements[arm.name].joints.copy()
             measured_gripper = _gripper_open_fraction(
@@ -1403,10 +1541,6 @@ class RolloutCollector(Node):
             commands[arm.name] = (target.position, target.rotation, target.gripper)
         action = self.coordinator.gamepad_target(commands, dt)
         self._input_action = action
-        now = time.monotonic()
-        if active_inputs and now - self._last_gamepad_input_log >= 0.5:
-            console_debug("Gamepad input " + "; ".join(active_inputs))
-            self._last_gamepad_input_log = now
         return True
 
     def _gamepad_control_snapshot(self) -> tuple[dict[str, object] | None, str | None]:
@@ -1414,6 +1548,7 @@ class RolloutCollector(Node):
         values: dict[str, object] = {}
         for arm in self.config.arms:
             required = (
+                (f"{arm.name}.robot_state", self.config.gamepad_state_timeout_s),
                 (f"{arm.name}.measured_joint", self.config.gamepad_state_timeout_s),
                 (f"{arm.name}.gripper_state", self.config.gamepad_state_timeout_s),
                 (f"{arm.name}.gamepad", self.config.gamepad_joy_timeout_s),
@@ -1464,7 +1599,7 @@ class RolloutCollector(Node):
                 if self.coordinator.mode == 'resetting':
                     self.coordinator.tick(dt)
                     return
-                if self._faulted:
+                if self._faulted or self._pending_compliance is not None:
                     return
                 if not (self._recording or self._teleop_enabled):
                     return
@@ -1701,6 +1836,8 @@ class RolloutCollector(Node):
                     finally:
                         self._at_boundary = False
                     return
+                if self._pending_compliance is not None:
+                    return
                 self._consume_policy_result()
                 previous = self.coordinator.command_id
                 if self._intervention:
@@ -1838,6 +1975,7 @@ class RolloutCollector(Node):
             self._journal = EpisodeJournal(staging/self._journal_id,
                 identity={**self._episode_identity, 'journal_id': self._journal_id, 'episode_index': episode_index,
                           'task': self.config.tasks[self._episode_task_index],
+                          'compliance': self.compliance_status() if self._worker_client else None,
                           'execution_contract': self._execution.contract.to_dict() if self._execution else None}, fps=self.config.fps)
             self._states = []
             self._actions = []
@@ -2100,11 +2238,11 @@ class RolloutCollector(Node):
                     )
                     robot_state = self._latest[f"{arm.name}.robot_state"][1]
                     tool_position, tool_rotation = schema.pose_from_stamped(robot_state.f_t_ee)
-                    position, rotation = self.servos[arm.name].forward_tcp(
-                        measured,
-                        tool_position,
-                        tool_rotation,
-                    )
+                    if self.config.backend == 'franky':
+                        position, rotation = schema.pose_from_stamped(robot_state.o_t_ee)
+                    else:
+                        position, rotation = self.servos[arm.name].forward_tcp(
+                            measured, tool_position, tool_rotation)
                     gripper = _gripper_open_fraction(
                         self._latest[f"{arm.name}.gripper_state"][1],
                         arm.gripper_joint_name,

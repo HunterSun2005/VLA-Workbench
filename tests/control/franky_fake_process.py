@@ -76,6 +76,15 @@ class Robot:
         (root/f'fail-join-{self.ip}').unlink(missing_ok=True)
     def set_collision_behavior(self, *args): pass
 
+# Opt-in capture for input-to-tracker acceptance; the real tracker still runs.
+real_set_target = franky.CartesianImpedanceTracker.set_target
+def capture_target(self, pose, *args, **kwargs):
+    real_set_target(self, pose, *args, **kwargs)
+    if (root/'capture-targets').exists():
+        with (root/'targets.jsonl').open('a') as stream:
+            stream.write(json.dumps({'translation': np.asarray(pose.translation).tolist(),
+                                     'quaternion': np.asarray(pose.quaternion).tolist()})+'\n')
+franky.CartesianImpedanceTracker.set_target = capture_target
 franky.Robot = Robot
 worker.HardwareLease = functools.partial(HardwareLease, directory=root/'leases')
 instance = worker.FrankyWorker(config['arms'], session_id=config['session_id'],

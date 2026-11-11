@@ -96,7 +96,9 @@ def create_app(root=None, *, demo=False):
         return {'token':token,'demo':demo,'active':await asyncio.to_thread(manager.active),
                 'defaults':{'model_python':os.environ.get('VLA_PYTHON',__import__('sys').executable)},
                 'camera_roles':['base','left_wrist','right_wrist','side'],
-                'workspace_root':str(manager.root),'dataset_defaults':dataset_defaults()}
+                'workspace_root':str(manager.root),'dataset_defaults':dataset_defaults(),
+                'compliance_defaults': {arms: SessionConfig(arms=arms).effective_compliance()
+                                        for arms in ('single_left', 'dual')}}
 
     async def processing_call(fn, *args):
         try:

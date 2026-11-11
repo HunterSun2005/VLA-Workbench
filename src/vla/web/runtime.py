@@ -43,6 +43,7 @@ class Runtime:
         self.cancel_start = threading.Event()
         self.completed = False
         self.pending_completion = None
+        self.pending_updates = {}
         self.last_sample = 0.
         self.monitor_errors = {}
         self._threads = []
@@ -84,7 +85,10 @@ class Runtime:
                 raise RuntimeError('state changed; refresh before submitting')
             if message.get('operation') not in COMMANDS or not isinstance(message.get('args', {}), dict):
                 raise ValueError('unknown command')
-            if any(v['status'] == 'accepted' for v in self.results.values()):
+            accepted = [v for v in self.results.values() if v['status'] == 'accepted']
+            tuning_interrupt = (message['operation'] in ('pause', 'stop', 'mode', 'intervention')
+                                and all(v['operation'] == 'compliance' for v in accepted))
+            if accepted and not tuning_interrupt:
                 raise RuntimeError('another command is pending')
             if self.backend is None and message['operation'] == 'stop':
                 self.cancel_start.set()
@@ -97,6 +101,17 @@ class Runtime:
             return record
 
     def poll_command(self):
+        # Tuning acknowledgements must not block pause/stop or owner changes.
+        for cid, check in tuple(self.pending_updates.items()):
+            try:
+                if not check():
+                    continue
+                result = {**self.results[cid], 'status': 'completed'}
+            except Exception as error:
+                result = {**self.results[cid], 'status': 'failed', 'error': str(error)}
+            with self.lock:
+                self.results[cid] = result
+            self.pending_updates.pop(cid, None)
         if self.pending_completion is not None:
             cid, check = self.pending_completion
             try:
@@ -124,7 +139,12 @@ class Runtime:
             if op == 'save':
                 with self.lock:
                     self.status = {**self.status, 'state':'saving', 'saving':True, 'updated_at':time.monotonic()}
+            if op == 'compliance':
+                args = {**args, '_request_id': cid}
             completion = self.backend.command(op, args)
+            if callable(completion) and op == 'compliance':
+                self.pending_updates[cid] = completion
+                return
             if callable(completion):
                 self.pending_completion = (cid, completion)
                 return

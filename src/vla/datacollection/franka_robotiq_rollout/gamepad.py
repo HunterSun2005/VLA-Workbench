@@ -35,10 +35,7 @@ def decode_cartesian_gamepad_values(
     mapping: GamepadConfig,
     config: CartesianGamepadParameters,
 ) -> CartesianGamepadCommand:
-    if not np.isfinite(np.asarray(axes, dtype=float)).all():
-        raise ValueError("gamepad axes must be finite")
-    if not np.isin(np.asarray(buttons), [0, 1]).all():
-        raise ValueError("gamepad buttons must be binary")
+    validate_gamepad_values(axes, buttons, mapping)
     linear, x_button, b_button, gripper = decode_gamepad_values(axes, buttons, mapping, config)
     try:
         horizontal = _deadzone(float(axes[mapping.right_stick_x_axis]), config.gamepad_deadzone)
@@ -68,23 +65,40 @@ def _deadzone(value: float, deadzone: float) -> float:
     return math.copysign(magnitude, value)
 
 
-def gamepad_is_neutral(axes, buttons, mapping, config) -> bool:
-    """Gate start/takeover on released inputs, including opposing triggers."""
+def validate_gamepad_values(axes, buttons, mapping):
     required_axes = (mapping.left_stick_x_axis, mapping.left_stick_y_axis,
                      mapping.right_stick_x_axis, mapping.right_stick_y_axis,
                      mapping.left_trigger_axis, mapping.right_trigger_axis)
-    required_buttons = (mapping.a_button, mapping.b_button, mapping.x_button, mapping.y_button)
+    required_buttons = (mapping.a_button, mapping.b_button, mapping.x_button, mapping.y_button,
+                        mapping.speed_button, mapping.phase_button,
+                        mapping.upright_button, mapping.reset_pose_button)
     if (len(axes) <= max(required_axes) or len(buttons) <= max(required_buttons)
             or not np.isfinite(np.asarray(axes, dtype=float)).all()
+            or np.any(np.abs(np.asarray(axes, dtype=float)) > 1.0001)
             or not np.isin(np.asarray(buttons), [0, 1]).all()):
-        raise ValueError(f"invalid gamepad input on {mapping.joy_topic}")
+        raise ValueError(f"invalid gamepad input on {mapping.joy_topic} ({mapping.input_layout}); "
+                         "check controller recognition and axis/button layout")
+    if mapping.input_layout == 'standard_sdl':
+        if len(axes) != 6 or any(axes[i] > 1e-4 for i in required_axes[4:]):
+            raise ValueError('standard_sdl requires six game_controller_node axes; triggers are 0 released, -1 pressed')
+
+
+def gamepad_is_neutral(axes, buttons, mapping, config) -> bool:
+    """Gate start/takeover on released inputs, including opposing triggers."""
+    validate_gamepad_values(axes, buttons, mapping)
+    required_axes = (mapping.left_stick_x_axis, mapping.left_stick_y_axis,
+                     mapping.right_stick_x_axis, mapping.right_stick_y_axis,
+                     mapping.left_trigger_axis, mapping.right_trigger_axis)
     return (not any(buttons)
             and all(abs(axes[index]) <= config.gamepad_deadzone for index in required_axes[:4])
-            and all(_trigger(axes[index]) <= config.gamepad_gripper_trigger_deadzone
+            and all(_trigger(axes[index], mapping.input_layout) <= config.gamepad_gripper_trigger_deadzone
                     for index in required_axes[4:]))
 
 
-def _trigger(raw_value: float) -> float:
+def _trigger(raw_value: float, input_layout: str = 'raw_joy') -> float:
+    # ROS game_controller_node negates SDL's [0, 32767] trigger range.
+    if input_layout == 'standard_sdl':
+        return float(np.clip(-raw_value, 0.0, 1.0))
     return float(np.clip((1.0 - raw_value) * 0.5, 0.0, 1.0))
 
 
@@ -110,8 +124,8 @@ def decode_gamepad_values(
         stick_y = _deadzone(
             float(axes[mapping.left_stick_y_axis]), config.gamepad_deadzone
         )
-        left_trigger = _trigger(float(axes[mapping.left_trigger_axis]))
-        right_trigger = _trigger(float(axes[mapping.right_trigger_axis]))
+        left_trigger = _trigger(float(axes[mapping.left_trigger_axis]), mapping.input_layout)
+        right_trigger = _trigger(float(axes[mapping.right_trigger_axis]), mapping.input_layout)
         a_button = float(buttons[mapping.a_button])
         b_button = float(buttons[mapping.b_button])
         x_button = float(buttons[mapping.x_button])

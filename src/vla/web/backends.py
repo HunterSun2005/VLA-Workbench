@@ -94,7 +94,7 @@ class BaseBackend:
         expected = ('left','right') if self.config.arms == 'dual' else ('left',)
         if tuple(a.name for a in c.arms) != expected:
             raise ValueError('arm configuration mismatch')
-        c = self.config.apply_rollout_workspace(c)
+        c = self.config.apply_rollout_compliance(self.config.apply_rollout_workspace(c))
         space = self.config.action_space
         if self.config.workflow == 'deploy' and self.config.policy_path:
             from vla.actions.metadata import checkpoint_contract
@@ -203,7 +203,16 @@ class BaseBackend:
                 raise ValueError('Franky compliance values must be finite numbers')
             if not hasattr(c, 'update_compliance'):
                 raise RuntimeError('当前控制后端不支持 Franky 阻抗调参')
-            c.update_compliance(values)
+            request_id = c.update_compliance(values, request_id=args.get('_request_id'))
+            def completed():
+                status = c.compliance_status()
+                request = status.get('request') or {}
+                if request.get('request_id') != request_id:
+                    raise RuntimeError('compliance request was superseded')
+                if request.get('status') in ('failed', 'cancelled'):
+                    raise RuntimeError(request.get('error') or 'compliance update failed')
+                return request.get('status') == 'applied'
+            return completed
         elif op == 'critical' and (self.config.workflow == 'collect' or getattr(c, 'require_online', False)):
             if not active:
                 raise RuntimeError('no active episode')
@@ -229,7 +238,7 @@ class BaseBackend:
         if controls is not None:
             arms['left'].update(speed='fast' if controls.high_speed else 'normal', speed_scale=controls.speed_scale,
                                 transition=abs(controls.speed_scale-(controls.config.speed_modes.high_multiplier if controls.high_speed else 1.))>1e-6)
-        ops = ['enable','pause','record','save','discard','stop']
+        ops = ['enable','pause','record','save','discard','stop','compliance']
         if hasattr(c,'recover_fault'):
             ops.append('recover')
         if self.config.workflow == 'deploy':
@@ -258,6 +267,8 @@ class BaseBackend:
                 'rtc': c.policy_client.contract.get('rtc_enabled',False) if c.policy_client else False}
         if hasattr(c, 'compliance_status'):
             status['compliance'] = c.compliance_status()
+        if hasattr(c, 'input_diagnostics'):
+            status['input_diagnostics'] = c.input_diagnostics()
         return status
 
     def close(self):
@@ -320,6 +331,7 @@ class ROSBackend(BaseBackend):
                    VLA_WEB_READY_FILE=str(self.directory/'hardware.ready'),
                    LOG_DIR=str(self.directory/'ros'), STATE_DIR=str(self.directory/'ros-state'), START_CAMERAS='0',
                    VLA_WORKER_SESSION_ID=self.directory.name,
+                   VLA_ROLLOUT_CONFIG=str(self.config.default_config()),
                    FRANKY_OWNER='1' if rollout.backend == 'franky' else '0')
         self.children.start('hardware',['/bin/bash',str(resource('datacollection/start_teleop/start_teleop.sh'))],env)
         deadline = time.monotonic()+180

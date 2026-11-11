@@ -685,7 +685,7 @@ def test_rollout_gamepad_mapping_is_neutral_and_continuous() -> None:
     root = Path(__file__).parents[2] / "src/vla/datacollection/franka_robotiq_rollout/configs"
     config = load_rollout_config(root / "single_left.yaml")
     mapping = config.arms[0].gamepad
-    neutral_axes = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0]
+    neutral_axes = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     neutral_buttons = [0] * 11
     velocity, x_button, b_button, gripper_motion = decode_gamepad_values(
         neutral_axes, neutral_buttons, mapping, config
@@ -693,7 +693,7 @@ def test_rollout_gamepad_mapping_is_neutral_and_continuous() -> None:
     np.testing.assert_allclose(velocity, 0.0)
     assert (x_button, b_button, gripper_motion) == (0.0, 0.0, 0.0)
 
-    command_axes = [0.0, 1.0, -1.0, 0.0, 0.0, 1.0]
+    command_axes = [0.0, 1.0, 0.0, 0.0, -1.0, 0.0]
     command_buttons = [0] * 11
     command_buttons[mapping.y_button] = 1
     velocity, _, _, gripper_motion = decode_gamepad_values(
@@ -704,7 +704,7 @@ def test_rollout_gamepad_mapping_is_neutral_and_continuous() -> None:
     )
     assert gripper_motion == 1.0
 
-    trigger_axes = [0.0, 0.0, 0.8, 0.0, 0.0, 1.0]
+    trigger_axes = [0.0, 0.0, 0.0, 0.0, -0.1, 0.0]
     _, _, _, gripper_motion = decode_gamepad_values(
         trigger_axes, neutral_buttons, mapping, config
     )

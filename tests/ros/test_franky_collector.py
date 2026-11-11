@@ -2,6 +2,7 @@
 from types import SimpleNamespace
 from pathlib import Path
 import time
+import threading
 import numpy as np
 import pytest
 
@@ -17,9 +18,13 @@ def collector():
     values = asdict(Compliance())
     results, requests, faults = {}, [], []
     node.config = SimpleNamespace(backend='franky', franky_compliance=values, gamepad_state_timeout_s=.5)
+    node._lock = threading.RLock()
+    node._faulted = False
+    node._journal = None
+    node._pending_worker_targets = {}
     node._pending_compliance = None
     node._worker_session_id = 'session'
-    node.coordinator = SimpleNamespace(generation=3, mode='standby')
+    node.coordinator = SimpleNamespace(generation=3, mode='standby', command_id=1)
     node._worker_client = SimpleNamespace(
         fault=None, compliance_values=lambda: values.copy(), result=results.get,
         compliance=lambda *args: requests.append(args), states=lambda: {},
@@ -38,7 +43,7 @@ def test_compliance_needs_matching_request_ack_even_if_values_already_match():
     results['unrelated'] = {'request_status': 'applied'}
     node._poll_worker_states()
     assert node.compliance_status()['pending']
-    results[request_id] = {'request_status': 'applied'}
+    results[request_id] = {'request_status': 'applied', 'request_id': request_id, 'generation': 3, 'compliance': values}
     node._poll_worker_states()
     assert not node.compliance_status()['pending'] and not faults
 
@@ -116,3 +121,29 @@ def test_explicit_franky_urdf_is_used_and_missing_override_is_rejected(monkeypat
     monkeypatch.setenv('FRANKA_URDF', str(tmp_path/'missing.urdf'))
     with pytest.raises(FileNotFoundError):
         node._load_kinematic_model(arm)
+
+
+def test_late_compliance_ack_cannot_resume_a_new_generation():
+    node, values, results, requests, faults = collector()
+    node.update_compliance({'rotational_stiffness': 60}, request_id='web-command')
+    assert node.compliance_status()['request']['request_id'] == 'web-command'
+    node.coordinator.generation += 1
+    results['web-command']={'request_id':'web-command','generation':3,'request_status':'applied','compliance':values}
+    node._poll_worker_states()
+    assert node.compliance_status()['request']['status']=='cancelled'
+    assert not node.compliance_status()['pending'] and not faults
+
+
+def test_tuning_freezes_input_and_waits_for_fresh_acceptance():
+    node, _, _, _, _ = collector()
+    node.update_compliance({'rotational_stiffness': 60})
+    node._pending_storage_error = None
+    node._tracking_clock = SimpleNamespace(poll=lambda _:0)
+    node._last_gamepad_tick = time.monotonic()-.01
+    node._observe_control = node._online_save_tick = lambda:None
+    node._publish_gamepad = lambda *a: pytest.fail('integrated input during tuning')
+    node._track_control = lambda *a: pytest.fail('submitted target during tuning')
+    node._gamepad_tick()
+    node._pending_compliance = None
+    node.coordinator.tick = lambda *a: pytest.fail('resumed an old accepted target')
+    RolloutCollector._track_control(node,.01)

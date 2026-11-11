@@ -34,6 +34,7 @@ class SessionConfig:
     side_camera_serial: str = ''
     camera_serials: dict | None = None
     workspace_bounds: dict | None = None
+    compliance: dict | None = None
 
     @classmethod
     def parse(cls, data):
@@ -71,7 +72,26 @@ class SessionConfig:
             raise ValueError('SFT supports VLA only')
         result.validate_camera_serials()
         result.validate_workspace()
+        result.validate_compliance()
         return result
+
+    def validate_compliance(self):
+        if self.compliance is not None:
+            if not isinstance(self.compliance, dict):
+                raise ValueError('compliance must be an object')
+            from vla.control.franky.worker import Compliance
+            Compliance.from_mapping(self.compliance)
+
+    def effective_compliance(self):
+        from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
+        rollout = load_rollout_config(self.default_config())
+        return self.apply_rollout_compliance(rollout).franky_compliance
+
+    def apply_rollout_compliance(self, rollout):
+        self.validate_compliance()
+        from vla.control.franky.worker import Compliance
+        value = Compliance.from_mapping(self.compliance, Compliance.from_mapping(rollout.franky_compliance))
+        return replace(rollout, franky_compliance=asdict(value))
 
     def validate_camera_serials(self):
         if self.camera_serials is None:
@@ -188,12 +208,17 @@ def collection_camera_serials(config, hardware=None):
 
 def preflight(config, *, demo=False, root=None):
     checks, errors = [], []
+    effective_compliance = None
+    try:
+        effective_compliance = config.effective_compliance()
+    except (ValueError, TypeError, KeyError, OSError) as error:
+        errors.append(f'阻抗配置无效: {error}')
     config.validate_workspace()
     config.validate_camera_serials()
     root = Path(root or os.environ.get('VLA_ROOT', Path.cwd())).expanduser().resolve()
     target = config.dataset_path(root)
     if demo:
-        return {'ok': True, 'checks': ['模拟模式：不访问硬件、不写数据集'], 'errors': [],
+        return {'ok': not errors, 'checks': ['模拟模式：不访问硬件、不写数据集'], 'errors': errors, 'compliance': effective_compliance,
                 'modes': config.modes(True), 'cameras': config.cameras, 'dataset_root': str(target)}
     try:
         from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
@@ -306,7 +331,7 @@ def preflight(config, *, demo=False, root=None):
                 errors.append('模型相机字段与机械臂配置不匹配')
         except (OSError, ValueError, TypeError) as error:
             errors.append(f'无法校验模型配置: {error}')
-    return {'ok': not errors, 'checks': checks, 'errors': errors,
+    return {'ok': not errors, 'checks': checks, 'errors': errors, 'compliance': effective_compliance,
             'modes': config.modes(), 'cameras': config.cameras, 'dataset_root': str(target)}
 
 

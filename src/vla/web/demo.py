@@ -26,6 +26,8 @@ def descriptors(arms):
 class DemoBackend:
     def __init__(self, config, directory, root=None):
         self.config = config
+        self.compliance = config.effective_compliance()
+        self.compliance_request = None
         from pathlib import Path
         from .pose_control import PoseActions
         self._demo_poses = {}
@@ -72,7 +74,12 @@ class DemoBackend:
     def command(self, op, args):
         if self.poses.command(op, args):
             return
-        if op == 'enable':
+        if op == 'compliance':
+            from dataclasses import asdict
+            from vla.control.franky.worker import Compliance
+            self.compliance = asdict(Compliance.from_mapping(args['values'], Compliance.from_mapping(self.compliance)))
+            self.compliance_request = {'request_id': args.get('_request_id'), 'status': 'applied', 'values': self.compliance.copy()}
+        elif op == 'enable':
             if self.fault:
                 raise RuntimeError('recover first')
             self.enabled = True
@@ -160,7 +167,8 @@ class DemoBackend:
                             'speed': 'normal' if self.config.source == 'gamepad' else 'fixed',
                             'speed_scale': 1. if self.config.source == 'gamepad' else None} for a in self.arms},
                 'signals': self.signals, 'values': values, 'sample_time': now,
-                'available_commands': ['enable','pause','record','save','discard','recover','stop'] +
+                'compliance': {'backend': 'franky', 'pending': False, 'values': self.compliance, 'request': self.compliance_request},
+                'available_commands': ['compliance','enable','pause','record','save','discard','recover','stop'] +
                     (['critical'] if self.config.workflow=='collect' and self.config.source=='gamepad' else []) +
                     (['mode','intervention'] if self.config.workflow == 'deploy' else []),
                 'modes': ['human', *self.config.modes(True)] if self.config.workflow == 'deploy' else [], 'outcomes':['success','failure'] if self.config.workflow == 'deploy' or (self.config.arms == 'single_left' and self.config.source == 'gamepad') else ['success'], 'demo': True}

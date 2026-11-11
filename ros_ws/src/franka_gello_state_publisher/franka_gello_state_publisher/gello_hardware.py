@@ -226,6 +226,17 @@ class GelloHardware:
             gripper_position_raw
         )
 
+    def get_position_sample(self):
+        sample = self._driver.get_joint_sample()
+        if sample is None:
+            return None
+        raw, captured_at_ns, sequence = sample
+        if getattr(self, '_last_sample_sequence', None) == sequence:
+            return None
+        self._last_sample_sequence = sequence
+        return (self.process_arm_joint_positions(raw[:self._num_arm_joints]),
+                self.process_gripper_position(raw[-1]), captured_at_ns, sequence)
+
     def process_arm_joint_positions(self, arm_joints_raw: np.ndarray) -> np.ndarray:
         """
         Calculate arm joint positions from raw positions.
