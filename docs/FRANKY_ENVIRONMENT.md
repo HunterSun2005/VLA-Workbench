@@ -1,6 +1,6 @@
 # Franky / libfranka 环境
 
-统一机械臂执行链要求 **libfranka 0.19.0 + `CartesianImpedanceTracker`**。Franka 系统 5.9.2 的兼容矩阵支持 `libfranka >= 0.18.0`，本仓库固定到 0.19.0 以使用含 tracker 的官方 fork wheel。ROS 负责输入、夹爪、相机和协调器；独立 Franky worker 独占 FCI，模型环境不加载机器人控制 binding。
+统一机械臂执行链要求 **libfranka 0.19.0 + `CartesianImpedanceTracker`**。Franka 系统 5.9.2 的兼容矩阵支持 `libfranka >= 0.18.0`，本仓库固定到 0.19.0 以使用含 tracker 的 Brunch-Life fork wheel。ROS 负责输入、夹爪、相机和协调器；独立 Franky worker 独占 FCI，模型环境不加载机器人控制 binding。
 
 ## 固定源码
 
@@ -16,9 +16,9 @@
 
 ## 构建与选择解释器
 
-优先在独立 worker 环境安装上表 0.19 wheel；所有 Python 环境均使用新目录，不在现有 ROS/模型环境中升级。若从源码构建，libfranka 依赖 Eigen、Poco、Pinocchio、TinyXML2、fmt；Franky 还依赖 **pybind11 2.13.6**（该 fork 的构建版本）、Python 开发文件和 ruckig。系统 pybind11 2.9.1 与 NumPy 2.2.6 的组合曾在离线 `Affine(np.eye(4))` 检查中崩溃，不能只验证 import。上游 libfranka 0.19.0 的 CPack 配置需要 Git 标签元数据；直接解压源码归档会在 `SetVersionFromGit.cmake` 报错，不能将其误判为 C++/ABI 不兼容。
+优先在独立 worker 环境安装上表 0.19 wheel；所有 Python 环境均使用新目录，不在现有 ROS/模型环境中升级。若从源码构建，libfranka 依赖 Eigen、Poco、Pinocchio、TinyXML2、fmt；Franky 还依赖 **pybind11 2.13.6**（该 fork 的构建版本）、Python 开发文件和 ruckig。系统 pybind11 2.9.1 与 NumPy 2.2.6 的组合曾在离线 `Affine(np.eye(4))` 检查中崩溃，不能只验证 import。上游 libfranka 0.19.0 的 CPack 配置需要 Git 标签元数据；本仓库的 `fetch_ros.py` 应用 `libfranka-archive-version.patch`，为没有 `.git` 的归档使用项目版本及 `.vla-revision` 中的固定提交生成打包标识，不修改控制实现。
 
-安装 wheel 后，检查 CMake 输出的源码构建路径（若使用）必须是 `Found Franka Version: 0.19.0`。最终环境需包含 Franky Python 包及编译扩展、可解析的 0.19.0 动态库依赖，以及 NumPy、SciPy、websockets。wheel 自带 Franky 依赖库和 RPATH；Web 会清理 `LD_LIBRARY_PATH`，仍不能把 ROS shell 中的 `/usr/local/lib` 0.19 或旧 0.20.4 库混入 worker。不要混用模型 Python 与 ROS Python 的二进制扩展。
+如果从源码构建 Franky，CMake 输出必须是 `Found Franka Version: 0.19.0`。最终环境需包含 Franky Python 包及编译扩展、可解析的 0.19.0 动态库依赖，以及 NumPy、SciPy、websockets。wheel 自带 Franky 依赖库和 RPATH；Web 会清理 `LD_LIBRARY_PATH`，仍不能把 ROS shell 中的 `/usr/local/lib` 0.19 或旧 0.20.4 库混入 worker。不要混用模型 Python 与 ROS Python 的二进制扩展。
 
 会话配置 `transport.worker_python` 优先于环境变量 `FRANKY_PYTHON`；二者都未指定时当前使用 `/usr/bin/python3`。在启动 Web 的环境里设置已准备好的独立解释器，例如：
 
@@ -31,7 +31,7 @@ env -u PYTHONHOME -u LD_LIBRARY_PATH -u LD_PRELOAD \
   "$FRANKY_PYTHON" -m vla.control.franky.worker_main --check-only
 ```
 
-在仓库根目录执行。此命令只导入并检查依赖，不创建 `Robot`、tracker、socket 或硬件租约。失败时返回非零；成功时输出 JSON 指纹。不要用真实会话启动来代替依赖检查。
+在仓库根目录执行。安装命令仅针对已准备好的独立环境；`--no-deps` 要求该环境已有 NumPy、SciPy、websockets。随后 `--check-only` 只导入并检查依赖，不创建 `Robot`、tracker、socket 或硬件租约。失败时返回非零；成功时输出 JSON 指纹。不要用真实会话启动来代替依赖检查。
 
 worker 启动时执行同一检查：要求 tracker 的目标、增益和停止 API，读取 `/proc/self/maps` 确认实际加载且仅加载一份 libfranka 0.19.0，并进行 NumPy/Eigen 位姿转换检查。支持普通库名和 auditwheel 哈希库名；其他版本、混载、无法确认版本、已删除的映射均拒绝。指纹包含实际 native binding、Python tracker 和 libfranka 路径及 SHA-256，以及 NumPy 版本、位姿检查结果，写入现有控制指纹；不能与此前不同指纹的数据直接续录。
 
@@ -39,7 +39,19 @@ worker 启动时执行同一检查：要求 tracker 的目标、增益和停止 
 
 `ros_ws/dependencies.repos` 同样固定到 libfranka 0.19.0。`scripts/build_ros.sh` 在构建前核对源码提交标记和版本，阻止悄悄沿用旧 0.20.4 源码。`scripts/fetch_ros.py` 遇到旧源码也会拒绝覆盖，需要按新清单准备新的工作区及构建/安装目录。
 
-修改源码锁定不等于更新本机已有二进制。已确认无运行会话后，本仓库的旧 `ros_ws/build`、`ros_ws/install` 和 `ros_ws/log` 生成目录已清理；不会删除正在使用的 `/data0/sht/VLA`、已有 Conda/用户 Python、`/usr/local` 或 ROS 第三方 checkout。现有第三方 libfranka checkout 仍记录旧提交，构建前检查会拒绝它，必须按新清单准备新 checkout 后再构建。统一路线不启动 ROS 机械臂控制器，因此旧 ROS arm 库不应进入 Franky worker；worker 的实际加载检查是最后一道启动约束。
+本仓库的 libfranka 源码已在用户授权后替换为上表固定的 0.19.0 提交，并完成 ROS 工作区重建。旧源码备份在工作区之外，`ros_ws/src/third_party/libfranka`、`ros_ws/build`、`ros_ws/install` 中已无旧 0.20.x 库。未修改旧 `/data0/sht/VLA`、已有 Conda/用户 Python 或系统库。`build_ros.sh` 只扫描 `src`，避免将 `python_deps` 内的安装包误识别为待编译源码。
+
+重建命令和无硬件验证：
+
+```bash
+/usr/bin/python3 scripts/fetch_ros.py
+CMAKE_BUILD_PARALLEL_LEVEL=2 MAKEFLAGS=-j2 bash scripts/build_ros.sh
+bash -c 'source scripts/ros_env.sh; /usr/bin/python3 scripts/check_ros.py'
+```
+
+`check_ros.py` 检查采集器和外设 Python 依赖能否导入，并使用 `ldd` 确认 `franka_hardware`、`franka_semantic_components`、机械臂控制器和状态广播器都解析到本工作区的 `ros_ws/install/libfranka/lib/libfranka.so.0.19.0`，拒绝误用系统库或未解析的依赖，不启动 ROS 节点。
+
+ROS 重建不会安装 Franky Python wheel。当前默认 `/usr/bin/python3` 在禁用用户包后仍缺少 `franky`；此前 wheel 验证使用的是临时目录，不能等同于已部署 worker 环境。启用真实 Franky 会话前仍需配置通过 `--check-only` 的独立解释器。
 
 ## 验证边界
 

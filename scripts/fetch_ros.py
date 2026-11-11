@@ -38,9 +38,10 @@ for relative, entry in manifest.items():
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, target, dirs_exist_ok=True)
     stamp.write_text(revision + "\n")
-patch = root / "patches/robotiq-registers.patch"
-if patch.exists():
-    driver = root / "src/third_party/ros2_robotiq_gripper"
+for patch_name, source_name in (("robotiq-registers.patch", "ros2_robotiq_gripper"),
+                                ("libfranka-archive-version.patch", "libfranka")):
+    patch = root / "patches" / patch_name
+    driver = root / "src/third_party" / source_name
     check = subprocess.run(["git", "apply", "--check", str(patch)], cwd=driver, capture_output=True)
     if check.returncode == 0:
         subprocess.run(["git", "apply", str(patch)], cwd=driver, check=True)
