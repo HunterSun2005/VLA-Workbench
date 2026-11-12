@@ -273,7 +273,9 @@ def test_dataset_path_preflight_and_resume_use_workspace(tmp_path, monkeypatch, 
     expected.mkdir(parents=True)
     (expected/'meta').mkdir()
     from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
-    (expected/'meta/info.json').write_text(json.dumps({'gripper_recording_version': 2, 'features': {
+    from vla.web.config import workspace_defaults
+    bounds = workspace_defaults(cfg)['left']
+    (expected/'meta/info.json').write_text(json.dumps({'total_episodes':0, 'execution_projection':{'lower':bounds['min'], 'upper':bounds['max']}, 'gripper_recording_version': 2, 'features': {
         'observation.state': {'shape': [50], 'names': STATE_FIELDS},
         **{f'observation.images.{r}': {'dtype':'video'} for r in cfg.cameras}}}))
     result=preflight(cfg,root=workspace)

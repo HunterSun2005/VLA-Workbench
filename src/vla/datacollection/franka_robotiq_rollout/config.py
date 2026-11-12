@@ -9,8 +9,8 @@ import yaml
 
 
 FRANKY_COMPLIANCE_DEFAULTS = {
-    "translational_stiffness": 1000.0,
-    "rotational_stiffness": 50.0,
+    "translational_stiffness": 1100.0,
+    "rotational_stiffness": 65.0,
     "nullspace_stiffness": 20.0,
     "translational_clip": 0.008,
     "rotational_clip": 0.04,
@@ -35,17 +35,18 @@ class GamepadConfig:
     joint7_button_sign: float
     left_stick_x_sign: float
     left_stick_y_sign: float
-    right_stick_x_axis: int = 2
-    right_stick_y_axis: int = 3
+    right_stick_x_axis: int = 3
+    right_stick_y_axis: int = 4
     right_stick_x_sign: float = -1.0
     right_stick_y_sign: float = 1.0
     tool_roll_button_sign: float = -1.0
-    right_stick_rotation_deg: float = 0.0
-    input_layout: str = "standard_sdl"
-    speed_button: int = 9
-    phase_button: int = 10
-    upright_button: int = 4
+    right_stick_rotation_deg: float = -45.0
+    input_layout: str = "raw_joy"
+    speed_button: int = 4
+    phase_button: int = 5
+    upright_button: int = 7
     reset_pose_button: int = 6
+    yaw_reset_button: int = 10
 
     def __post_init__(self):
         if self.input_layout not in ("standard_sdl", "raw_joy"):
@@ -123,6 +124,8 @@ class RolloutConfig:
     gamepad_max_angular_speed: float
     min_control_command_success_rate: float
     low_success_rate_samples: int
+    gamepad_hold_timeout_s: float = 0.1
+    gello_sample_timeout_s: float = 0.2
     gamepad_tilt_speed: float = 0.225
     gamepad_roll_speed: float = 0.45
     action_space: str = "tcp"
@@ -134,6 +137,7 @@ class RolloutConfig:
     installation_guard_slots: int = 1
     model_backend: str = 'pi05'
     policy_endpoint: str = ''
+    workspace_limits_enabled: bool = True
 
     @property
     def policy_state_dim(self) -> int:
@@ -158,7 +162,10 @@ def _mapping(value: Any, label: str) -> dict[str, Any]:
 def _vector3(value: Any, label: str) -> tuple[float, float, float]:
     if not isinstance(value, list) or len(value) != 3:
         raise ValueError(f"{label} must contain three values")
-    return tuple(float(item) for item in value)
+    result = tuple(float(item) for item in value)
+    if not all(math.isfinite(item) for item in result):
+        raise ValueError(f'{label} must be finite')
+    return result
 
 
 def _arm(value: Any) -> ArmConfig:
@@ -195,7 +202,7 @@ def _arm(value: Any) -> ArmConfig:
         raise ValueError(f"{raw['name']}.gripper open and closed positions must differ")
     if gripper_max_effort < 0.0:
         raise ValueError(f"{raw['name']}.gripper_max_effort must be non-negative")
-    layout = gamepad_raw.get("input_layout", "standard_sdl")
+    layout = gamepad_raw.get("input_layout", "raw_joy")
     from .gamepad_layout import axis_buttons, validate_layout
     validate_layout(gamepad_raw)
     defaults = axis_buttons(layout)
@@ -207,7 +214,7 @@ def _arm(value: Any) -> ArmConfig:
         gamepad=GamepadConfig(
             joy_topic=str(gamepad_raw["joy_topic"]),
             input_layout=layout,
-            **{k: int(gamepad_raw.get(k, defaults[k])) for k in ("speed_button", "phase_button", "upright_button", "reset_pose_button")},
+            **{k: int(gamepad_raw.get(k, defaults[k])) for k in ("speed_button", "phase_button", "upright_button", "reset_pose_button", "yaw_reset_button")},
             left_stick_x_axis=int(gamepad_raw.get("left_stick_x_axis", defaults["left_stick_x_axis"])),
             left_stick_y_axis=int(gamepad_raw.get("left_stick_y_axis", defaults["left_stick_y_axis"])),
             left_trigger_axis=int(gamepad_raw.get("left_trigger_axis", defaults["left_trigger_axis"])),
@@ -223,7 +230,7 @@ def _arm(value: Any) -> ArmConfig:
             right_stick_y_axis=int(gamepad_raw.get("right_stick_y_axis", defaults["right_stick_y_axis"])),
             right_stick_x_sign=float(gamepad_raw.get("right_stick_x_sign", -1.0)),
             right_stick_y_sign=float(gamepad_raw.get("right_stick_y_sign", 1.0)),
-            right_stick_rotation_deg=gamepad_raw.get("right_stick_rotation_deg", 0.0),
+            right_stick_rotation_deg=gamepad_raw.get("right_stick_rotation_deg", -45.0),
             tool_roll_button_sign=float(gamepad_raw.get(
                 "tool_roll_button_sign", gamepad_raw.get("joint7_button_sign", -1.0)
             )),
@@ -280,6 +287,9 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         raise ValueError("Franky Cartesian impedance requires action_space: tcp")
     transport = _mapping(raw.get("transport"), "transport")
     control = _mapping(raw.get("control"), "control")
+    workspace_limits_enabled = control.get('workspace_limits_enabled', True)
+    if type(workspace_limits_enabled) is not bool:
+        raise ValueError('control.workspace_limits_enabled must be boolean')
     compliance_raw = _mapping(control.get("compliance", {}), "control.compliance")
     compliance_keys = {
         "translational_stiffness", "rotational_stiffness", "nullspace_stiffness",
@@ -338,10 +348,12 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         "sync_tolerance_ms": float(control.get("sync_tolerance_ms", 100.0)),
         "policy_timeout_s": float(control.get("policy_timeout_s", 2.0)),
         "control_discontinuity_timeout_s": float(control.get("control_discontinuity_timeout_ms", 100.0)) / 1000.0,
-        "max_linear_velocity": float(control.get("max_linear_velocity", 0.06)),
+        "max_linear_velocity": float(control.get("max_linear_velocity", 0.16)),
         "max_angular_velocity": float(control.get("max_angular_velocity", 0.45)),
         "joint_limit_margin": float(control.get("joint_limit_margin", 0.05)),
-        "gamepad_joy_timeout_s": float(control.get("gamepad_joy_timeout_s", 0.2)),
+        "gamepad_joy_timeout_s": float(control.get("gamepad_joy_timeout_s", 0.3)),
+        "gamepad_hold_timeout_s": float(control.get("gamepad_hold_timeout_s", 0.1)),
+        "gello_sample_timeout_s": float(control.get("gello_sample_timeout_s", 0.2)),
         "gamepad_state_timeout_s": float(control.get("gamepad_state_timeout_s", 0.5)),
         "gamepad_deadzone": float(control.get("gamepad_deadzone", 0.08)),
         "gamepad_xy_speed": float(control.get("gamepad_xy_speed", 0.03)),
@@ -360,6 +372,8 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         raise ValueError("configuration values must be positive: " + ", ".join(invalid))
     if positive["control_discontinuity_timeout_s"] <= 1.0 / fps:
         raise ValueError("control discontinuity timeout must exceed one rollout period")
+    if not 1.0 / fps < positive["gamepad_hold_timeout_s"] < positive["gamepad_joy_timeout_s"]:
+        raise ValueError("require control period < gamepad_hold_timeout_s < gamepad_joy_timeout_s")
     if positive["gamepad_deadzone"] >= 1.0:
         raise ValueError("gamepad_deadzone must be less than 1.0")
     if positive["gamepad_gripper_speed"] > 1.0:
@@ -393,7 +407,7 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
             arm.gamepad.x_button,
             arm.gamepad.y_button,
             arm.gamepad.speed_button, arm.gamepad.phase_button,
-            arm.gamepad.upright_button, arm.gamepad.reset_pose_button,
+            arm.gamepad.upright_button, arm.gamepad.reset_pose_button, arm.gamepad.yaw_reset_button,
         )
         if any(index < 0 for index in indices):
             raise ValueError(f"{arm.name}.gamepad axis/button indices must be non-negative")
@@ -427,6 +441,7 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         worker_python=(Path(str(transport["worker_python"])).expanduser().absolute()
                        if transport.get("worker_python") else None),
         franky_compliance=franky_compliance,
+        workspace_limits_enabled=workspace_limits_enabled,
         action_space=str(raw.get("action_space", "tcp")),
         input_source=str(raw.get("input_source", "gamepad")),
         dataset_root=Path(str(dataset["root"])).expanduser().resolve(),

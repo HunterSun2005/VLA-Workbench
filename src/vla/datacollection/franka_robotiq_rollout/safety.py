@@ -132,6 +132,7 @@ def validate_absolute_action(
     *,
     arm_count: int,
     workspace_bounds: list[tuple[np.ndarray, np.ndarray]],
+    workspace_limits_enabled: bool = True,
 ) -> list[tuple[np.ndarray, np.ndarray, float]]:
     value = np.asarray(action, dtype=np.float64)
     if value.shape != (10 * arm_count,) or not np.isfinite(value).all():
@@ -141,7 +142,7 @@ def validate_absolute_action(
         arm = value[10 * arm_index : 10 * (arm_index + 1)]
         position = arm[:3]
         lower, upper = workspace_bounds[arm_index]
-        if np.any(position < lower) or np.any(position > upper):
+        if workspace_limits_enabled and (np.any(position < lower) or np.any(position > upper)):
             raise ValueError(f"arm {arm_index} target is outside workspace: {position.tolist()}")
         gripper = float(arm[9])
         if not 0.0 <= gripper <= 1.0:
@@ -181,6 +182,7 @@ def validate_rollout_episode(
     *,
     arm_count: int,
     workspace_bounds: list[tuple[np.ndarray, np.ndarray]],
+    workspace_limits_enabled: bool = True,
     maximum_gripper_width: float,
 ) -> None:
     states = np.asarray(states, dtype=np.float64)
@@ -201,6 +203,7 @@ def validate_rollout_episode(
             action,
             arm_count=arm_count,
             workspace_bounds=workspace_bounds,
+            workspace_limits_enabled=workspace_limits_enabled,
         )
 
 

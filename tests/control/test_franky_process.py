@@ -30,7 +30,7 @@ def wait_for(function, timeout=5):
 
 
 @contextmanager
-def process_worker(arms=('left',), target_timeout=3., state_timeout=3.):
+def process_worker(arms=('left',), target_timeout=3., state_timeout=3., tool_pose=None):
     python = worker_python(ROOT)
     if not python.is_file():
         pytest.skip('persistent Franky wheel environment not installed')
@@ -38,6 +38,8 @@ def process_worker(arms=('left',), target_timeout=3., state_timeout=3.):
         root = Path(temporary)
         cfg = {'session_id': 's', 'arms': {name: {'robot_ip': name} for name in arms},
                'target_timeout_s': target_timeout, 'state_timeout_s': state_timeout}
+        if tool_pose is not None:
+            cfg['tool_pose'] = tool_pose
         config = root/'config.json'
         config.write_text(json.dumps(cfg))
         log = (root/'process.log').open('w+')

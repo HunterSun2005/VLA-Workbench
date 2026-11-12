@@ -423,7 +423,10 @@ class V30DatasetWriter:
                     f"requested {self.robot_type!r}"
                 )
             for key, expected_value in self.info_metadata.items():
-                if self.info.get(key) != expected_value:
+                actual_value = self.info.get(key, True) if key == 'workspace_limits_enabled' else self.info.get(key)
+                if key == 'execution_projection' and isinstance(actual_value, dict):
+                    actual_value = {**actual_value, 'workspace_limits_enabled': actual_value.get('workspace_limits_enabled', True)}
+                if actual_value != expected_value:
                     raise RuntimeError(
                         f"existing dataset metadata {key!r} does not match the current rollout"
                     )

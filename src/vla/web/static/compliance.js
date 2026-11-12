@@ -4,13 +4,33 @@ class ComplianceEditor {
  constructor(root, send, stage) {
   this.root=root;this.send=send;this.stage=stage;this.effective={};this.dirty=new Set();this.revisions={};this.pending=null;this.failure='';this.sessionId=null;this.available=false;
   this.inputs=[...root.querySelectorAll('[data-compliance]')];
+  try{this.profiles=JSON.parse(localStorage.getItem('vla.compliance.v1')||'{}');}catch{this.profiles={};}
+  if(!this.profiles||typeof this.profiles!=='object'||Array.isArray(this.profiles))this.profiles={};
   for(const input of this.inputs){
    const key=input.dataset.compliance;
-   input.addEventListener('input',()=>{this.dirty.add(key);this.revisions[key]=(this.revisions[key]||0)+1;this.failure='';this.draw();});
+   input.addEventListener('input',()=>{this.dirty.add(key);this.revisions[key]=(this.revisions[key]||0)+1;this.failure='';this.remember();this.draw();});
    const effective=document.createElement('small');effective.dataset.effective=key;input.parentElement.append(effective);
   }
   root.querySelector('#applyCompliance').onclick=()=>this.apply();
-  root.querySelector('#resetCompliance').onclick=()=>{this.dirty.clear();this.failure='';this.fill();};
+  root.querySelector('#resetCompliance').onclick=()=>{this.dirty.clear();this.failure='';this.fill();this.remember();};
+ }
+ profile(key){
+  if(this.profileKey===key)return;
+  this.remember();this.profileKey=key;this.defaultKey=null;this.effective={};this.dirty.clear();this.revisions={};
+  const saved=this.profiles[key];
+  for(const input of this.inputs){
+   const name=input.dataset.compliance,value=saved?.[name];
+   input.value=typeof value==='string'?value:'';
+   if(typeof value==='string')this.dirty.add(name);
+  }
+ }
+ remember(){
+  if(!this.profileKey||(!Object.keys(this.effective).length&&!this.dirty.size))return;
+  // Preferences are editable startup values, never evidence of a worker ACK.
+  const values=Object.fromEntries(this.inputs.map(input=>[input.dataset.compliance,input.value]));
+  if(JSON.stringify(this.profiles[this.profileKey])===JSON.stringify(values))return;
+  this.profiles[this.profileKey]=values;
+  try{localStorage.setItem('vla.compliance.v1',JSON.stringify(this.profiles));}catch{}
  }
  values(){const result={};for(const input of this.inputs)if(input.value!=='')result[input.dataset.compliance]=Number(input.value);return result;}
  assertDraft(){for(const input of this.inputs)if(this.dirty.has(input.dataset.compliance)&&(input.value===''||!input.checkValidity())){input.reportValidity();throw new Error('请修正阻抗参数，修改已保留');}}
@@ -31,7 +51,11 @@ class ComplianceEditor {
   }
   this.workerPending=Boolean(compliance.pending);
   this.workerFault=compliance.fault||'';
+  for(const input of this.inputs)if(input.value!==''&&Number(input.value)===compliance.values?.[input.dataset.compliance])this.dirty.delete(input.dataset.compliance);
   this.setEffective(compliance.values);
+  // Entering the next session must retain the last observed values, rather
+  // than treating the YAML defaults as a newly selected configuration.
+  if(compliance.values){this.defaultKey=this.profileKey;this.remember();}
  }
  async apply(){
   if(!this.available||this.stage()!=='running'||this.pending||this.workerPending||!this.valid())return;

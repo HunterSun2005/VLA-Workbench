@@ -36,8 +36,11 @@ class Robot:
         self.ip = ip
         self.active = False
         self.pose = franky.Affine(np.eye(4))
-        self.current_pose = SimpleNamespace(end_effector_pose=self.pose)
         self.stamp = time.monotonic()
+
+    @property
+    def current_pose(self):
+        return SimpleNamespace(end_effector_pose=self.pose)
 
     @property
     def state(self):
@@ -45,7 +48,11 @@ class Robot:
             raise RuntimeError('injected state failure')
         if not (root/'stale-state').exists():
             self.stamp = time.monotonic()
-        return SimpleNamespace(O_T_EE=self.pose, O_T_EE_d=self.pose,
+        tool = config.get('tool_pose', [0, 0, 0, 0, 0, 0, 1])
+        if (root/'hardware-tool.json').exists():
+            tool = json.loads((root/'hardware-tool.json').read_text())
+        tool_affine = worker._pose_to_affine(franky, np.asarray(tool))
+        return SimpleNamespace(O_T_EE=self.pose, O_T_EE_d=self.pose, F_T_EE=tool_affine,
                                q=np.zeros(7), dq=np.zeros(7), time=SimpleNamespace(to_sec=lambda: self.stamp))
 
     @property
@@ -80,6 +87,8 @@ class Robot:
 real_set_target = franky.CartesianImpedanceTracker.set_target
 def capture_target(self, pose, *args, **kwargs):
     real_set_target(self, pose, *args, **kwargs)
+    if (root/'follow-targets').exists():
+        self._robot.pose = pose
     if (root/'capture-targets').exists():
         with (root/'targets.jsonl').open('a') as stream:
             stream.write(json.dumps({'translation': np.asarray(pose.translation).tolist(),

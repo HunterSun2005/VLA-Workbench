@@ -23,12 +23,13 @@ from scipy.spatial.transform import Rotation
 from vla.core.hardware_lease import HardwareLease
 from .ipc import decode_packet, encode_packet
 from .binding import check_binding
+from .tcp_frame import TCPFrame, TCP_FRAME
 
 
 @dataclass
 class Compliance:
-    translational_stiffness: float = 1000.0
-    rotational_stiffness: float = 50.0
+    translational_stiffness: float = 1100.0
+    rotational_stiffness: float = 65.0
     nullspace_stiffness: float = 20.0
     translational_clip: float = .008
     rotational_clip: float = .04
@@ -104,6 +105,7 @@ class FrankyArm:
         self.robot = None
         self.tracker = None
         self.target_pose: np.ndarray | None = None
+        self._tcp_frame: TCPFrame | None = None
         self.target_generation = -1
         self.target_sequence = -1
         self.fault: str | None = None
@@ -130,6 +132,18 @@ class FrankyArm:
             [100.0] * 3 + [25.0] * 3,
         )
 
+    def _frame(self, raw=None) -> TCPFrame:
+        raw = self.robot.state if raw is None else raw
+        flange = getattr(raw, 'F_T_EE', None)
+        if flange is None:
+            raise RuntimeError('Franky measured F_T_EE is required for TCP frame calibration')
+        hardware_tool = _affine_pose(flange)
+        if self._tcp_frame is None:
+            self._tcp_frame = TCPFrame(hardware_tool)
+        else:
+            self._tcp_frame.check_tool(hardware_tool)
+        return self._tcp_frame
+
     def _state(self) -> dict[str, Any]:
         if self.robot is None:
             raise RuntimeError("Franky arm is not open")
@@ -145,13 +159,11 @@ class FrankyArm:
                 self._robot_stamp, self._robot_stamp_at = stamp, time.monotonic()
             elif time.monotonic() - self._robot_stamp_at > self.state_timeout_s:
                 raise RuntimeError('Franky measured state timestamp stalled')
-        affine = raw.O_T_EE
-        pose = _affine_pose(affine)
+        frame = self._frame(raw)
+        hardware_pose = _affine_pose(raw.O_T_EE)
+        pose = frame.to_logical(hardware_pose)
         desired = getattr(raw, "O_T_EE_d", None)
-        desired_pose = _affine_pose(desired) if desired is not None else self.target_pose
-        flange = getattr(raw, "F_T_EE", None)
-        flange_pose = (_affine_pose(flange) if flange is not None
-                       else np.array([0., 0., 0., 0., 0., 0., 1.]))
+        desired_pose = frame.to_logical(_affine_pose(desired)) if desired is not None else self.target_pose
         q = np.asarray(raw.q, dtype=float)
         dq = np.asarray(raw.dq, dtype=float)
         qd = np.asarray(getattr(raw, "q_d", q), dtype=float)
@@ -164,7 +176,11 @@ class FrankyArm:
                 "tcp_pose": pose.tolist(), "joints": q.tolist(),
                 "joint_velocity": dq.tolist(), "joint_torque": tau.tolist(),
                 "external_joint_torque": tau_ext.tolist(), "target_joints": qd.tolist(),
-                "flange_to_tcp_pose": flange_pose.tolist(),
+                "flange_to_tcp_pose": frame.logical_tool.tolist(),
+                "hardware_flange_to_tcp_pose": frame.hardware_tool.tolist(),
+                "hardware_tcp_pose": hardware_pose.tolist(),
+                "hardware_reference_tcp_pose": (frame.to_hardware(self.target_pose).tolist()
+                                                if self.target_pose is not None else []),
                 "desired_tcp_pose": desired_pose.tolist() if desired_pose is not None else [],
                 "reference_tcp_pose": self.target_pose.tolist() if self.target_pose is not None else [],
                 "force": force[:3].tolist(), "torque": force[3:].tolist(),
@@ -201,7 +217,9 @@ class FrankyArm:
             return
         # Only explicit recover may clear robot errors.
         self.robot.join_motion()
-        nullspace = np.asarray(self.robot.state.q, dtype=np.float64).copy()
+        raw = self.robot.state
+        self._frame(raw)  # Reject unknown/changed tools before starting control.
+        nullspace = np.asarray(raw.q, dtype=np.float64).copy()
         c = self.compliance
         self.tracker = self.franky.CartesianImpedanceTracker(
             self.robot,
@@ -217,7 +235,8 @@ class FrankyArm:
         # Seed the target accumulator from the measured TCP. The first client
         # packet is therefore limited by max_step instead of causing a pose
         # discontinuity.
-        self.target_pose = _affine_pose(self.robot.state.O_T_EE)
+        raw = self.robot.state
+        self.target_pose = self._frame(raw).to_logical(_affine_pose(raw.O_T_EE))
 
     def set_target(self, pose: list[float], generation: int, sequence: int) -> None:
         self._check_tracker()
@@ -237,7 +256,7 @@ class FrankyArm:
             angle = float(np.linalg.norm(vector))
             if angle > self.compliance.max_step_rad:
                 pose_array[3:] = (Rotation.from_rotvec(vector * self.compliance.max_step_rad / angle) * previous).as_quat()
-        self.tracker.set_target(_pose_to_affine(self.franky, pose_array))
+        self.tracker.set_target(_pose_to_affine(self.franky, self._frame().to_hardware(pose_array)))
         self.target_pose = pose_array
         self.target_generation = generation
         self.target_sequence = sequence
@@ -307,6 +326,7 @@ class FrankyArm:
         finally:
             # Destroy the FCI connection before making its lease available.
             self.robot = None
+            self._tcp_frame = None
             if self._lease:
                 self._lease.close()
                 self._lease = None
@@ -314,7 +334,7 @@ class FrankyArm:
 
 class FrankyWorker:
     """One generation-fenced owner, with a watchdog independent of client traffic."""
-    IMPLEMENTATION_VERSION = 5
+    IMPLEMENTATION_VERSION = 6
 
     def __init__(self, arms, *, session_id, compliance=None, target_timeout_s=.1,
                  state_timeout_s=.5):
@@ -530,6 +550,7 @@ class FrankyWorker:
                                    'tcp_pose': [0, 0, 0, 0, 0, 0, 1], 'joints': [0]*7,
                                    'joint_velocity': [0]*7, 'state_valid': False, 'fault': str(error)})
             return {'kind': 'state', 'session_id': self.session_id,
+                    'tcp_frame': TCP_FRAME,
                     'generation': self.generation, 'sequence': self.sequence,
                     'states': states, 'fault': self.fault,
                     'implementation_version': self.IMPLEMENTATION_VERSION,

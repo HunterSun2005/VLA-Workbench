@@ -1,6 +1,5 @@
 """Pre-recording pose operations, executed exclusively by the runner control loop."""
 from __future__ import annotations
-from dataclasses import replace
 import time
 import numpy as np
 from .poses import PoseStore, note_text, validate_pose
@@ -106,6 +105,7 @@ class PoseActions:
             if time.monotonic() > self.deadline:
                 raise TimeoutError('姿态恢复超时，已停止；请检查可达性与现场障碍物')
             state = self.driver.tick(self.target)
+            self.status.update(getattr(self.driver, 'progress_status', {}))
             if state:
                 self.finish(state, '已恢复，回到待命；夹爪未恢复' if state == 'completed' else '输入接管或控制暂停，已取消恢复')
         except Exception as error:
@@ -120,6 +120,8 @@ class ROSPoseDriver:
         self.servo = None
         self.last_command = None
         self.arm = None
+        self.plan = None
+        self.progress_status = {}
 
     def _state(self, arm):
         from vla.datacollection.franka_robotiq_single_left import schema
@@ -149,9 +151,12 @@ class ROSPoseDriver:
                 raise RuntimeError('关节状态过期')
             joints = node.measured_joints.copy()
         position, rotation = schema.measured_pose_from_robot_state(state)
-        tool_p, tool_r = schema.pose_from_stamped(state.f_t_ee)
-        pose = pose_value(arm, self.b.hardware[f'{arm.upper()}_ROBOT_IP'], self.arms[arm].base_link+'/EE', position, rotation, tool_p, tool_r)
-        check_bounds(pose, self.arms[arm].workspace_min, self.arms[arm].workspace_max)
+        tool_p, tool_r = schema.pose_from_stamped(getattr(state, 'hardware_f_t_ee', state.f_t_ee))
+        from vla.control.franky.tcp_frame import TCP_FRAME
+        frame = self.arms[arm].base_link+'/TCP:'+TCP_FRAME if self.b.collector else self.arms[arm].base_link+'/EE'
+        pose = pose_value(arm, self.b.hardware[f'{arm.upper()}_ROBOT_IP'], frame, position, rotation, tool_p, tool_r)
+        if self.config.workspace_limits_enabled:
+            check_bounds(pose, self.arms[arm].workspace_min, self.arms[arm].workspace_max)
         if np.asarray(joints).shape != (7,) or not np.isfinite(joints).all():
             raise ValueError('无效关节状态')
         return pose, joints
@@ -162,23 +167,44 @@ class ROSPoseDriver:
     def start(self, target):
         self.arm = target['arm']
         arm = self.arms[self.arm]
-        check_bounds(target, arm.workspace_min, arm.workspace_max)
+        if self.config.workspace_limits_enabled:
+            check_bounds(target, arm.workspace_min, arm.workspace_max)
         self.read(self.arm)
         c = self.b.collector
         if not c._neutral_gamepads():
             raise RuntimeError('请松开手柄并确认输入在线')
         c._observe_control()
-        tcp = {}
-        for configured in c.config.arms:
-            pose = target if configured.name == self.arm else self.read(configured.name)
-            tcp[configured.name] = (np.asarray(pose['position']), np.asarray(pose['rotation']),
-                                    c.coordinator._measurements[configured.name].gripper)
-        action = c.coordinator.gamepad_target(tcp, 1/c.config.fps)
         c._control_boundary('pose', reason='saved pose restore')
-        c._pose_action = action.copy()
+        self.generation = c.coordinator.generation
+        self.target = target
+        self.plan = None
+        self.begin = time.monotonic()
+        self.progress_status = {'progress':0., 'elapsed_s':0., 'waiting_measured':False}
+        c._pose_reference = self.advance
+
+    def advance(self, dt):
+        """Called by the collector after reset ACK and only with a free target channel."""
+        from vla.control.pose_reference import PoseReference
+        c = self.b.collector
+        if c.coordinator.mode != 'active' or c.coordinator.owner != 'pose' or c.coordinator.generation != self.generation:
+            raise RuntimeError('姿态恢复控制权已撤销')
+        if self.plan is None:
+            # Capture once, after every tracker has explicitly acknowledged readiness.
+            self.starts = {name:self.read(name) for name in self.arms}
+            start = self.starts[self.arm]
+            compatible(self.target, start)
+            compliance = c.compliance_status()['values']
+            self.plan = PoseReference(start['position'], start['rotation'], self.target['position'], self.target['rotation'],
+                linear_speed=min(.10, self.config.max_linear_velocity, compliance['max_step']*self.config.fps),
+                angular_speed=min(.45, self.config.max_angular_velocity, compliance['max_step_rad']*self.config.fps))
+            self.grippers = {name:c.coordinator._measurements[name].gripper for name in self.arms}
+        position, rotation = self.plan.step(dt)
+        tcp = {name:(np.asarray(pose['position']), np.asarray(pose['rotation']), self.grippers[name])
+               for name, pose in self.starts.items()}
+        tcp[self.arm] = (position, rotation, self.grippers[self.arm])
+        return c.coordinator.gamepad_target(tcp, dt)
 
     def tick(self, target):
-        from vla.actions import matrix_to_rot6d
         c = self.b.collector
         if c._faulted or c.coordinator.mode == 'fault':
             raise RuntimeError(c._fault_reason or c.coordinator.reason)
@@ -186,7 +212,20 @@ class ROSPoseDriver:
             return 'cancelled'
         current = self.read(self.arm)
         compatible(target, current)
-        if reached(target, current):
+        from scipy.spatial.transform import Rotation
+        self.progress_status = {
+            'progress': self.plan.progress if self.plan else 0.,
+            'elapsed_s': time.monotonic()-getattr(self, 'begin', time.monotonic()),
+            'position_error_m': float(np.linalg.norm(np.asarray(target['position'])-current['position'])),
+            'orientation_error_deg': float(np.rad2deg(Rotation.from_matrix(
+                np.asarray(target['rotation']) @ np.asarray(current['rotation']).T).magnitude())),
+            'waiting_measured': bool(self.plan and self.plan.done),
+        }
+        if hasattr(self, 'generation') and (c.coordinator.generation != self.generation
+                or (c.coordinator.mode != 'resetting' and c.coordinator.owner != 'pose')):
+            return 'cancelled'
+        if self.plan and self.plan.done and reached(target, current):
+            self.progress_status['waiting_measured'] = False
             return 'completed'
         if c.coordinator.mode != 'active':
             return
@@ -194,6 +233,8 @@ class ROSPoseDriver:
             raise RuntimeError('恢复控制循环超时')
 
     def stop(self):
+        self.plan = None
+        self.b.collector._pose_reference = None
         self.b.collector._control_boundary(reason='pose restore stopped')
         self.b.enabled = False
 

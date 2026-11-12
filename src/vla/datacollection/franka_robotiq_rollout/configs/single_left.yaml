@@ -3,7 +3,8 @@ arms:
 - base_link: left_fr3_link0
   command_gripper_topic: /left/teleop/gripper_action_width_percent
   gamepad:
-    input_layout: standard_sdl
+    input_layout: raw_joy
+    right_stick_rotation_deg: -45.0
     joint7_button_sign: -1.0
     joy_topic: /left/gamepad/joy
     left_stick_x_sign: 1.0
@@ -35,9 +36,10 @@ cameras:
 - name: left_wrist
   serial: '346222073620'
 control:
+  workspace_limits_enabled: true
   compliance:
-    translational_stiffness: 1000
-    rotational_stiffness: 50
+    translational_stiffness: 1100
+    rotational_stiffness: 65
     nullspace_stiffness: 20
     translational_clip: 0.008
     rotational_clip: 0.04
@@ -49,7 +51,7 @@ control:
   gamepad_gripper_speed: 0.4
   gamepad_gripper_trigger_deadzone: 0.05
   gamepad_joint7_speed: 0.45
-  gamepad_joy_timeout_s: 0.2
+  gamepad_joy_timeout_s: 0.3
   gamepad_max_angular_speed: 0.45
   gamepad_tilt_speed: 0.225
   gamepad_roll_speed: 0.45
@@ -59,7 +61,7 @@ control:
   joint_limit_margin: 0.05
   low_success_rate_samples: 3
   max_angular_velocity: 0.45
-  max_linear_velocity: 0.06
+  max_linear_velocity: 0.16
   min_control_command_success_rate: 0.9
   policy_gripper_speed: 1.0
   policy_timeout_s: 30.0

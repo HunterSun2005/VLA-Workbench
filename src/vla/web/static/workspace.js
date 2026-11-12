@@ -2,7 +2,9 @@
 (() => {
  const panel=$('workspaceSetup'),custom=$('workspaceCustom'),container=$('workspaceFields'),status=$('workspaceStatus');
  let defaults={},values={},shown='',sequence=0,restored=null;
- const applicable=c=>c.workflow==='collect'&&c.source==='gamepad';
+ const applicable=c=>['collect','deploy'].includes(c.workflow);
+ const enabled=form.elements.workspace_limits_enabled;let enabledEdited=false;
+ enabled.addEventListener('change',()=>{enabledEdited=true;lock();clearPreflight();});
  const running=configLocked;
  window.readWorkspaceBounds=c=>{
   if(!applicable(c)||!custom.checked)return null;
@@ -17,8 +19,8 @@
   return result;
  };
  function lock(){
-  const busy=running()||panel.hidden;custom.disabled=busy;$('workspaceReset').disabled=busy;
-  container.querySelectorAll('input').forEach(input=>input.disabled=busy||!custom.checked);
+  const busy=running()||panel.hidden;enabled.disabled=busy;custom.disabled=busy||!enabled.checked;$('workspaceReset').disabled=busy;
+  container.querySelectorAll('input').forEach(input=>input.disabled=busy||!enabled.checked||!custom.checked);
  }
  function draw(c){
   container.replaceChildren();
@@ -40,17 +42,17 @@
  async function view(){
   const c=config();panel.hidden=!applicable(c);if(panel.hidden){lock();return;}
   const saved=current?.config||active?.config,id=current?.session_id||active?.session_id;
-  if(id&&id!==restored&&saved?.arms===c.arms&&saved?.workflow==='collect'&&saved?.source==='gamepad'){
-   restored=id;custom.checked=Boolean(saved.workspace_bounds);values=saved.workspace_bounds||{};shown='';
+  if(id&&id!==restored&&saved?.arms===c.arms&&saved?.workflow===c.workflow&&!sessionStage.dismissed.has(id)){
+   restored=id;enabled.checked=saved.workspace_limits_enabled!==false;enabledEdited=saved.workspace_limits_enabled!=null;custom.checked=Boolean(saved.workspace_bounds);values=saved.workspace_bounds||{};shown='';
   }
   if(!token)return;
-  const key=`${c.arms}|${c.config_path}`;
+  const key=`${c.workflow}|${c.arms}|${c.config_path}`;
   if(key===shown){lock();return;}shown=key;
   const seq=++sequence;draw(c);status.textContent='正在读取配置范围…';
   try{
    const result=await api('/api/workspace',{task:'workspace',workflow:c.workflow,arms:c.arms,source:c.source,config_path:c.config_path});
-   if(seq!==sequence)return;defaults=result.bounds;if(!custom.checked)values={};draw(c);
-   status.textContent='范围来自当前采集配置；勾选后可修改。超出范围仍会拒绝启用，不会自动拉回。';
+   if(seq!==sequence)return;defaults=result.bounds;if(!enabledEdited&&!running())enabled.checked=result.workspace_limits_enabled!==false;if(!custom.checked)values={};draw(c);
+   status.textContent='范围来自当前 YAML；启用时检查并裁剪 XYZ，关闭时保留范围草稿并停止应用该范围。';
   }catch(e){if(seq===sequence){status.textContent='读取范围失败：'+e.message;shown='';}}
  }
  custom.onchange=()=>{if(!custom.checked)values={};draw(config());clearPreflight();};

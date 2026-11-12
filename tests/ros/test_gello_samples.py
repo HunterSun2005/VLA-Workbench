@@ -81,7 +81,7 @@ def test_publisher_keeps_capture_time_and_synchronized_gripper():
 def test_collector_rejects_old_duplicate_future_and_unsynchronized_samples():
     c = RolloutCollector.__new__(RolloutCollector)
     c._lock = threading.RLock()
-    c.config = NS(gamepad_joy_timeout_s=.2)
+    c.config = NS(gello_sample_timeout_s=.2)
     c._input_stamps, c._input_diagnostics, c._latest, c._sensor_sequences = {}, {}, {}, {}
     now = 10_000_000_000
     c.get_clock = lambda: NS(now=lambda: Time(nanoseconds=now))

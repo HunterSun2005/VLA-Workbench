@@ -12,11 +12,12 @@ def axis_buttons(layout):
                 left_trigger_axis=4 if standard else 2, right_trigger_axis=5,
                 a_button=0, b_button=1, x_button=2, y_button=3,
                 speed_button=9 if standard else 4, phase_button=10 if standard else 5,
-                upright_button=4 if standard else 6, reset_pose_button=6 if standard else 7)
+                upright_button=6 if standard else 7, reset_pose_button=4 if standard else 6,
+                yaw_reset_button=8 if standard else 10)
 
 
 def validate_layout(values):
-    layout = values.get("input_layout", "standard_sdl")
+    layout = values.get("input_layout", "raw_joy")
     expected = axis_buttons(layout)
     for key, default in expected.items():
         value = values.get(key, default)

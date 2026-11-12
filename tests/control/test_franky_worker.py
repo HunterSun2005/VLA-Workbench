@@ -17,7 +17,8 @@ from vla.control.ros import ArmMeasurement, ControlCoordinator
 
 def test_compliance_defaults_and_safety_bounds():
     value = Compliance().validate()
-    assert value.translational_stiffness == 1000
+    assert value.translational_stiffness == 1100
+    assert value.rotational_stiffness == 65
     assert value.translational_clip == .008
     assert Compliance.from_mapping({'rotational_stiffness': 40}).rotational_stiffness == 40
     try:
@@ -119,7 +120,7 @@ def test_fake_cartesian_tracker_gains_rebuild_and_recover():
     class Robot:
         def __init__(self):
             self.state = type('State', (), {
-                'O_T_EE': Affine(np.eye(4)), 'q': np.zeros(7), 'dq': np.zeros(7),
+                'O_T_EE': Affine(np.eye(4)), 'F_T_EE': Affine(np.eye(4)), 'q': np.zeros(7), 'dq': np.zeros(7),
                 'q_d': np.zeros(7), 'K_F_ext_hat_K': np.zeros(6)})()
         def join_motion(self): pass
         def recover_from_errors(self): pass
@@ -130,6 +131,8 @@ def test_fake_cartesian_tracker_gains_rebuild_and_recover():
     with pytest.raises(RuntimeError, match='tracker'):
         arm.set_target([0, 0, 0, 0, 0, 0, 1], 2, 1)
     arm.reset(2)
+    assert arm.tracker.kwargs['translational_stiffness'] == 1100
+    assert arm.tracker.kwargs['rotational_stiffness'] == 65
     arm.set_target([.01, 0, 0, 0, 0, 0, 1], 2, 3)
     assert len(arm.tracker.targets) == 1
     original = arm.tracker
