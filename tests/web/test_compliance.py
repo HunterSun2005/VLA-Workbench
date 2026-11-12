@@ -52,15 +52,15 @@ def test_runtime_tuning_ack_does_not_block_pause(tmp_path):
 def test_browser_draft_and_correlated_ack(session_browser):
     b, scenario, root = session_browser
     phase(b,'configure')
-    b.wait('document.querySelector("[data-compliance=translational_stiffness]").value==="1000"')
-    b.fill('[data-compliance=translational_stiffness]', '1100', 'input')
+    b.wait('document.querySelector("[data-compliance=translational_stiffness]").value==="1100"')
+    b.fill('[data-compliance=translational_stiffness]', '1120', 'input')
     b.fill('[data-compliance=rotational_stiffness]', '60', 'input')
     b.click('#preflight')
     b.wait('!document.querySelector("#preflight").disabled')
-    assert scenario['checks'][-1]['compliance']['translational_stiffness'] == 1100
+    assert scenario['checks'][-1]['compliance']['translational_stiffness'] == 1120
     b.click('#start'); phase(b,'running')
     assert scenario['posts'][-1]['compliance']['rotational_stiffness'] == 60
-    values = {**asdict(Compliance()), 'translational_stiffness':1100, 'rotational_stiffness':60}
+    values = {**asdict(Compliance()), 'translational_stiffness':1120, 'rotational_stiffness':60}
     scenario.update(state='standby', compliance={'pending':False,'values':values})
     b.wait('document.querySelector("#state").textContent==="待命"')
     b.fill('[data-compliance=translational_stiffness]', '1150', 'input')
@@ -104,3 +104,73 @@ def test_browser_draft_and_correlated_ack(session_browser):
     b.js('document.documentElement.dataset.theme="light"')
     b.wait('document.documentElement.scrollWidth<=innerWidth')
     b.shot(root/'compliance-narrow-light.png')
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_restart_retains_confirmed_compliance_and_reload_keeps_draft(session_browser, width):
+    b, scenario, root = session_browser
+    def editor_values():
+        return b.js('return Object.fromEntries(Array.from(document.querySelectorAll("[data-compliance]"),'
+                    'input=>[input.dataset.compliance,Number(input.value)]))')
+    b.call('WebDriver:SetWindowRect', width=width, height=1000)
+    phase(b, 'configure')
+    b.click('#start'); phase(b, 'running')
+    # Runtime settings differ from the immutable initial session config.
+    values = dict(translational_stiffness=1000, rotational_stiffness=50,
+                  nullspace_stiffness=20, translational_clip=.05, rotational_clip=.3,
+                  max_step=.05, max_step_rad=.2, max_delta_tau=.5, gains_time_constant=.1)
+    scenario.update(state='standby', compliance={'pending': False, 'values': values})
+    b.wait('document.querySelector("[data-compliance=rotational_clip]").value==="0.3"')
+    scenario.update(state='stopped', final=True)
+    scenario['record'] = {**scenario['record'], 'alive': False}
+    phase(b, 'finished')
+    # Recover a session tuned by the previous UI, which never stored preferences.
+    b.js('localStorage.removeItem("vla.compliance.v1")')
+    url = b.js('return location.href')
+    b.call('WebDriver:Navigate', url=url); phase(b, 'finished')
+    b.click('#nextSession'); phase(b, 'configure')
+    assert editor_values() == values
+    # Untouched acknowledged fields must survive source changes and reconnect.
+    b.fill('[name=source]', 'gello')
+    scenario['disconnect']()
+    b.wait('document.querySelector("#connection").textContent.includes("连接中断")')
+    b.wait('document.querySelector("#connection").textContent==="已连接"')
+    assert editor_values() == values
+    # A draft is preserved across a full document reload, but is not a worker ACK.
+    b.fill('[data-compliance=rotational_stiffness]', '60', 'input')
+    b.call('WebDriver:Navigate', url=url); phase(b, 'finished')
+    b.wait('document.querySelector("[data-compliance=rotational_stiffness]").value==="60"')
+    b.wait('document.querySelector("[data-effective=rotational_stiffness]").textContent.endsWith("50")')
+    b.click('#nextSession'); phase(b, 'configure')
+    b.fill('[name=arms]', 'dual')
+    b.wait('document.querySelector("[data-compliance=rotational_stiffness]").value==="65"')
+    b.fill('[name=arms]', 'single_left')
+    assert editor_values() == {**values, 'rotational_stiffness': 60}
+    b.fill('[data-compliance=rotational_stiffness]', '', 'input')
+    b.call('WebDriver:Navigate', url=url); phase(b, 'finished')
+    b.click('#nextSession'); phase(b, 'configure')
+    assert b.js('return document.querySelector("[data-compliance=rotational_stiffness]").value') == ''
+    b.fill('[data-compliance=rotational_stiffness]', '60', 'input')
+    b.click('#preflight')
+    b.wait('!document.querySelector("#preflight").disabled')
+    assert scenario['checks'][-1]['compliance'] == {**values, 'rotational_stiffness': 60}
+    b.click('#start'); phase(b, 'running')
+    assert scenario['posts'][-1]['compliance'] == scenario['checks'][-1]['compliance']
+    b.shot(root/'compliance-restart.png')
+
+
+def test_reloading_dual_session_does_not_save_uninitialized_single_values(session_browser):
+    b, scenario, _ = session_browser
+    phase(b, 'configure')
+    b.fill('[name=arms]', 'dual')
+    b.click('#start'); phase(b, 'running')
+    b.js('localStorage.removeItem("vla.compliance.v1")')
+    b.call('WebDriver:Refresh'); phase(b, 'running')
+    scenario.update(state='stopped', final=True)
+    scenario['record'] = {**scenario['record'], 'alive': False}
+    phase(b, 'finished')
+    b.click('#nextSession'); phase(b, 'configure')
+    b.fill('[name=arms]', 'single_left')
+    b.wait('document.querySelector("[data-compliance=rotational_stiffness]").value==="65"')
+    assert b.js('return Array.from(document.querySelectorAll("[data-compliance]"),'
+                'input=>input.value!==""&&input.checkValidity()).every(Boolean)')

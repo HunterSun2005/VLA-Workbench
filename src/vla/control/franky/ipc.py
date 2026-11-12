@@ -89,6 +89,9 @@ class WorkerState:
     flange_to_tcp_pose: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
     desired_tcp_pose: tuple[float, ...] = ()
     reference_tcp_pose: tuple[float, ...] = ()
+    hardware_flange_to_tcp_pose: tuple[float, ...] = ()
+    hardware_tcp_pose: tuple[float, ...] = ()
+    hardware_reference_tcp_pose: tuple[float, ...] = ()
     generation: int = -1
     sequence: int = -1
     tracker_running: bool = False
@@ -127,6 +130,9 @@ class WorkerState:
             flange_to_tcp_pose=tuple(_validate_pose(value.get("flange_to_tcp_pose", (0, 0, 0, 0, 0, 0, 1)))),
             desired_tcp_pose=tuple(_validate_pose(value["desired_tcp_pose"])) if value.get("desired_tcp_pose") else (),
             reference_tcp_pose=tuple(_validate_pose(value["reference_tcp_pose"])) if value.get("reference_tcp_pose") else (),
+            hardware_flange_to_tcp_pose=tuple(_validate_pose(value['hardware_flange_to_tcp_pose'])) if value.get('hardware_flange_to_tcp_pose') else (),
+            hardware_tcp_pose=tuple(_validate_pose(value['hardware_tcp_pose'])) if value.get('hardware_tcp_pose') else (),
+            hardware_reference_tcp_pose=tuple(_validate_pose(value['hardware_reference_tcp_pose'])) if value.get('hardware_reference_tcp_pose') else (),
             generation=int(value.get("generation", -1)),
             sequence=int(value.get("sequence", -1)),
             tracker_running=bool(value.get("tracker_running", False)),

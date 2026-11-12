@@ -87,7 +87,10 @@ def create_app(root=None, *, demo=False):
         from .config import workspace_defaults
         try:
             config = SessionConfig.parse(await request.json())
-            return {'bounds': await asyncio.to_thread(workspace_defaults, config)}
+            import yaml
+            raw = yaml.safe_load(config.default_config().read_text())
+            return {'bounds': await asyncio.to_thread(workspace_defaults, config),
+                    'workspace_limits_enabled': raw.get('control', {}).get('workspace_limits_enabled', True)}
         except (ValueError, OSError, KeyError, TypeError) as error:
             raise HTTPException(422, str(error)) from error
 

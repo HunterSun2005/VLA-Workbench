@@ -19,12 +19,14 @@ def contract(space='joint', arms=('left',), representation='absolute'):
             'execution_projection': {'lower': [-.4]*n, 'upper': [.4]*n}}
 
 
+@pytest.mark.parametrize('enabled', [True, False])
 @pytest.mark.parametrize('space', ['joint', 'tcp'])
 @pytest.mark.parametrize('arms', [('left',), ('left', 'right')])
 @pytest.mark.parametrize('representation', ['absolute', 'chunk_relative'])
-def test_numpy_torch_projection_and_suffix_gradient(space, arms, representation):
+def test_numpy_torch_projection_and_suffix_gradient(space, arms, representation, enabled):
     from tests.actions.test_contract import sample
     c = contract(space, arms, representation)
+    c['execution_projection']['workspace_limits_enabled'] = enabled
     spec = ActionSpec.from_dict(c['action_spec'])
     anchor = sample(spec, 2)
     values = np.random.default_rng(9).uniform(-.8, .8, (2, 4, spec.dim))

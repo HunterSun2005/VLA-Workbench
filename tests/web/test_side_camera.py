@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from vla.web.config import SessionConfig, collection_camera_serials, preflight
+from vla.web.config import SessionConfig, collection_camera_serials, preflight, workspace_defaults
 from vla.web.demo import DemoBackend
 from vla.web.hardware import preset
 from vla.datacollection.franka_robotiq_single_left.v30_writer import V30DatasetWriter
@@ -57,7 +57,8 @@ def test_resume_refuses_adding_or_removing_side(tmp_path, initial_side, ros_read
     cfg = ros_ready(tmp_path,cfg)
     path = cfg.dataset_path(tmp_path)/'meta/info.json'
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({'gripper_recording_version': 2, 'features': {'observation.state': {'shape':[50], 'names':STATE_FIELDS},
+    bounds = workspace_defaults(cfg)
+    path.write_text(json.dumps({'total_episodes':0, 'execution_projection':{'lower':bounds['left']['min'], 'upper':bounds['left']['max']}, 'gripper_recording_version': 2, 'features': {'observation.state': {'shape':[50], 'names':STATE_FIELDS},
                                             **{f'observation.images.{r}': {} for r in cfg.cameras}}}))
     assert preflight(cfg, root=tmp_path)['ok']
     changed = replace(cfg, side_camera_serial='' if initial_side else 'SIDE123')

@@ -34,6 +34,7 @@ class SessionConfig:
     side_camera_serial: str = ''
     camera_serials: dict | None = None
     workspace_bounds: dict | None = None
+    workspace_limits_enabled: bool | None = None
     compliance: dict | None = None
 
     @classmethod
@@ -109,10 +110,10 @@ class SessionConfig:
             raise ValueError('各相机角色不能使用同一设备')
 
     def validate_workspace(self):
+        if self.workspace_limits_enabled is not None and type(self.workspace_limits_enabled) is not bool:
+            raise ValueError('workspace_limits_enabled must be boolean')
         if self.workspace_bounds is None:
             return
-        if self.workflow != 'collect' or self.source != 'gamepad':
-            raise ValueError('面板自定义工作空间仅用于 gamepad 数据采集')
         expected = {'left', 'right'} if self.arms == 'dual' else {'left'}
         if not isinstance(self.workspace_bounds, dict) or set(self.workspace_bounds) != expected:
             raise ValueError('工作空间必须包含所选机械臂的完整范围')
@@ -135,8 +136,17 @@ class SessionConfig:
         bounds = self.workspace_bounds['left']
         return replace(robot, workspace_min=tuple(bounds['min']), workspace_max=tuple(bounds['max']))
 
+    def effective_workspace_limits(self):
+        self.validate_workspace()
+        if self.workspace_limits_enabled is not None:
+            return self.workspace_limits_enabled
+        from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
+        return load_rollout_config(self.default_config()).workspace_limits_enabled
+
     def apply_rollout_workspace(self, rollout):
         self.validate_workspace()
+        if self.workspace_limits_enabled is not None:
+            rollout = replace(rollout, workspace_limits_enabled=self.workspace_limits_enabled)
         if self.workspace_bounds is None:
             return rollout
         return replace(rollout, arms=tuple(replace(arm,
@@ -178,8 +188,6 @@ class SessionConfig:
 def workspace_defaults(config):
     """Read configured Cartesian bounds without loading robot/model libraries."""
     import yaml
-    if config.workflow != 'collect' or config.source != 'gamepad':
-        return {}
     raw = yaml.safe_load(config.default_config().read_text())
     result = {arm['name']: {'min':arm['workspace_min'], 'max':arm['workspace_max']} for arm in raw['arms']}
     replace(config, workspace_bounds=result).validate_workspace()
@@ -208,6 +216,8 @@ def collection_camera_serials(config, hardware=None):
 
 def preflight(config, *, demo=False, root=None):
     checks, errors = [], []
+    existing_episodes = None
+    workspace_enabled = config.effective_workspace_limits()
     if config.action_space != 'tcp':
         errors.append('新会话仅支持 Franky TCP 动作空间')
     effective_compliance = None
@@ -221,7 +231,7 @@ def preflight(config, *, demo=False, root=None):
     target = config.dataset_path(root)
     if demo:
         return {'ok': not errors, 'checks': ['模拟模式：不访问硬件、不写数据集'], 'errors': errors, 'compliance': effective_compliance,
-                'modes': config.modes(True), 'cameras': config.cameras, 'dataset_root': str(target)}
+                'modes': config.modes(True), 'cameras': config.cameras, 'dataset_root': str(target), 'workspace_limits_enabled':workspace_enabled}
     try:
         from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
         rollout = load_rollout_config(config.default_config())
@@ -243,7 +253,23 @@ def preflight(config, *, demo=False, root=None):
             from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
             names = (STATE_FIELDS if config.arms == 'single_left' else
                      [f'{arm}_{field}' for arm in ('left', 'right') for field in STATE_FIELDS])
-            info = json.loads((target / 'meta/info.json').read_text())
+            from vla.dataset_metadata import load_info
+            info = load_info(target)
+            existing_episodes = info.get('total_episodes')
+            if type(existing_episodes) is not int or existing_episodes < 0:
+                errors.append('续采元数据缺少有效的已有回合数')
+                existing_episodes = None
+            else:
+                checks.append(f'已有回合数: {existing_episodes}')
+            rollout = config.apply_rollout_workspace(load_rollout_config(config.default_config()))
+            if info.get('workspace_limits_enabled', True) != rollout.workspace_limits_enabled:
+                errors.append('续采工作空间开关与原数据集不一致；请使用原配置或新目录')
+            recorded_projection = info.get('execution_projection', {})
+            expected_bounds = {
+                'lower': [v for a in rollout.arms for v in a.workspace_min],
+                'upper': [v for a in rollout.arms for v in a.workspace_max]}
+            if any(recorded_projection.get(k) != v for k, v in expected_bounds.items()):
+                errors.append('续采工作空间范围与原数据集不一致；启动时还将严格校验控制指纹')
             if config.ros:
                 from vla.datacollection.gripper_contract import ROS_GRIPPER_RECORDING_VERSION
                 from vla.dataset_metadata import load_info
@@ -299,9 +325,8 @@ def preflight(config, *, demo=False, root=None):
                 from .hardware import config_path
                 hardware = json.loads(config_path(root, config.ros_config).read_text())
             collection_camera_serials(config, hardware)
-            if config.source == 'gamepad':
-                bounds = config.workspace_bounds if config.workspace_bounds is not None else workspace_defaults(config)
-                checks.append('TCP 工作空间（各臂基座坐标系，米）: ' + json.dumps(bounds, ensure_ascii=False))
+            bounds = config.workspace_bounds if config.workspace_bounds is not None else workspace_defaults(config)
+            checks.append('TCP 工作空间限制: ' + ('开启' if workspace_enabled else '关闭') + '；范围（米）: ' + json.dumps(bounds, ensure_ascii=False))
         except (OSError, ValueError, KeyError, TypeError) as error:
             errors.append(f'无法配置采集相机: {error}')
     if config.workflow == 'deploy':
@@ -336,7 +361,8 @@ def preflight(config, *, demo=False, root=None):
         except (OSError, ValueError, TypeError) as error:
             errors.append(f'无法校验模型配置: {error}')
     return {'ok': not errors, 'checks': checks, 'errors': errors, 'compliance': effective_compliance,
-            'modes': config.modes(), 'cameras': config.cameras, 'dataset_root': str(target)}
+            'modes': config.modes(), 'cameras': config.cameras, 'dataset_root': str(target),
+            'existing_episodes': existing_episodes, 'workspace_limits_enabled':workspace_enabled}
 
 
 def dataset_defaults():

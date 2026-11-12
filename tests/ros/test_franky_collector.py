@@ -39,7 +39,7 @@ def collector():
 
 def test_compliance_needs_matching_request_ack_even_if_values_already_match():
     node, values, results, requests, faults = collector()
-    node.update_compliance({'translational_stiffness': 1000})
+    node.update_compliance({'translational_stiffness': values['translational_stiffness']})
     request_id = requests[-1][2]
     node._poll_worker_states()
     assert node.compliance_status()['pending']
@@ -61,7 +61,7 @@ def test_compliance_timeout_and_rejection_latch_fault_keep_effective_values():
             results[requests[-1][2]] = response
         node._poll_worker_states()
         assert faults and not node.compliance_status()['pending']
-        assert node.compliance_status()['values']['translational_stiffness'] == 1000
+        assert node.compliance_status()['values']['translational_stiffness'] == 1100
 
 
 def test_fault_boundary_stops_worker_without_rearming():

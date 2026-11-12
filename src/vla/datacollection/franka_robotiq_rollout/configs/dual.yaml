@@ -12,9 +12,10 @@ dataset:
 transport:
   socket_path: /tmp/vla_franka_dual.sock
 control:
+  workspace_limits_enabled: true
   compliance:
-    translational_stiffness: 1000
-    rotational_stiffness: 50
+    translational_stiffness: 1100
+    rotational_stiffness: 65
     nullspace_stiffness: 20
     translational_clip: 0.008
     rotational_clip: 0.04
@@ -24,10 +25,10 @@ control:
     gains_time_constant: 0.1
   sync_tolerance_ms: 100
   policy_timeout_s: 30.0
-  max_linear_velocity: 0.06
+  max_linear_velocity: 0.16
   max_angular_velocity: 0.45
   joint_limit_margin: 0.05
-  gamepad_joy_timeout_s: 0.2
+  gamepad_joy_timeout_s: 0.3
   gamepad_state_timeout_s: 0.5
   gamepad_deadzone: 0.08
   gamepad_xy_speed: 0.03
@@ -47,7 +48,8 @@ arms:
   measured_joint_topic: /left/franka_robot_state_broadcaster/measured_joint_states
   gripper_state_topic: /left/gripper/joint_state_broadcaster_robotiq/joint_states
   gamepad:
-    input_layout: standard_sdl
+    input_layout: raw_joy
+    right_stick_rotation_deg: -45.0
     joy_topic: /left/gamepad/joy
     joint7_button_sign: -1.0
     left_stick_x_sign: 1.0
@@ -75,7 +77,8 @@ arms:
   measured_joint_topic: /right/franka_robot_state_broadcaster/measured_joint_states
   gripper_state_topic: /right/gripper/joint_state_broadcaster_robotiq/joint_states
   gamepad:
-    input_layout: standard_sdl
+    input_layout: raw_joy
+    right_stick_rotation_deg: -45.0
     joy_topic: /right/gamepad/joy
     joint7_button_sign: -1.0
     left_stick_x_sign: 1.0

@@ -94,11 +94,11 @@ def test_explicit_resume_and_recording_contract(tmp_path):
 
 def test_two_gamepad_mapping_and_neutral_gate():
     config = load_rollout_config(DEFAULT_CONFIG)
-    axes, buttons = [0., 0., 0., 0., 0., 0.], [0] * 11
+    axes, buttons = [0., 0., 1., 0., 0., 1.], [0] * 11
     for arm in config.arms:
         assert gamepad_is_neutral(axes, buttons, arm.gamepad, config)
         pressed = axes.copy()
-        pressed[4] = pressed[5] = -1.
+        pressed[2] = pressed[5] = -1.
         assert not gamepad_is_neutral(pressed, buttons, arm.gamepad, config)
         with pytest.raises(ValueError, match="invalid gamepad"):
             gamepad_is_neutral([float("nan")] * 6, buttons, arm.gamepad, config)
@@ -170,9 +170,12 @@ def collector(ros_module, monkeypatch, tmp_path, request):
                'libfranka_library_sha256': 'c'*64}
     def initialize(self, config, **kwargs):
         states = {a.name: WorkerState(a.name, time.monotonic_ns(), (0., 0., 0., 0., 0., 0., 1.),
-                                    (0.,)*7, (0.,)*7) for a in config.arms}
+                                    (0.,)*7, (0.,)*7,
+                                    hardware_flange_to_tcp_pose=(0., 0., 0., 0., 0., 0., 1.),
+                                    hardware_tcp_pose=(0., 0., 0., 0., 0., 0., 1.)) for a in config.arms}
         client = SimpleNamespace(fault=None, target_available=True, result=lambda key:self._test_receipts.get(key), states=lambda: states, close=lambda: None,
-            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 3},
+            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 6,
+                                   'tcp_frame': 'flange_aligned_tcp_v1'},
             compliance_values=lambda: config.franky_compliance)
         self._test_receipts = {}
         self._production_publish = production_publish.__get__(self, cls)
@@ -225,7 +228,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
             "measured_joint": SimpleNamespace(name=[f"j{i}" for i in range(7)], position=[0.] * 7),
             "robot_state": SimpleNamespace(f_t_ee=pose, o_t_ee=measured_pose, o_t_ee_d=measured_pose),
             "gripper_state": SimpleNamespace(name=[arm.gripper_joint_name], position=[0.]),
-            "gamepad": SimpleNamespace(axes=[0., 0., 0., 0., 0., 0.], buttons=[0] * 11),
+            "gamepad": SimpleNamespace(axes=[0., 0., 1., 0., 0., 1.], buttons=[0] * 11),
         }.items():
             c._latest[f"{arm.name}.{key}"] = (now, value)
     for camera in config.cameras:
@@ -772,3 +775,149 @@ def test_collector_single_loop_through_unix_ipc_to_real_tracker_fake_robot(colle
             c._worker_client=fake; c._worker_session_id='collector-test'
             c.coordinator.publish=original_publish
             c._pending_submission=None
+
+
+def test_gamepad_release_and_packet_gap_keep_absolute_action_and_fault_latched(collector, ros_module, monkeypatch):
+    c = collector
+    clock, _ = clocked_control(c, ros_module, monkeypatch)
+    original_publish = c.coordinator.publish
+    def publish(*args):
+        original_publish(*args)
+        if c._pending_submission:
+            c._test_receipts[c._pending_submission['request_id']]['applied_at_ns'] = clock[0]
+    c.coordinator.publish = publish
+    def tick(refresh_joy=True):
+        for key, (stamp, value) in list(c._latest.items()):
+            if refresh_joy or not key.endswith('.gamepad'):
+                c._latest[key] = (clock[0], value)
+        c._tick()
+        clock[0] += 33_333_334
+    joy = c._latest['left.gamepad'][1]
+    joy.axes[1] = 1.
+    tick(); tick()
+    assert c.coordinator.accepted.target[0] > .4
+    joy.axes[1] = 0.
+    tick()
+    release = c.coordinator.accepted.target.copy()
+    assert release[0] == pytest.approx(.4)  # Absolute measured X, not a zero/delta label.
+    tick()
+    np.testing.assert_allclose(c._actions[-1], release)
+    joy.axes[1] = 1.
+    tick()
+    held = None
+    for _ in range(10):
+        tick(refresh_joy=False)
+        if c._faulted:
+            break
+        if any(t.input_hold for t in c._gamepad_targets.values()):
+            if held is None:
+                held = c.coordinator.accepted.target.copy()
+            np.testing.assert_allclose(c.coordinator.accepted.target, held)
+            assert c._pending_submission['frame'] is None  # Transport gaps are not demonstrations.
+    assert held is not None
+    assert c._faulted and 'gamepad' in c._fault_reason and 'stale' in c._fault_reason
+    assert c.coordinator.owner is None
+    tick(refresh_joy=True)
+    assert c._faulted and c.coordinator.owner is None  # Reconnection cannot restore motion.
+
+
+def test_saved_pose_reference_freezes_on_ack_and_is_revoked_at_boundaries(collector, ros_module, monkeypatch):
+    from vla.web.pose_control import ROSPoseDriver, pose_value
+    from scipy.spatial.transform import Rotation
+    c=collector
+    clock,tick=clocked_control(c,ros_module,monkeypatch)
+    c._recording=c._teleop_enabled=False
+    b=SimpleNamespace(collector=c,enabled=False)
+    driver=ROSPoseDriver(b)
+    poses={a.name:pose_value(a.name,a.name,'base/EE',[.4,0,.3],np.eye(3),np.zeros(3),np.eye(3)) for a in c.config.arms}
+    monkeypatch.setattr(driver,'read',lambda name:poses[name])
+    target={**poses['left'],'position':[.48,.04,.32],
+            'rotation':Rotation.from_euler('xyz',[.8,-.4,1.2]).as_matrix().tolist()}
+    driver.start(target)
+    assert driver.plan is None
+    tick()
+    assert not c._faulted and driver.plan is not None
+    first=driver.plan.elapsed
+    action=c.coordinator.accepted.target.copy()
+    key=c._pending_submission['request_id']; receipt=c._test_receipts.pop(key)
+    tick()
+    assert driver.plan.elapsed==first
+    np.testing.assert_array_equal(c.coordinator.accepted.target,action)
+    c._test_receipts[key]=receipt
+    tick()
+    assert driver.plan.elapsed==pytest.approx(first+1/30)
+    np.testing.assert_array_equal(c.coordinator.accepted.target[10:13],[.4,0,.3])
+    c._control_boundary(reason='operator pause')
+    assert c._pose_reference is None and c._pose_action is None
+    tick()
+    assert driver.plan.elapsed==pytest.approx(first+1/30)
+    driver.stop()
+    driver.start(target)
+    assert driver.plan is None
+    tick()
+    assert driver.plan.elapsed==pytest.approx(1/30)
+    c._latch_fault(RuntimeError('disconnected'))
+    assert c._pose_reference is None
+    tick()
+    assert c._faulted and c.coordinator.mode=='fault'
+
+
+@pytest.mark.parametrize('change', ['workspace', 'bounds', 'speed'])
+def test_resume_rejects_workspace_or_control_change_without_rewriting(collector,ros_module,change):
+    c=collector
+    paths=[c.config.dataset_root/'meta/info.json',c.config.dataset_root/'meta/vla_metadata.json']
+    before=[p.read_bytes() for p in paths]
+    if change=='workspace':
+        changed=replace(c.config,workspace_limits_enabled=False)
+    elif change=='bounds':
+        changed=replace(c.config,arms=tuple(replace(a,workspace_min=(-.1,-.5,.01)) for a in c.config.arms))
+    else:
+        changed=replace(c.config,max_linear_velocity=.01)
+    with pytest.raises(RuntimeError,match='metadata'):
+        ros_module.RolloutCollector(changed,demonstration=True)
+    assert [p.read_bytes() for p in paths]==before
+
+
+def test_unbounded_collection_save_and_resume_append_keep_prior_episode(collector,ros_module,monkeypatch,tmp_path):
+    # A new session sets the switch once; both acceptance and storage see it.
+    original=collector
+    config=replace(original.config,dataset_root=tmp_path/'unbounded',workspace_limits_enabled=False)
+    c=ros_module.RolloutCollector(config,demonstration=True)
+    try:
+        c._latest=dict(original._latest)
+        values,images=original._snapshot()
+        monkeypatch.setattr(c,'_snapshot',lambda **kw:(values,images))
+        for episode in range(2):
+            if episode:
+                # Reopen the strict writer with exactly the same effective metadata.
+                from vla.datacollection.franka_robotiq_single_left.v30_writer import V30DatasetWriter
+                c.writer=V30DatasetWriter(config.dataset_root,config.fps,config.task,
+                    tuple(a.feature_key for a in config.cameras),*config.image_size,
+                    state_fields=c.writer.state_fields,action_fields=c.writer.action_fields,
+                    extra_features=c._extra_features,robot_type=c.writer.robot_type,
+                    info_metadata=c.writer.info_metadata,strict_metadata=True)
+            stamp=time.monotonic_ns()
+            c._latest={k:(stamp,v) for k,(_,v) in c._latest.items()}
+            c._test_stamp=stamp
+            c.coordinator.clock=time.monotonic_ns
+            c.enable_teleop();c.start_episode()
+            action=np.tile([1.2,0.,.3,1.,0.,0.,0.,1.,0.,1.],2)
+            state=np.zeros(100)
+            for off in (0,50):
+                state[off:off+9]=action[:9];state[off+9]=.085
+            for frame in range(12):
+                if frame==6:c.next_subtask()
+                accepted=record_command(c,action.copy(),state.copy(),values,images)
+                assert accepted.target[0]==1.2
+            c._at_boundary=True;c.finish_episode('success');c._save_worker.join(30)
+            assert c.writer.episode_count==episode+1
+            if episode==0:
+                first=c.writer.data_path(0).read_bytes()
+                metadata=json.loads((config.dataset_root/'meta/info.json').read_text())
+                assert metadata['workspace_limits_enabled'] is False
+                assert metadata['execution_projection']['workspace_limits_enabled'] is False
+            else:
+                assert c.writer.data_path(0).read_bytes()==first
+                assert c.writer.data_path(1).is_file()
+    finally:
+        c.close()

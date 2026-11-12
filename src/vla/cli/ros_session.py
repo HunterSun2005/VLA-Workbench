@@ -68,6 +68,7 @@ def main(argv=None):
     task = args.task or (tasks[0] if args.tasks else rollout.task)
     tasks = tuple(dict.fromkeys((task, *tasks)))
     config = replace(config, arms=arms, task=task, tasks=tasks,
+                     workspace_limits_enabled=rollout.workspace_limits_enabled,
                      source=args.source or rollout.input_source,
                      action_space=args.action_space or rollout.action_space,
                      dataset_root=str(args.dataset_root or (rollout.dataset_root if args.config else '')))

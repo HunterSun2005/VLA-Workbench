@@ -124,6 +124,7 @@ def ros_backend(source, arm='left'):
     messages = []
     from vla.control.ros.coordinator import ControlCoordinator, ArmMeasurement
     node.config = rollout
+    node.compliance_status = lambda: {'values':rollout.franky_compliance}
     node._last_control_tick = time.monotonic()
     node._measured_joints = lambda a,m:np.array(m.position)
     node._faulted = False
@@ -162,6 +163,7 @@ def test_ros_real_adapter_freshness_solver_joint_only_and_hold(monkeypatch, sour
     driver.tick(target)
     assert not messages  # UI driver only registers; the collector owns submission.
     c = b.collector
+    c._pose_action = c._pose_reference(1/30)
     c.coordinator.accept(c._pose_action, source='pose', generation=c.coordinator.generation, slot_id=0)
     c._track_control(1/30)
     assert len(messages) == 2  # one coordinated command per arm, no direct gripper call
@@ -197,3 +199,59 @@ def test_saved_return_cancels_on_new_input():
     assert driver.tick(target) == 'cancelled'
     driver.stop()
     assert not messages and b.collector.coordinator.mode == 'standby'
+
+
+@pytest.mark.parametrize('enabled',[False,True])
+def test_pose_start_and_goal_bounds_follow_session_switch(enabled):
+    b,latest,_ = ros_backend('gello')
+    b.collector.config = replace(b.collector.config,workspace_limits_enabled=enabled)
+    driver = ROSPoseDriver(b)
+    target = {**driver.read('left'),'position':[1.2,0,.3]}
+    if enabled:
+        with pytest.raises(ValueError,match='工作空间'):
+            driver.start(target)
+    else:
+        driver.start(target)
+        action = b.collector._pose_reference(1/30)
+        assert action[0] > .4
+        driver.stop()
+        assert driver.plan is None and b.collector._pose_reference is None
+
+
+def test_pose_plan_waits_for_ready_and_measured_completion_and_restarts():
+    b,latest,_ = ros_backend('gamepad')
+    driver = ROSPoseDriver(b)
+    target = {**driver.read('left'),'position':[.401,0,.3]}
+    driver.start(target)
+    assert driver.plan is None
+    # Being within the measured tolerance before the reference ends is insufficient.
+    assert driver.tick(target) is None
+    c = b.collector
+    first = driver.advance(1/30)
+    assert driver.plan.start[0] == .4
+    np.testing.assert_array_equal(first[10:13],[.4,0,.3])
+    while not driver.plan.done:
+        driver.advance(1/30)
+    assert driver.tick(target) == 'completed'
+    driver.stop()
+    driver.start({**target,'position':[.45,0,.3]})
+    assert driver.plan is None
+    driver.advance(1/30)
+    assert driver.plan.progress < .01
+    c.coordinator.transition()
+    assert driver.tick(target) == 'cancelled'
+    driver.stop()
+
+
+def test_restore_timeout_clears_reference_and_requires_new_start(tmp_path):
+    b,_,_=ros_backend('gamepad')
+    driver=ROSPoseDriver(b)
+    target={**driver.read('left'),'position':[.5,0,.3]}
+    driver.start(target);driver.advance(1/30)
+    actions=PoseActions(b,tmp_path)
+    actions.driver=driver;actions.target=target
+    actions.status={'state':'moving'};actions.deadline=time.monotonic()-1
+    actions.tick()
+    assert actions.status['state']=='failed' and '超时' in actions.status['message']
+    assert driver.plan is None and b.collector._pose_reference is None
+    assert b.collector.coordinator.mode=='standby'

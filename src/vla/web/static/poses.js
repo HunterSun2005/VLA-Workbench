@@ -30,6 +30,7 @@
   const names={idle:'尚未执行姿态操作',saved:'姿态已保存',moving:'正在恢复姿态 · 可随时软件暂停',completed:'恢复完成 · 待命',cancelled:'恢复已取消',failed:'恢复失败'};
   $('poseStatus').textContent=op?`${names[op.state]||op.state}${op.note?' · '+op.note:''}${op.message?' · '+op.message:''}`:'启动采集会话后，可在待命状态记录或恢复。';
   if(live&&c.workflow==='collect'&&!supported)$('poseStatus').textContent='当前会话未加载姿态库功能，请正常结束会话并重新启动。';
+  if(op?.progress!=null)$('poseStatus').textContent+=` · 参考 ${(op.progress*100).toFixed(1)}% · 误差 ${op.position_error_m!=null?(op.position_error_m*1000).toFixed(1)+' mm':'—'} / ${op.orientation_error_deg!=null?op.orientation_error_deg.toFixed(1)+'°':'—'} · ${(op.elapsed_s||0).toFixed(1)} s${op.waiting_measured?' · 等待实测到位':''}`;
   if(op?.state==='failed')setIssue('pose-restore',op.message||'姿态恢复失败');else setIssue('pose-restore','');
   const key=`${current?.session_id}|${JSON.stringify(op)}`;
   if(key!==lastResult){lastResult=key;if(op?.state==='saved')refresh();}

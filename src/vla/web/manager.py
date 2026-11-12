@@ -43,6 +43,7 @@ class Manager:
     def create(self, data):
         config = SessionConfig.parse(data)
         result = preflight(config, demo=self.demo, root=self.root)
+        config = replace(config, workspace_limits_enabled=config.effective_workspace_limits())
         if not result['ok']:
             raise ValueError('; '.join(result['errors']))
         with self.lock, (self.directory/'manager.lock').open('a') as lock:

@@ -181,7 +181,7 @@ main() {
       fi
       joy_node="$(bash --noprofile --norc -c "${environment} /usr/bin/python3 -m vla.datacollection.franka_robotiq_rollout.gamepad_layout \"\$1\" \"\$2\"" bash "$rollout_config" "$side")" || die "Invalid gamepad layout"
       [[ "$joy_node" == game_controller_node || "$joy_node" == joy_node ]] || die "Invalid gamepad executable"
-      log "$side gamepad input: $joy_node (unrecognized SDL controllers cannot enable control)"
+      log "$side gamepad input: $joy_node (layout from rollout configuration)"
       add_task "${side}_rollout_gamepad" \
         "${environment} exec ros2 run joy $joy_node --ros-args -r __node:=${side}_rollout_joy -r joy:=/${side}/gamepad/joy -p device_id:=$device_id -p deadzone:=0.0 -p autorepeat_rate:=$JOY_AUTOREPEAT_RATE" \
         "group"

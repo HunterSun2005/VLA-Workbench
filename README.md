@@ -24,7 +24,7 @@ flowchart TD
 
 采集与部署只使用 **Franky + 绝对 TCP**，每臂 10D（位置、rot6d、绝对夹爪开度）。Gamepad、GELLO、策略和姿态恢复共用上述提交入口。ROS 保留输入、夹爪、相机和协调器；独立 Python 3.10 worker 使用固定 Franky wheel 与 libfranka 0.19.0，独占机械臂。模型进程不直接控制硬件。
 
-30 Hz 回调顺序检查状态和确认、生成候选、接受并非阻塞提交目标。IPC 未确认时跳过当前时隙，不积分、不接受、不生成该时隙记录；不排队积压目标，不补发历史动作。策略队列按真实时隙前进。Gamepad 松杆保持最后参考，Franky 的每次参考变化上限不随频率降低而放大。
+30 Hz 回调顺序检查状态和确认、生成候选、接受并非阻塞提交目标。IPC 未确认时跳过当前时隙，不积分、不接受、不生成该时隙记录；不排队积压目标，不补发历史动作。策略队列按真实时隙前进。Gamepad 松杆仅将刚释放方向的参考收回到实测位姿一次，随后固定保持，Franky 的每次参考变化上限不随频率降低而放大。
 
 提交时冻结观察和接受动作，匹配 session、generation、sequence、request ID、slot 的成功确认后才进入记录流程。偶发相机缺帧跳过整行数据，持续过期超过 `sync_tolerance_ms` 才停控；缺口保留真实时隙和 segment，训练与 Replay 不跨缺口拼接。实际应用时间与 tracker 参考写入执行审计，不能用实测位姿替代 action。
 
@@ -35,7 +35,7 @@ flowchart TD
 | 动作契约、变换与统计     | [vla/actions](src/vla/actions/)                                                                                                           | [动作测试](tests/actions/)、[契约说明](docs/ROS_ACTION_CONTRACT.md)                                                |
 | 共用会话与 Web           | [ros_session.py](src/vla/cli/ros_session.py)、[web/backends.py](src/vla/web/backends.py)、[vla/web](src/vla/web/)                         | [Web 测试](tests/web/)、[终端测试](tests/rlt/test_terminal.py)                                                     |
 | 采集、输入适配与控制协调 | [collect_ros.py](src/vla/datacollection/franka_robotiq_rollout/collect_ros.py)、[vla/control/ros](src/vla/control/ros/)                   | [控制测试](tests/control/)、[模拟采集测试](tests/rlt/test_dual_gamepad_record.py)                                  |
-| 历史 ROS 验证与启动       | [关节阻抗控制器](ros_ws/src/franka_fr3_arm_controllers/)、[ROS 工作空间](ros_ws/)                                                         | [ROS 导入检查](scripts/check_ros.py)、[启动链测试](tests/rlt/test_teleop_entrypoints.py)                           |
+| 历史 ROS 验证与启动      | [关节阻抗控制器](ros_ws/src/franka_fr3_arm_controllers/)、[ROS 工作空间](ros_ws/)                                                         | [ROS 导入检查](scripts/check_ros.py)、[启动链测试](tests/rlt/test_teleop_entrypoints.py)                           |
 | 数据处理、模型与 RTC     | [processing.py](src/vla/datacollection/processing.py)、[LeRobot 适配层](src/vla/adapters/lerobot/)、[vla/deployment](src/vla/deployment/) | [数据处理测试](tests/rlt/test_dataset_processing.py)、[RTC 测试](tests/rlt/test_rlt_ac_rtc.py)                     |
 | 在线 RLT 与持久回放      | [online_training.py](src/vla/core/online_training.py)、[online_replay.py](src/vla/core/online_replay.py)                                  | [在线一致性测试](tests/rlt/test_online_consistency.py)、[稀疏动作时序测试](tests/rlt/test_sparse_action_timing.py) |
 
@@ -62,7 +62,7 @@ vla-web --root "$VLA_ROOT"
 
 本机环境已安装 wheel；`source scripts/model_env.sh` 会将当前工作副本的 `src` 加入 Python 搜索路径。项目使用官方 LeRobot，不会自动读取其他 LeRobot checkout。独立开发副本的使用方式见下方「开发与验证」。
 
-## 从代码重新安装
+## 从代码重新安装 
 
 ```bash
 conda env create -f environment.yml
@@ -135,7 +135,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 | RTC 部署 / 采集客户端                          | `vla-deploy-franka-pi05-rtc` / `vla-collect-franka`                                              |
 | SFT 服务 / RLT 服务                            | `vla-serve-franka-sft` / `vla-serve-franka-rollout`                                              |
 | 在线 RLT / 恢复                                | `vla-serve-franka-rollout --online-*`；恢复使用 `--online-resume`                                |
-| 新格式回合恢复                                 | `vla-recover-episode --help`；[执行与数据闭环](docs/EXECUTION_RTC_RLT.md)                         |
+| 新格式回合恢复                                 | `vla-recover-episode --help`；[执行与数据闭环](docs/EXECUTION_RTC_RLT.md)                        |
 
 详细用法见 [操作说明](docs/WORKFLOWS.md)；当前结果通过 [自动化验收](docs/ACCEPTANCE.md) 生成，来源和模块位置见 [迁移资料](docs/migration/README.md)。
 

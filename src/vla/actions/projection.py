@@ -10,6 +10,9 @@ class ActionProjection:
         self.spec = ActionSpec.from_dict(contract['action_spec'])
         self.normalizer = QuantileNormalizer(contract['statistics'])
         projection = contract['execution_projection']
+        self.workspace_limits_enabled = projection.get('workspace_limits_enabled', True)
+        if type(self.workspace_limits_enabled) is not bool:
+            raise ValueError('workspace_limits_enabled must be boolean')
         self.lower = np.asarray(projection['lower'], dtype=np.float64)
         self.upper = np.asarray(projection['upper'], dtype=np.float64)
         count = len(self.spec.arms)*(7 if self.spec.space == 'joint' else 3)
@@ -24,8 +27,9 @@ class ActionProjection:
         absolute = AbsoluteActions(spec)(represented, anchor)
         width = 7 if spec.space == 'joint' else 3
         for i, offset in enumerate(range(0, spec.dim, spec.width)):
-            absolute[..., offset:offset+width] = np.clip(absolute[..., offset:offset+width],
-                                                       self.lower[i*width:(i+1)*width], self.upper[i*width:(i+1)*width])
+            if spec.space == 'joint' or self.workspace_limits_enabled:
+                absolute[..., offset:offset+width] = np.clip(absolute[..., offset:offset+width],
+                                                           self.lower[i*width:(i+1)*width], self.upper[i*width:(i+1)*width])
             if spec.space == 'tcp':
                 absolute[..., offset+3:offset+9] = matrix_to_rot6d(rot6d_to_matrix(absolute[..., offset+3:offset+9]))
         return self.normalizer.normalize(DeltaActions(spec)(absolute, anchor))
@@ -59,7 +63,8 @@ class ActionProjection:
             origin = anchor[..., off:off+width]
             if spec.representation == 'chunk_relative':
                 position = position+origin
-            position = torch.maximum(torch.minimum(position, upper[i*width:(i+1)*width]), lower[i*width:(i+1)*width])
+            if spec.space == 'joint' or self.workspace_limits_enabled:
+                position = torch.maximum(torch.minimum(position, upper[i*width:(i+1)*width]), lower[i*width:(i+1)*width])
             if spec.representation == 'chunk_relative':
                 position = position-origin
             if spec.space == 'tcp':

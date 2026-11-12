@@ -23,9 +23,10 @@
 
 ## 控制与记录
 
-Franky 路线只接受绝对 TCP 目标。GELLO 通过 FK、Gamepad 和策略都更新同一个 TCP 参考位姿，worker 使用 `CartesianImpedanceTracker.set_target()` 持续跟踪；Gamepad 松杆后保持最后参考位姿。新会话拒绝旧 ROS backend、关节动作空间和旧 tracking rate／IK 调参字段；CartesianServo 只供隔离的历史验证工具使用。
 
-Franky 默认阻抗参数为平移刚度 1000 N/m、旋转刚度 50 Nm/rad、平移误差裁剪 0.008 m、旋转误差裁剪 0.04 rad、单次目标步长 0.03 m/0.10 rad。Web 支持启动前覆盖初值和运行中调参。参数草稿与 worker 确认值分离，仅实际变化的裁剪、力矩变化率和增益时间常数会停止并重建 tracker；刚度调用 `set_gains`，不变参数不重启控制。刚度上限为 1200 N/m、80 Nm/rad，裁剪下限为 0.005 m、0.02 rad。
+Franky 路线只接受绝对逻辑 TCP 目标（`flange_aligned_tcp_v1`）。逻辑 TCP 原点仍为物理 TCP，轴向平行于法兰；XYZ 不因朝向换算移动。设实测安装旋转为 `R_F_E`，则 worker 提交 `R_base_hardware = R_base_logical · R_F_E`，反馈使用 `R_base_logical = R_base_hardware · R_F_Eᵀ`。安装 −45° 时逻辑竖直 yaw=0 对应硬件 yaw=+45°。action、observation、coordinator、GELLO FK、策略、姿态库和实际参考统一使用逻辑坐标；硬件 TCP／参考及原始安装变换单独保留在 worker 状态和审计中。worker implementation 6 显式声明该坐标约定，collector 拒绝不匹配的 worker；工具变换在会话内锁定，变化后故障停止。GELLO 通过 FK、Gamepad 和策略都更新同一个 TCP 参考位姿，worker 使用 `CartesianImpedanceTracker.set_target()` 持续跟踪；Gamepad 松杆仅将刚释放方向的参考收回到实测位姿一次，随后固定保持。新会话拒绝旧 ROS backend、关节动作空间和旧 tracking rate／IK 调参字段；CartesianServo 只供隔离的历史验证工具使用。
+
+Franky 默认阻抗参数为平移刚度 1100 N/m、旋转刚度 65 Nm/rad、平移误差裁剪 0.008 m、旋转误差裁剪 0.04 rad、单次目标步长 0.03 m/0.10 rad。Web 支持启动前覆盖初值和运行中调参。参数草稿与 worker 确认值分离，仅实际变化的裁剪、力矩变化率和增益时间常数会停止并重建 tracker；刚度调用 `set_gains`，不变参数不重启控制。刚度上限为 1200 N/m、80 Nm/rad，裁剪下限为 0.005 m、0.02 rad。
 
 应用层只有一个 30 Hz 回调，输入更新、动作接受和提交共用时隙。独立 IPC 消费线程最多处理一条在途目标，没有待发目标积压队列。上一目标未确认时，当前时隙不积分人工输入、不接受动作、不产生记录；确认后使用当前输入，策略取当前真实时隙，不补发过期动作。worker 以独立 1000 Hz FCI 阻抗环跟踪参考。`max_step` / `max_step_rad` 仍是每次调用的参考变化上限。
 
@@ -37,7 +38,7 @@ tracker 在显式启用准备中从实测 TCP／关节初始化，所有臂准�
 
 `target_applied` 审计关联 generation、sequence、slot、worker 应用时间及实际参考；失败保留 `target_failure` 与部分应用事实。控制回调只提交有界内存任务，编码、文件写入和 fsync 留在后台。存储恢复不会恢复控制。新单循环实现标识、IPC v2、worker 版本、binding 二进制哈希与阻抗参数组成控制指纹，旧指纹数据和 checkpoint 不能混用。
 
-Gamepad 默认使用 SDL 标准布局，姿态增量为 `Exp(R_measured · ω_tool · dt) · R_target`，平移参考不随姿态旋转。输入布局、工具轴积分实现及 worker 实现版本绑定控制指纹。GELLO 驱动缓存含成功采样时间和序号；collector 以源采样时间作为有序消息身份，重复／倒序／过期消息不刷新新鲜度，关节和夹爪同帧传递。
+Gamepad 默认使用旧单臂已验证的 `raw_joy` 布局（`joy_node`），显式选择时才使用 SDL 标准布局，姿态增量为 `Exp(R_measured · ω_tool · dt) · R_target`，平移参考不随姿态旋转。输入布局、工具轴积分实现及 worker 实现版本绑定控制指纹。GELLO 驱动缓存含成功采样时间和序号；collector 以源采样时间作为有序消息身份，重复／倒序／过期消息不刷新新鲜度，关节和夹爪同帧传递。
 
 调参等待期间停止积分、接受和发送新目标，清空旧待发送目标；当前 generation 的 request ID 确认后，等待新的接受目标再继续跟踪。暂停、停止或切换控制权撤销等待，迟到确认不恢复运动。回合起始 journal identity 保存有效参数；回合内已确认变化以 `compliance` 审计事件保存请求 ID、generation、worker sequence、时间和参数，不增加 schema 字段。
 
@@ -54,7 +55,7 @@ Gamepad 默认使用 SDL 标准布局，姿态增量为 `Exp(R_measured · ω_to
 | `command.source` | 示教／PI05／RLT 来源 |
 | `diagnostic.controller` | 每臂接收代际、命令 ID、诊断接收时间 |
 | `diagnostic.filtered_joint` | 控制器可用的滤波后关节目标 |
-| `diagnostic.actual_tcp` | worker 回传的实测 TCP 位姿（xyz + quaternion_xyzw） |
+| `diagnostic.actual_tcp` | worker 回传的实测逻辑 TCP 位姿（xyz + quaternion_xyzw） |
 | `diagnostic.target_joint` | Franky tracker 回传的目标关节（不可用时为零） |
 | `diagnostic.tracker` | tracker 运行标志、代际、序号及故障标志 |
 
@@ -75,3 +76,9 @@ SFT 与 RLT 支持不同 chunk 长度和目标帧间隔；稀疏目标部署按�
 离线检查涵盖数学往返、模型适配器、命令入口、模拟采集、Web、CLI、wheel、ROS 构建与导入。没有运行真实大模型训练，没有连接机器人或开启相机。
 
 仍须在获授权的现场分别验收：30 Hz 接受／提交与 Franky 1000 Hz 底层时序、诊断延迟、单／双臂同步、原生标签实机重放、接触和跟踪表现、夹爪松手保持、Normal/Fast 与手柄手感、GELLO 跟随、姿态恢复、RTC 延迟与接管、在线训练中断恢复、模型效果。离线通过不能替代这些结果。
+
+### 工作空间与恢复参考
+
+会话配置 `control.workspace_limits_enabled`（默认 true，Web 可显式覆盖后锁定）统一控制所有输入源、快捷键、姿态库及保存时的 TCP XYZ 范围校验／投影。关闭时仍保存有限边界，不改变有限数值、SO(3)、机器人自身限制、碰撞配置、worker 单步和故障保护。实际模式写入元数据及控制指纹，并由 `execution_projection.workspace_limits_enabled` 传递到 NumPy／Torch 动作投影；未声明开关按 true 解释，关节动作仍投影到关节限制。续采独立严格核对模式、范围和控制指纹，不重写旧契约。人工快捷键指纹版本为 8：View／Menu 固定为逻辑 TCP 在基座的 `diag(1,−1,−1)`，R3 仅绕基座 Z 恢复逻辑 yaw=0 并保留倾斜。硬件安装旋转在 worker 内部处理，不写入 action 的逻辑朝向。工具指纹包含逻辑定义与原始硬件安装变换，控制指纹包含坐标约定；旧坐标数据不能续写或静默转换。
+
+姿态库在全部 tracker 准备确认后，从实测起点建立一次直线位置／最短旋转参考，共用五次进度 `s=10u³−15u⁴+6u⁵`。时长为 `max(0.3, 1.875×距离/v, 1.875×角度/ω)`，速度默认最多 0.10 m/s、0.45 rad/s，且受会话上限与 worker 单步×30 限制。进度只按可提交的 30 Hz 时隙推进，等待 ACK 时冻结；仍经 coordinator → IPC → tracker.set_target()，不新增控制线程或 SDK 模式。参考终点与实测 3 mm／2°共同决定完成，60 秒超时；取消和代际变化撤销计划。未选中臂保持起始参考，完整目标朝向和姿态库既有记录不改写。参考几何保证不等于实机轨迹连续性或恢复耗时已验收。
