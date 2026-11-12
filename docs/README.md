@@ -1,5 +1,7 @@
 # 文档导航
 
+当前维护分支为 `franky-dev`（原本地 `ros-dev`），保留 PI0.5 SFT／RLT／RTC 与在线训练接口；分支边界及工作副本说明见 [根目录维护说明](../README.md#开发与验证)。
+
 本目录的顶层文档描述当前 ROS 统一链路；带日期的验收和变更记录位于 [archive/](archive/README.md)，来源清单与迁移补丁位于 [migration/](migration/README.md)。历史报告中的通过数量、环境状态和旧命令不代表当前版本。
 
 首次使用先看仓库 [README](../README.md) 的环境与安装说明，再按下面的任务选择文档。开发约束见 [AGENTS.md](../AGENTS.md)；开发测试不启动硬件。

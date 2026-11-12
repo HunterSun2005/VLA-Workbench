@@ -2,7 +2,7 @@
 
 ## Scope and Git
 
-- Maintain this independent repository on `ros-dev`. Inspect the current branch and working tree before editing; preserve unrelated changes and existing tasks.
+- Maintain the PI0.5 SFT/RLT/RTC line on local `franky-dev` (renamed from `ros-dev`). External model serial adapters are outside this branch. Inspect the current branch and working tree before editing; preserve unrelated changes and existing tasks.
 - Keep commits local. Do not add/change remotes, fetch, push, publish, or merge into `main` unless explicitly requested. Existing remote configuration is not authorization to use it.
 - Read-only retrieval of official Python dependencies and exact upstream revisions declared in `ros_ws/dependencies.repos` is allowed. Do not modify migration source repositories, third-party checkouts, or existing environments.
 - Serialize Git mutations (`add`, `commit`, checkout, reset, etc.); never run them concurrently against the same Git directory. For status polling use `git --no-optional-locks status --short` to avoid unnecessary index writes. Do not terminate another process to free a lock.

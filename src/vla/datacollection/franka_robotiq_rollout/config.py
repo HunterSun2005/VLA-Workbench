@@ -285,6 +285,9 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         raise ValueError("Franky Cartesian impedance requires action_space: tcp")
     transport = _mapping(raw.get("transport"), "transport")
     control = _mapping(raw.get("control"), "control")
+    external_settings = (set(raw) | set(control)) & {"model_backend", "policy_endpoint"}
+    if external_settings:
+        raise ValueError("external model settings are not supported: " + ", ".join(sorted(external_settings)))
     workspace_limits_enabled = control.get('workspace_limits_enabled', True)
     if type(workspace_limits_enabled) is not bool:
         raise ValueError('control.workspace_limits_enabled must be boolean')

@@ -53,7 +53,7 @@ flowchart TD
 
 ```bash
 conda activate vla
-cd /data0/sht/VLA-Workbench
+cd /data0/sht/VLA-Workbench-franky-dev
 source scripts/model_env.sh
 vla-web --root "$VLA_ROOT"
 ```
@@ -107,7 +107,7 @@ Demo 的采集／部署不连接硬件，也不生成真实采集数据集；**�
 在单独终端操作，不激活模型环境：
 
 ```bash
-cd /data0/sht/VLA-Workbench
+cd /data0/sht/VLA-Workbench-franky-dev
 /usr/bin/python3 scripts/fetch_ros.py
 bash scripts/install_ros_python.sh
 bash scripts/build_ros.sh
@@ -155,7 +155,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 配置中的设备编号和网络地址必须按现场核对，不按枚举顺序推断视角。旧部署 home 配置默认关闭，启用时必须提供通过校验的目标；Web 采集前姿态库是另一个显式操作流程，保存 TCP 位姿、不包含夹爪状态。旧数据格式中的 `evo_rlt` 元数据字段保留，以维持格式兼容；额外字段同时保存到 `meta/vla_metadata.json`。
 
-本仓库独立维护，当前开发分支为 `ros-dev`。配置远端和推送须由用户明确请求。原采集仓库与已有环境不修改。数据、权重、tokenizer、回放、日志和第三方源码／构建产物不进入 Git。
+本分支 `franky-dev` 由本地 `ros-dev` 重命名，保留其历史与 PI0.5 SFT／RLT／自动模式、RTC、在线训练和人工接管接口；工作副本为 `/data0/sht/VLA-Workbench-franky-dev`。公共 Franky 控制与 Web 功能同步自 `e51a5dd`，仅支持本地 PI0.5 模型服务，不提供外部模型串行适配或多模型选择。Web／CLI 拒绝外部模型参数，YAML 拒绝 `model_backend`／`policy_endpoint`；通用 `control.policy_timeout_s` 保留。维护与验证入口见 [文档导航](docs/README.md) 和 [自动化验收](docs/ACCEPTANCE.md)。配置远端和推送须由用户明确请求。原采集仓库与已有环境不修改。数据、权重、tokenizer、回放、日志和第三方源码／构建产物不进入 Git。
 
 ## 开发与验证
 

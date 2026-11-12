@@ -23,7 +23,6 @@
 
 ## 控制与记录
 
-
 Franky 路线只接受绝对逻辑 TCP 目标（`flange_aligned_tcp_v1`）。逻辑 TCP 原点仍为物理 TCP，轴向平行于法兰；XYZ 不因朝向换算移动。设实测安装旋转为 `R_F_E`，则 worker 提交 `R_base_hardware = R_base_logical · R_F_E`，反馈使用 `R_base_logical = R_base_hardware · R_F_Eᵀ`。安装 −45° 时逻辑竖直 yaw=0 对应硬件 yaw=+45°。action、observation、coordinator、GELLO FK、策略、姿态库和实际参考统一使用逻辑坐标；硬件 TCP／参考及原始安装变换单独保留在 worker 状态和审计中。worker implementation 6 显式声明该坐标约定，collector 拒绝不匹配的 worker；工具变换在会话内锁定，变化后故障停止。GELLO 通过 FK、Gamepad 和策略都更新同一个 TCP 参考位姿，worker 使用 `CartesianImpedanceTracker.set_target()` 持续跟踪；Gamepad 松杆仅将刚释放方向的参考收回到实测位姿一次，随后固定保持。新会话拒绝旧 ROS backend、关节动作空间和旧 tracking rate／IK 调参字段；CartesianServo 只供隔离的历史验证工具使用。
 
 Franky 默认阻抗参数为平移刚度 1100 N/m、旋转刚度 65 Nm/rad、平移误差裁剪 0.008 m、旋转误差裁剪 0.04 rad、单次目标步长 0.03 m/0.10 rad。Web 支持启动前覆盖初值和运行中调参。参数草稿与 worker 确认值分离，仅实际变化的裁剪、力矩变化率和增益时间常数会停止并重建 tracker；刚度调用 `set_gains`，不变参数不重启控制。刚度上限为 1200 N/m、80 Nm/rad，裁剪下限为 0.005 m、0.02 rad。

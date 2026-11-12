@@ -1,6 +1,6 @@
 # 统一执行、RTC 与 RLT 数据闭环
 
-实现在 `ros-dev` 维护。ROS 进程拥有动作时隙、执行队列和运动代次；模型服务只返回候选块。Web 与终端共用 `RolloutCollector`／`ControlCoordinator`。模型 Python 与 ROS Python 分离。当前提交的验证方式见 [自动化验收](ACCEPTANCE.md)，[历史归档](archive/EXECUTION_2026-11-07.md)保留初次验收快照。
+PI0.5 SFT／RLT／RTC 实现在 `franky-dev` 维护（原本地 `ros-dev`）。ROS 进程拥有动作时隙、执行队列和运动代次；模型服务只返回候选块。Web 与终端共用 `RolloutCollector`／`ControlCoordinator`。模型 Python 与 ROS Python 分离。当前提交的验证方式见 [自动化验收](ACCEPTANCE.md)，[历史归档](archive/EXECUTION_2026-11-07.md)保留初次验收快照。
 
 ## 协议与时间轴
 
