@@ -135,6 +135,9 @@ class RolloutConfig:
     tasks: tuple[str, ...] = ()
     inference_slots: int = 4
     installation_guard_slots: int = 1
+    lingbot_execution_mode: str = 'rtc'
+    lingbot_inference_slots: int = 14
+    lingbot_guard_slots: int = 1
     model_backend: str = 'pi05'
     policy_endpoint: str = ''
     workspace_limits_enabled: bool = True

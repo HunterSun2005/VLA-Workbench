@@ -50,6 +50,9 @@ def main(argv=None):
     parser.add_argument('--tokenizer-path', default='')
     parser.add_argument('--model-python', default=os.environ.get('VLA_PYTHON', sys.executable))
     parser.add_argument('--model-backend', choices=['pi05', 'lingbot_v2'], default='pi05')
+    parser.add_argument('--lingbot-execution-mode', choices=['rtc', 'serial'], default='rtc')
+    parser.add_argument('--lingbot-inference-slots', type=int, default=14)
+    parser.add_argument('--lingbot-guard-slots', type=int, default=1)
     parser.add_argument('--policy-endpoint', default='tcp://127.0.0.1:8007')
     parser.add_argument('--policy-timeout-s', type=float, default=5.0)
     mode = parser.add_mutually_exclusive_group()
@@ -65,7 +68,9 @@ def main(argv=None):
         dataset_root=str(args.dataset_root or ''), task=args.task or "", resume=args.resume, side_camera_serial=args.side_camera_serial,
         policy_path=args.policy_path, handover_path=args.handover_path, policy_kind=args.policy_kind, mode=args.mode, tokenizer_path=args.tokenizer_path,
         model_python=args.model_python, ros_workspace=str(root/'ros_ws'), ros_config=str(args.hardware_config or ''),
-        model_backend=args.model_backend, policy_endpoint=args.policy_endpoint, policy_timeout_s=args.policy_timeout_s)
+        model_backend=args.model_backend, policy_endpoint=args.policy_endpoint, policy_timeout_s=args.policy_timeout_s,
+        lingbot_execution_mode=args.lingbot_execution_mode, lingbot_inference_slots=args.lingbot_inference_slots,
+        lingbot_guard_slots=args.lingbot_guard_slots)
     rollout = load_rollout_config(config.default_config())
     arms = 'dual' if len(rollout.arms) == 2 else 'single_left'
     tasks = tuple(dict.fromkeys(args.tasks or rollout.tasks))
@@ -79,11 +84,13 @@ def main(argv=None):
     config.validate_model_backend()
     if config.model_backend == 'lingbot_v2':
         if args.online:
-            parser.error('LingBot serial does not support online training')
+            parser.error('LingBot does not support online training')
         from vla.deployment.external import inspect_service
         health = inspect_service(config.policy_endpoint, config.policy_timeout_s,
-                                 tasks=config.tasks, image_size=rollout.image_size)
-        print(f'LingBot serial service ready: {config.policy_endpoint}; model={health["model_version"]}')
+                                 tasks=config.tasks, image_size=rollout.image_size,
+                                 execution_mode=config.lingbot_execution_mode,
+                                 inference_slots=config.lingbot_inference_slots, guard_slots=config.lingbot_guard_slots)
+        print(f'LingBot {config.lingbot_execution_mode} service ready: {config.policy_endpoint}; model={health["model_version"]}')
     if config.workflow == 'deploy' and config.model_backend == 'pi05' and config.policy_path:
         from vla.actions import ActionSpec
         from vla.actions.metadata import checkpoint_contract

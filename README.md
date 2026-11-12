@@ -4,7 +4,7 @@
 
 使用说明、契约、维护与验收入口统一见 [文档导航](docs/README.md)；旧版本记录见 [历史归档](docs/archive/README.md)。
 
-`lingbot-dev` 增加 [LingBot V2 外部串行部署](docs/LINGBOT_DEPLOYMENT.md)：独立模型服务返回完整 50 步 absolute chunk，CLI/Web 共用 ROS 闭环。默认 PI05/RTC 路线不变。
+`lingbot-dev` 增加 [LingBot V2 外部 RTC/串行部署](docs/LINGBOT_DEPLOYMENT.md)：独立模型服务返回完整 50 步 absolute chunk，LingBot 默认前缀条件 RTC（14+1 槽），保留显式串行；CLI/Web 共用 ROS 闭环。默认 PI05/RTC 路线不变。
 
 ## Workbench 整体架构
 

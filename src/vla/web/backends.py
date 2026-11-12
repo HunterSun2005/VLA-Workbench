@@ -60,9 +60,14 @@ class BaseBackend:
             from vla.deployment.external import inspect_service
             config.validate_model_backend()
             inspect_service(config.policy_endpoint, config.policy_timeout_s,
-                            tasks=rollout.tasks, image_size=rollout.image_size)
+                            tasks=rollout.tasks, image_size=rollout.image_size,
+                            execution_mode=config.lingbot_execution_mode,
+                            inference_slots=config.lingbot_inference_slots, guard_slots=config.lingbot_guard_slots)
             return replace(rollout, model_backend='lingbot_v2', policy_endpoint=config.policy_endpoint,
-                           policy_timeout_s=config.policy_timeout_s)
+                           policy_timeout_s=config.policy_timeout_s,
+                           lingbot_execution_mode=config.lingbot_execution_mode,
+                           lingbot_inference_slots=config.lingbot_inference_slots,
+                           lingbot_guard_slots=config.lingbot_guard_slots)
         socket_path = self.directory/'policy.sock'
         args = ['-m','vla.web.policy_server','--kind',config.policy_kind,
                 '--policy-path',config.policy_path,'--tokenizer-path',config.tokenizer_path,

@@ -376,8 +376,11 @@ def main():
         raise RuntimeError('validation requires Python assertions; unset PYTHONOPTIMIZE')
     parser = argparse.ArgumentParser()
     parser.add_argument('--duration', type=float, default=600)
+    parser.add_argument('--lingbot-rtc', action='store_true', help='Exercise LingBot RTC over TCP on fixed-state mocks')
     parser.add_argument('--serial', action='store_true', help='Exercise serial single-left chunks; right mock arm holds')
     args = parser.parse_args()
+    if args.serial and args.lingbot_rtc:
+        parser.error('select one LingBot execution mode')
     if not 0 < args.duration <= 900: parser.error('duration must be in (0,900]')
     directory = Path(tempfile.mkdtemp(prefix='vla-ros-control-'))
     os.environ.update(ROS_HOME=str(directory/'ros'), ROS_LOG_DIR=str(directory/'ros/log'))
@@ -391,14 +394,14 @@ def main():
         session = Session(directory); session.initialize(); session.configure()
         report['checks'] = session.faults()
         print('Fault checks passed:', report['checks'], flush=True)
-        if args.serial:
+        if args.serial or args.lingbot_rtc:
             from serial_validation import SerialValidation
             session.c.transition()
             session.wait(lambda: session.c.mode == 'standby')
             session.coordinator('tcp')
             measured = session.c.gello_target({a: session.last_seen[a][1] for a in session.models},
                                              {a: .45 for a in session.models})
-            session.serial = SerialValidation(session.slot_clock.epoch_ns, measured[:10])
+            session.serial = SerialValidation(session.slot_clock.epoch_ns, measured[:10], rtc=args.lingbot_rtc)
             session.serial_pending = {}
         session.sent.clear(); session.received.clear(); session.delays.clear()
         start = time.monotonic_ns(); report['start_ns'] = start
@@ -412,10 +415,16 @@ def main():
         end = time.monotonic_ns(); report['end_ns'] = end
         report['accept'] = intervals(session.accept_times)
         report['tracking'] = intervals(session.tick_times)
-        if args.serial:
-            report['serial'] = session.serial.report()
-            assert report['serial']['completed_chunks'] > 0 and report['serial']['hold_slots'] > 0
-            report['checks'].append('serial full chunks, inference holds and final diagnostic ACK gating')
+        if args.serial or args.lingbot_rtc:
+            key = 'lingbot_rtc' if args.lingbot_rtc else 'serial'
+            report[key] = session.serial.report()
+            if args.lingbot_rtc:
+                assert report[key]['continuations'] > 0 and report[key]['executed_while_inflight'] > 0
+                assert report[key]['hold_slots'] == 15
+                report['checks'].append('LingBot RTC fixed boundary continuations, committed prefix and execution during inference')
+            else:
+                assert report[key]['completed_chunks'] > 0 and report[key]['hold_slots'] > 0
+                report['checks'].append('serial full chunks, inference holds and final diagnostic ACK gating')
         report['first_diagnostic_delay_ms'] = distribution(session.delays)
         skew=[]
         for arm,gen,ident in session.received:

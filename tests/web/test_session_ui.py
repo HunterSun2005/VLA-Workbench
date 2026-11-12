@@ -262,6 +262,9 @@ def test_lingbot_selection_preserves_pi05_fields_and_sends_remote_config(session
     value = browser.js('return config()')
     assert value['model_backend'] == 'lingbot_v2' and value['policy_kind'] == 'sft'
     assert value['policy_path'] == '' and value['tokenizer_path'] == '' and value['policy_timeout_s'] == 5
+    assert (value['lingbot_execution_mode'], value['lingbot_inference_slots'], value['lingbot_guard_slots']) == ('rtc', 14, 1)
+    browser.fill('[name="lingbot_execution_mode"]', 'serial')
+    assert browser.js('return config().lingbot_execution_mode') == 'serial'
     browser.fill('[name="model_backend"]', 'pi05')
     value = browser.js('return config()')
     assert value['policy_path'] == '/local/pi05' and value['tokenizer_path'] == '/local/tokenizer'
@@ -329,8 +332,10 @@ def test_session_layout_and_lifecycle(session_browser):
     phase(b, 'running')
     assert b.js('return document.querySelector("#state").textContent==="启动中" && document.querySelector("[name=task]").disabled')
     # Keyboard resizing persists only the live collect workbench preference.
-    b.js('document.querySelector("#sessionWorkbench .column-resizer").focus()')
-    b.key('\ue014')  # ArrowRight
+    # Dispatch on the separator atomically: a live stage refresh may move focus
+    # between separate WebDriver focus and keyboard commands in the full suite.
+    b.js('const bar=document.querySelector("#sessionWorkbench .column-resizer");'
+         'bar.focus();bar.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowRight",bubbles:true}));')
     ratios = b.js('return localStorage.getItem("vla.columnRatios")')
     assert 'collect' in json.loads(ratios)
     # Same form node and handlers, keyboard trap, inert background, focus restoration.

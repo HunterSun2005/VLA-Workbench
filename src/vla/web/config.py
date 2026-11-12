@@ -36,6 +36,9 @@ class SessionConfig:
     workspace_bounds: dict | None = None
     workspace_limits_enabled: bool | None = None
     compliance: dict | None = None
+    lingbot_execution_mode: str = 'rtc'
+    lingbot_inference_slots: int = 14
+    lingbot_guard_slots: int = 1
     model_backend: str = 'pi05'
     policy_endpoint: str = 'tcp://127.0.0.1:8007'
     policy_timeout_s: float = 5.0
@@ -47,7 +50,7 @@ class SessionConfig:
         result = cls(**data)
         for name in ('workflow','arms','source','schema','action_space','config_path','dataset_root','task',
                      'policy_kind','policy_path','tokenizer_path','handover_path','mode','device',
-                     'model_python','ros_workspace','ros_config','side_camera_serial','model_backend','policy_endpoint'):
+                     'model_python','ros_workspace','ros_config','side_camera_serial','model_backend','policy_endpoint','lingbot_execution_mode'):
             value = getattr(result, name)
             if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
                 raise ValueError(f'invalid {name}')
@@ -89,9 +92,14 @@ class SessionConfig:
         if self.model_backend == 'lingbot_v2':
             from vla_rollout_protocol.external import endpoint_address
             endpoint_address(self.policy_endpoint)
+            if self.lingbot_execution_mode not in ('rtc', 'serial'):
+                raise ValueError('invalid LingBot execution mode')
+            if self.lingbot_execution_mode == 'rtc':
+                from vla_rollout_protocol.external import validate_rtc_budget
+                validate_rtc_budget(self.lingbot_inference_slots, self.lingbot_guard_slots)
             if (self.workflow != 'deploy' or self.arms != 'single_left' or self.action_space != 'tcp'
                     or self.mode != 'vla' or self.policy_kind != 'sft' or self.handover_path):
-                raise ValueError('LingBot serial requires single-left TCP SFT/VLA deployment, without handover')
+                raise ValueError('LingBot requires single-left TCP SFT/VLA deployment, without handover')
 
     def validate_compliance(self):
         if self.compliance is not None:
@@ -356,8 +364,10 @@ def preflight(config, *, demo=False, root=None):
             from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
             rollout = load_rollout_config(config.default_config())
             health = inspect_service(config.policy_endpoint, config.policy_timeout_s,
-                                     tasks=config.tasks or (config.task,), image_size=rollout.image_size)
-            checks.append(f'LingBot 串行服务就绪: {config.policy_endpoint}; 模型 {health["model_version"]}')
+                                     tasks=config.tasks or (config.task,), image_size=rollout.image_size,
+                                     execution_mode=config.lingbot_execution_mode,
+                                     inference_slots=config.lingbot_inference_slots, guard_slots=config.lingbot_guard_slots)
+            checks.append(f'LingBot {config.lingbot_execution_mode} 服务就绪: {config.policy_endpoint}; 模型 {health["model_version"]}')
             checks.append('外部部署契约通过；实际 TCP 变换将在控制启用前核对')
         except (OSError, EOFError, ValueError, TypeError, KeyError) as error:
             errors.append(f'LingBot 服务检查失败: {error}')

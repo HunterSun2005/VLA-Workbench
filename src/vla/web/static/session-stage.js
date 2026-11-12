@@ -40,7 +40,7 @@ class SessionStage {
   this.id=id;this.saved=saved||this.saved;this.configKey=JSON.stringify(this.saved);
   if(!this.saved)return;
   const c=this.saved,fields=[['任务',c.task],['机械臂',c.arms==='dual'?'双臂 · 左 + 右':'单左臂'],['输入源',c.source==='gello'?'GELLO':'Gamepad'],['输出位置',c.dataset_root],['数据集模式',c.resume?'续采已有数据集':'新建数据集'],['TCP XYZ 限制',c.workspace_limits_enabled===false?'关闭':c.workspace_limits_enabled===true?'开启':'使用 YAML 配置']];
-  if(c.workflow==='deploy')fields.push(['部署模型',c.model_backend==='lingbot_v2'?`LingBot V2 串行 · ${c.policy_endpoint}`:`${c.policy_kind==='sft'?'PI0.5 SFT':'RLT'} · ${c.policy_path||'未指定'}`]);
+  if(c.workflow==='deploy')fields.push(['部署模型',c.model_backend==='lingbot_v2'?`LingBot V2 ${c.lingbot_execution_mode} · ${c.policy_endpoint}`:`${c.policy_kind==='sft'?'PI0.5 SFT':'RLT'} · ${c.policy_path||'未指定'}`]);
   const summary=document.getElementById('summaryFields');summary.replaceChildren();
   for(const [label,value] of fields){const pair=document.createElement('div'),term=document.createElement('dt'),description=document.createElement('dd');term.textContent=label;description.textContent=value||'—';pair.append(term,description);summary.append(pair);}
  }

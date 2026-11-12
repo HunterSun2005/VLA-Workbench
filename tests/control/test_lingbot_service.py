@@ -53,8 +53,8 @@ class Model:
 
 
 @contextmanager
-def running(module):
-    model = Model()
+def running(module, model=None):
+    model = Model() if model is None else model
     service = module.Service(model, FIXTURE['tasks'])
     stop, ready = threading.Event(), threading.Event()
     addresses = []
@@ -131,7 +131,7 @@ def test_cli_check_only_queries_external_service_without_model_or_hardware(serve
     monkeypatch.setattr(backends, 'make_backend', lambda *a: pytest.fail('check-only must not start hardware'))
     with running(server_module) as (_, model, endpoint):
         main(['--workflow', 'deploy', '--model-backend', 'lingbot_v2',
-              '--policy-endpoint', endpoint, '--task', FIXTURE['tasks'][0],
+              '--lingbot-execution-mode', 'serial', '--policy-endpoint', endpoint, '--task', FIXTURE['tasks'][0],
               '--tasks', *FIXTURE['tasks'], '--check-only'])
         assert not model.started.is_set()
     assert 'hardware not started' in capsys.readouterr().out
@@ -238,3 +238,89 @@ def test_server_rejects_bad_observation_and_nonempty_prefix(server_module):
     a['observation.state'][0] = np.nan
     with pytest.raises(ValueError):
         server_module.validate_request(h, a, contract)
+
+
+def rtc_model():
+    model = Model()
+    model.deployment = json.loads(json.dumps(FIXTURE['deployment']))
+    model.deployment.update(execution_mode='rtc', rtc={
+        'prefix_conditioning': 'clean_tokens_time_zero_training_mask', 'max_prefix_steps': 15})
+    def infer(arrays, task, committed_prefix):
+        np.testing.assert_array_equal(committed_prefix, arrays['committed_prefix'])
+        # Deliberately return low precision prefix: service must restore wire values.
+        return np.tile(np.asarray(FIXTURE['anchor'], np.float32), (50, 1))
+    model.infer = infer
+    return model
+
+
+def rtc_request(server_module):
+    from vla.control.lingbot_execution import LingBotRTCContract, LingBotRTCExecutor
+    service = server_module.Service(rtc_model(), FIXTURE['tasks'])
+    ex = LingBotRTCExecutor(LingBotRTCContract(ActionSpec(), {'vla': 50}, 'c', 'k', 't'),
+        session_id='rtc-test', model_version=service.contract['model_version'], epoch_ns=0)
+    anchor = np.asarray(FIXTURE['anchor']); anchor[-1] = .512345678901
+    ex.enable(anchor, episode_id='episode')
+    req = ex.request(slot=0, anchor=anchor, observation_id=0, observed_at_ns=0, policy='vla')
+    h, a = req.packet(); h.update(task=FIXTURE['tasks'][0])
+    a.update({'observation.state': observation()['state'], **observation()['images']})
+    return service, ex, h, a
+
+
+def test_rtc_contract_conformance_and_exact_wire_prefix(server_module):
+    from vla_rollout_protocol.external import health_contract
+    service, ex, h, a = rtc_request(server_module)
+    assert service.contract == health_contract(service.model.deployment, FIXTURE['tasks'])
+    # Client monotonic epoch need not match server time (deadline is far in the past here).
+    rh, ra = service.handle(h, a)
+    result = PlanResponse.from_packet(rh, ra)
+    np.testing.assert_array_equal(result.actions[:15], a['committed_prefix'])
+    assert ex.install(result, 1)
+    validate_health(service.contract, execution_mode='rtc')
+    with pytest.raises(ValueError, match='mode mismatch'):
+        validate_health(service.contract, execution_mode='serial')
+    with pytest.raises(ValueError, match='rtc_max_delay'):
+        validate_health(service.contract, execution_mode='rtc', inference_slots=15)
+
+
+@pytest.mark.parametrize('change', ['too_long', 'boundary', 'negative', 'identity', 'horizon', 'stride', 'prefix_nan'])
+def test_rtc_service_rejects_bad_request(server_module, change):
+    service, ex, h, a = rtc_request(server_module)
+    if change == 'too_long':
+        h['replace_slot'] = 16; a['committed_prefix'] = np.tile(ex.hold, (16, 1))
+    elif change == 'boundary':
+        h['replace_slot'] = 14
+    elif change == 'negative':
+        h['start_slot'] = 16
+    elif change == 'identity':
+        h['model_version'] = 'other'
+    elif change == 'horizon':
+        h['horizon'] = 49
+    elif change == 'stride':
+        h['frame_stride'] = 2
+    else:
+        a['committed_prefix'] = a['committed_prefix'].copy(); a['committed_prefix'][0, 0] = np.nan
+    with pytest.raises(ValueError):
+        service.handle(h, a)
+
+
+def test_rtc_actual_tcp_client_to_independent_service(server_module):
+    from vla.control.lingbot_execution import LingBotRTCContract, LingBotRTCExecutor
+    with running(server_module, rtc_model()) as (service, _, endpoint):
+        health = inspect_service(endpoint, execution_mode='rtc', tasks=FIXTURE['tasks'])
+        client = ExternalPolicyClient(endpoint, 2)
+        try:
+            epoch = time.monotonic_ns()
+            ex = LingBotRTCExecutor(LingBotRTCContract(ActionSpec(), {'vla': 50}, 'c', 'k', 't'),
+                session_id='rtc-wire', model_version=health['model_version'], epoch_ns=epoch)
+            ex.enable(np.asarray(FIXTURE['anchor']), episode_id='e')
+            req = ex.request(slot=0, anchor=ex.hold, observation_id=0, observed_at_ns=epoch, policy='vla')
+            client.set_control_mode('vla')
+            assert client.submit(plan=req, **observation()) is not None
+            assert client.submit(plan=req, **observation()) is None
+            result = wait_for(client.poll_latest)
+            assert ex.install(result, time.monotonic_ns())
+            np.testing.assert_array_equal(result.actions[:15], req.prefix)
+            assert ex.queue[14][1] == 'system_hold' and ex.queue[15][1] == 'vla'
+            client.raise_if_failed()
+        finally:
+            client.close()

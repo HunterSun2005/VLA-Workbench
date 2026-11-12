@@ -1,6 +1,6 @@
-# LingBot V2 串行部署
+# LingBot V2 RTC / 串行部署
 
-`lingbot-dev` 接入独立 LingBot 服务，CLI 与 Web 仍共用 ROS collector/coordinator。默认后端为 `pi05`，原 PI05 checkpoint 校验、RTC 和训练入口保持不变。首版只支持单左臂 TCP 10D、base/left_wrist 两相机、30 Hz、stride=1、完整 50 步 chunk；不支持 RTC、Actor/RLT、在线训练、双臂和提前预取。
+`lingbot-dev` 接入独立 LingBot 服务，CLI 与 Web 仍共用 ROS collector/coordinator。默认后端为 `pi05`，原 PI05 checkpoint 校验、RTC 和训练入口保持不变。LingBot 默认 RTC，保留显式串行模式。只支持单左臂 TCP 10D、base/left_wrist 两相机、30 Hz、stride=1、完整 50 步 chunk；不支持 Actor/RLT、在线训练或双臂。
 
 ## 进程与物理契约
 
@@ -10,16 +10,16 @@ LingBot 仓库的 `deploy/workbench_server.py` 在自己的 Python 环境运行�
 
 | 报文 | 内容 |
 | --- | --- |
-| `health` | ready、模型身份、external deployment v2、状态/动作字段、相机 HWC、50 步 horizon、30 Hz/stride=1、serial 能力，RTC/Actor/online 均为 false |
-| `plan` | session/episode/generation/request/observation/plan/model 身份、执行契约摘要、原始观测时间/期限、任务；`observation.state`、独立 `observation.anchor`、两幅 uint8 RGB HWC 图像、`committed_prefix` 为 `[0,10]` |
-| `plan_result` | 原样回显请求上下文与锚点/空前缀；`actions` 和 `vla_reference` 为相同的 float32 `[50,10]` absolute chunk，50 个 VLA 来源/phase=0 |
+| `health` | ready、模型身份、external deployment v2、状态/动作字段、相机 HWC、50 步 horizon、30 Hz/stride=1、所选 rtc/serial 能力；Actor/online 均为 false |
+| `plan` | session/episode/generation/request/observation/plan/model 身份、执行契约摘要、原始观测时间/期限、任务；`observation.state`、独立 `observation.anchor`、两幅 uint8 RGB HWC 图像、`committed_prefix` 为 absolute `[d,10]`，串行为 `[0,10]` |
+| `plan_result` | 原样回显请求上下文与锚点/前缀；`actions` 和 `vla_reference` 为相同的 `[50,10]` absolute chunk，50 个 VLA 来源/phase=0；RTC 响应按原请求精确回填前缀，保留 float64 承诺目标 |
 | `invalidate` | session/generation 撤销旧结果；不停止模型进程 |
 
 远端不比较客户端单调时钟；安装期限由 Workbench 判断。请求保留观测快照的实际时间，不被网络入队或安装时间覆盖；提交前复制状态与图像，防止相机缓冲复用改变在途观测。跨连接延迟到达的旧控制消息被幂等确认，不降低服务端代次。重复、旧代次、过期、上下文/模型不匹配、形状或数值异常的结果不会安装。
 
 外部契约必须显式声明字段顺序、单位、相机角色、采样率、基座 `left_fr3_link0` 和 TCP 变换。XYZ 单位米；rot6d 是旋转矩阵前两列；**观测状态的夹爪是米，锚点和动作的夹爪是 `[0,1]` 开度比例**。LingBot 把 TCP 放入 55D 的 `[14:23]`、夹爪放入索引 28，缺失的右腕相机 mask 为 false。
 
-声明使用 `kind=external_deployment`、`model_backend=lingbot_v2`，允许 LingBot 原生统计，不要求冒充 Workbench SFT/RLT 的训练来源或分位数统计契约。服务计算 weights、training_config、processor、robot_mapping、norm_stats 的 SHA256，若声明已包含指纹则必须匹配；部署契约和推理设置参与模型身份。Workbench 保留物理动作校验与执行投影。此例外只适用于外部串行推理，不放宽 PI05 检查，也不把原生统计转换为 Workbench 训练统计。
+声明使用 `kind=external_deployment`、`model_backend=lingbot_v2`，允许 LingBot 原生统计，不要求冒充 Workbench SFT/RLT 的训练来源或分位数统计契约。服务计算 weights、training_config、processor、robot_mapping、norm_stats 的 SHA256，若声明已包含指纹则必须匹配；部署契约和推理设置参与模型身份。Workbench 保留物理动作校验与执行投影。此例外只适用于此次授权的外部 LingBot RTC/串行推理，不放宽 PI05 检查，也不把原生统计转换为 Workbench 训练统计。
 
 ## 启动 LingBot 服务
 
@@ -30,15 +30,26 @@ LingBot 仓库的 `deploy/workbench_server.py` 在自己的 Python 环境运行�
 ```bash
 cd /data0/sht/lingbot-vla-v2
 /data0/miniconda3/envs/lingbotvla/bin/python -m deploy.workbench_server \
-  --checkpoint /absolute/run/checkpoints/global_step_2000 \
+  --execution-mode rtc \
+  --checkpoint /absolute/rtc_run/checkpoints/global_step_2000 \
   --checkpoint-format qlora-dcp \
-  --training-config /absolute/run/lingbotvla_cli.yaml \
+  --training-config /absolute/rtc_run/lingbotvla_cli.yaml \
   --processor-path /data0/sht/lingbot-vla-v2/weights/Qwen3-VL-4B-Instruct \
   --robot-mapping /data0/sht/lingbot-vla-v2/configs/robot_configs/franka_single_left_10d.yaml \
   --norm-stats /data0/sht/lingbot-vla-v2/assets/norm_stats/franka_single_left_10d.json \
   --declaration /absolute/deployment.json \
   --tasks "Pick and place."
 ```
+
+默认 RTC 声明包含 `execution_mode=rtc` 和：
+
+```json
+{"rtc": {"prefix_conditioning": "clean_tokens_time_zero_training_mask", "max_prefix_steps": 15}}
+```
+
+`max_prefix_steps` 必须等于训练保存的 `rtc_max_delay`。RTC 启动要求 `use_rtc=true`、`0 < rtc_max_delay < 50`、`0 < rtc_prefix_probability <= 1`，不符合即失败。模式、前缀语义和训练上限参与模型身份。服务使用训练期 attention mask：承诺 token 时间为 0，不能关注未来噪声；每个去噪步骤仅更新未承诺后缀。前缀先按完整 50 步原生统计归一化再裁取，支持逐时间步统计；缺失模型槽位继续按训练规则补零。
+
+**旧串行部署迁移：** 服务显式加 `--execution-mode serial`，使用 `workbench_single_left.serial.example.json` 对应的声明（`execution_mode=serial`，无 `rtc` 字段）；客户端也须显式选择 `serial`。不自动降级，非 RTC 权重不能以默认 RTC 启动。
 
 使用训练保存的完整配置，显式固定 checkpoint，不跟踪正在训练目录的 latest。DCP 路径下须有 `model/.metadata` 和模型 distcp shards；不加载 optimizer。普通完整权重目录使用 `--checkpoint-format safetensors`，其训练配置须关闭 QLoRA。两种格式都严格恢复模型键/形状；DCP 还检查 dtype，任何缺失都报错，不回退到基础权重或部分加载。
 
@@ -54,14 +65,23 @@ source scripts/model_env.sh
 python -m vla.cli.ros_session --workflow deploy --arms single_left \
   --model-backend lingbot_v2 --policy-kind sft --mode vla \
   --policy-endpoint tcp://127.0.0.1:8007 --policy-timeout-s 5 \
+  --lingbot-execution-mode rtc --lingbot-inference-slots 14 --lingbot-guard-slots 1 \
   --task "Pick and place." --tasks "Pick and place." --check-only
 ```
 
 任务列表及顺序须与服务声明一致。无需 PI05 checkpoint/tokenizer。`--check-only` 查询模型协议、任务和图像尺寸，并离线检查现有 worker binding，不启动机器人、夹爪或相机。完整 TCP 变换匹配还在 collector 初始化时校验。现场部署使用同一入口，配置独立 dataset/hardware 路径并显式传入 `--execute`；本次开发不执行该步骤。
 
-Web 部署页选择 **LingBot V2 · 串行**，填写服务地址和超时（默认 5 秒），选择单左臂并配置相同任务。预检连接外部服务；开始会话不启动模型进程，关闭会话不关闭 LingBot。PI05 的模型路径草稿在切换后端时保留。后端参数由 CLI/Web SessionConfig 提供，控制/相机参数仍由原部署 YAML 提供。
+Web 部署页选择 **LingBot V2**，填写服务地址、模式（默认 RTC）、推理时隙（14）、保护时隙（1）和网络超时（默认 5 秒），选择单左臂并配置相同任务。预检连接外部服务；开始会话不启动模型进程，关闭会话不关闭 LingBot。PI05 的模型路径草稿在切换后端时保留。后端参数由 CLI/Web SessionConfig 提供，控制/相机参数仍由原部署 YAML 提供。
 
-## 串行状态与记录
+## RTC 时序与记录
+
+`lingbot_execution_mode=rtc`、`lingbot_inference_slots=14`、`lingbot_guard_slots=1` 只用于 LingBot。PI05 保持原预算和执行路径。30 Hz / stride=1 下，冻结前缀 `d=14+1=15`；预检要求 `d <= rtc_max_delay` 且 `50 >= 2d`。网络超时不延长 RTC 的 14 槽推理期限。
+
+首块准备时连续提交启用目标，来源为 `system_hold`。剩余队列不超过 `2d` 时，以真实观测时间和已投影队列前缀异步请求下一块，最多一个在途请求。旧队列在推理期间继续执行。提前返回的候选也只安装到固定 `replace_slot` 之后，保护前缀的目标和来源。全块动作、VLA 来源、phase、精确前缀及所有后缀投影通过后整体安装。超时、迟到、缺槽、断连、接管、存储阻塞或投影失败撤销代次，要求手动恢复；旧结果及重连都不能启用运动。
+
+沿用 recording schema 5，保存请求的实际观测时间、承诺前缀、期限、固定边界、预算、external deployment 和模型身份；`install` 事件另存实际安装时间和边界。初始 hold 不作为监督动作。外部原生统计不声明 Workbench SFT/RLT 训练合规性。
+
+## 显式串行模式
 
 正常循环为：新观测 → `waiting_inference`（保持目标）→ 完整 chunk 从索引 0 执行 → 最后目标提交 ACK → 新观测。推理等待与最终 ACK 等待均持续提交最后接受目标，首次使用启用目标；没有延迟裁头、提前预取或过期动作补发。网络工作线程不阻塞 30 Hz 回调。
 
@@ -77,8 +97,11 @@ VLA_PYTHON=/data0/miniconda3/envs/vla/bin/python bash scripts/test.sh \
   tests/rlt/test_franka_sft_server.py tests/rlt/test_franka_pi05_rtc_deployment.py -q
 bash scripts/test_ros.sh tests/ros -q
 # 固定状态 mock、独立 DDS domain；不得替换为硬件 plugin
-bash scripts/validate_ros_control.sh --duration 600 --serial
+bash scripts/validate_ros_control.sh --duration 600 --lingbot-rtc
+# 串行最终 ACK 门控另由单元测试回归
 VLA_PYTHON=/data0/miniconda3/envs/vla/bin/python python3 scripts/validate.py --checks model ros wheel
 ```
 
 跨仓库测试默认读取同级 `lingbot-vla-v2`，也可设置 `VLA_LINGBOT_ROOT`；没有该仓库会明确 skip。双方独立 codec 使用同一 JSON 报文样例，无生产运行时跨仓库导入。LingBot 的 CPU/DCP 和可选 GPU 测试见其 `deploy/WORKBENCH.md`。CPU/mock 验证不能证明真实 QLoRA 延迟、物理连续性、相机吞吐或任务成功。
+
+真实 RTC checkpoint 的完整服务/GPU 冒烟需显式指定 RTC 训练产物；无可用产物时列为未验证，不能用非 RTC 权重推理替代。

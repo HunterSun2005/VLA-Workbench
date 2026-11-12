@@ -416,10 +416,12 @@ class RolloutCollector(Node):
                                      else np.asarray(a.workspace_max) for a in config.arms]).tolist()}
         if config.model_backend == 'lingbot_v2':
             metadata['execution'] = {'version': 2, 'loop': 'single_30hz',
-                                     'execution_mode': 'serial', 'timeout_s': config.policy_timeout_s}
+                                     'execution_mode': config.lingbot_execution_mode, 'timeout_s': config.policy_timeout_s,
+                                     'inference_slots': config.lingbot_inference_slots,
+                                     'guard_slots': config.lingbot_guard_slots}
             metadata['recording_contract']['control_fingerprint'] = fingerprint({
                 'base': metadata['recording_contract']['control_fingerprint'],
-                'execution_mode': 'serial', 'serial_version': 2, 'timeout_s': config.policy_timeout_s})
+                **metadata['execution']})
         if self.policy_client is not None:
             if config.model_backend == 'lingbot_v2':
                 from vla_rollout_protocol.external import require_tool
@@ -461,13 +463,22 @@ class RolloutCollector(Node):
         if self.policy_client is not None:
             model = self.policy_client.contract
             executor_type = Executor
-            if config.model_backend == 'lingbot_v2':
+            if config.model_backend == 'lingbot_v2' and config.lingbot_execution_mode == 'serial':
                 from vla.control.serial_execution import SerialExecutionContract, SerialExecutor
                 execution = SerialExecutionContract(config.action_spec,
                     metadata['recording_contract']['control_fingerprint'],
                     metadata['recording_contract']['kinematics_fingerprint'],
                     metadata['recording_contract']['tool_fingerprint'], timeout_s=config.policy_timeout_s)
                 executor_type = SerialExecutor
+            elif config.model_backend == 'lingbot_v2':
+                from vla.control.lingbot_execution import LingBotRTCContract, LingBotRTCExecutor
+                execution = LingBotRTCContract(config.action_spec, {'vla': 50},
+                    metadata['recording_contract']['control_fingerprint'],
+                    metadata['recording_contract']['kinematics_fingerprint'],
+                    metadata['recording_contract']['tool_fingerprint'],
+                    inference_slots=config.lingbot_inference_slots, guard_slots=config.lingbot_guard_slots,
+                    rtc_max_delay=model['deployment_contract']['rtc']['max_prefix_steps'])
+                executor_type = LingBotRTCExecutor
             else:
                 horizons = {**model['plan_horizons'], 'auto': max(model['plan_horizons'].values())}
                 execution = ExecutionContract(config.action_spec, horizons,
@@ -507,7 +518,9 @@ class RolloutCollector(Node):
         contract = self.policy_client.contract
         if self.config.model_backend == 'lingbot_v2':
             from vla_rollout_protocol.external import validate_health
-            validate_health(contract, tasks=self.config.tasks, image_size=self.config.image_size)
+            validate_health(contract, tasks=self.config.tasks, image_size=self.config.image_size,
+                            execution_mode=self.config.lingbot_execution_mode,
+                            inference_slots=self.config.lingbot_inference_slots, guard_slots=self.config.lingbot_guard_slots)
         expected_cameras = [camera.feature_key for camera in self.config.cameras]
         expected_robot_type = (
             "franka_robotiq_dual" if len(self.config.arms) == 2 else "franka_robotiq"

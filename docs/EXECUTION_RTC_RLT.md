@@ -1,12 +1,12 @@
 # 统一执行、RTC 与 RLT 数据闭环
 
-PI05 主线在 `ros-dev` 维护；`lingbot-dev` 增加 [LingBot 外部串行部署](LINGBOT_DEPLOYMENT.md)。ROS 进程拥有动作时隙、执行队列和运动代次；模型服务只返回候选块。Web 与终端共用 `RolloutCollector`／`ControlCoordinator`。模型 Python 与 ROS Python 分离。当前提交的验证方式见 [自动化验收](ACCEPTANCE.md)，[历史归档](archive/EXECUTION_2026-11-07.md)保留初次验收快照。
+PI05 主线在 `ros-dev` 维护；`lingbot-dev` 增加 [LingBot 外部 RTC/串行部署](LINGBOT_DEPLOYMENT.md)。ROS 进程拥有动作时隙、执行队列和运动代次；模型服务只返回候选块。Web 与终端共用 `RolloutCollector`／`ControlCoordinator`。模型 Python 与 ROS Python 分离。当前提交的验证方式见 [自动化验收](ACCEPTANCE.md)，[历史归档](archive/EXECUTION_2026-11-07.md)保留初次验收快照。
 
 ## 协议与时间轴
 
 Unix socket 使用 NumPy 数组协议 v2，magic 为 `VLARLT02`。旧 magic、旧数据、旧模型部署契约、旧 Replay 和旧训练语义直接拒绝；不提供转换入口。官方基础权重可以初始化带新契约的新训练。
 
-外部 LingBot 服务通过 TCP 使用同一 wire v2，但采用明确的 `external_deployment` v2 物理契约及原生统计。此例外不绕过 PI05 训练来源校验。下面的 RTC 前缀/预算/裁头规则适用于 PI05；LingBot 的 `SerialExecutionContract` 始终空前缀、从索引 0 执行 50 步，原请求时间不改写，实际安装 slot/time 另写 `install_serial`。最终目标 ACK 后才重新采集观测，正常等待保持最后目标且不作为监督动作。
+外部 LingBot 服务通过 TCP 使用同一 wire v2，但采用明确的 `external_deployment` v2 物理契约及原生统计。此例外不绕过 PI05 训练来源校验。下面的 RTC 固定边界规则也用于 `LingBotRTCExecutor`（默认推理 14 + 保护 1 槽，须匹配 RTC 训练上限）；其 VLA-only、原生统计和精确前缀语义见部署文档。显式串行模式的 LingBot 的 `SerialExecutionContract` 始终空前缀、从索引 0 执行 50 步，原请求时间不改写，实际安装 slot/time 另写 `install_serial`。最终目标 ACK 后才重新采集观测，正常等待保持最后目标且不作为监督动作。
 
 | 契约 | 版本 |
 | --- | ---: |

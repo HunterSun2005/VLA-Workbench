@@ -50,12 +50,23 @@ def connect(endpoint, timeout_s):
 
 def validate_deployment(value, *, require_artifacts=True):
     expected = {"version": 2, "kind": "external_deployment", "model_backend": "lingbot_v2",
-                "execution_mode": "serial", "action_spec": ACTION_SPEC,
+                "action_spec": ACTION_SPEC,
                 "state_fields": STATE_FIELDS, "action_fields": ACTION_FIELDS, "units": UNITS,
                 "camera_keys": CAMERAS, "horizon": 50, "fps": 30, "frame_stride": 1,
                 "base_frame": "left_fr3_link0"}
     if not isinstance(value, dict) or any(value.get(k) != v for k, v in expected.items()):
         raise ValueError("incompatible external LingBot deployment contract")
+    mode = value.get("execution_mode")
+    if mode not in ("serial", "rtc"):
+        raise ValueError("invalid LingBot execution mode")
+    if mode == "rtc":
+        rtc = value.get("rtc")
+        if (not isinstance(rtc, dict) or set(rtc) != {"prefix_conditioning", "max_prefix_steps"}
+                or rtc["prefix_conditioning"] != "clean_tokens_time_zero_training_mask"
+                or type(rtc["max_prefix_steps"]) is not int or not 0 < rtc["max_prefix_steps"] < 50):
+            raise ValueError("invalid LingBot RTC prefix contract")
+    elif "rtc" in value:
+        raise ValueError("serial deployment cannot declare RTC")
     shapes = value.get("camera_shapes_hwc", {})
     if set(shapes) != set(CAMERAS) or any(
         not isinstance(shape, list) or len(shape) != 3 or shape[-1] != 3
@@ -90,20 +101,23 @@ def health_contract(deployment, tasks):
     if not tasks or any(not isinstance(t, str) or not t.strip() for t in tasks) or len(set(tasks)) != len(tasks):
         raise ValueError("nonempty unique task prompts are required")
     identity = digest(deployment)
-    return {"deployment_contract": deployment, "model_backend": "lingbot_v2", "execution_mode": "serial",
-            "ready": True, "capabilities": {"serial": True, "rtc": False, "actor": False, "online": False},
+    mode = deployment["execution_mode"]
+    rtc = mode == "rtc"
+    return {"deployment_contract": deployment, "model_backend": "lingbot_v2", "execution_mode": mode,
+            "ready": True, "capabilities": {"serial": mode == "serial", "rtc": rtc, "actor": False, "online": False},
             "model_version": identity, "checkpoint_fingerprint": identity,
             "state_dim": 10, "action_dim": 10, "state_names": STATE_FIELDS, "action_names": ACTION_FIELDS,
             "action_spec": ACTION_SPEC, "camera_keys": CAMERAS,
             "camera_shapes_hwc": deployment["camera_shapes_hwc"], "robot_type": "franka_robotiq",
             "fps": 30, "frame_stride": 1, "plan_horizons": {"vla": 50},
             "task": tasks[0], "tasks": list(tasks), "control_modes": ["vla"],
-            "control_mode_protocol": 1, "phase_mode": "vla", "rtc_enabled": False, "online_enabled": False,
+            "control_mode_protocol": 1, "phase_mode": "vla", "rtc_enabled": rtc, "online_enabled": False,
             "wire_action_representation": "absolute", "actions_stored_as": "absolute",
             "use_relative_actions": False}
 
 
-def validate_health(header, *, tasks=None, image_size=None):
+def validate_health(header, *, tasks=None, image_size=None, execution_mode=None,
+                    inference_slots=14, guard_slots=1):
     deployment = validate_deployment(header.get("deployment_contract"))
     expected = health_contract(deployment, header.get("tasks"))
     if any(header.get(k) != v for k, v in expected.items()):
@@ -112,7 +126,21 @@ def validate_health(header, *, tasks=None, image_size=None):
         raise ValueError("external service task prompts do not match this session")
     if image_size is not None and any(shape != [*image_size, 3] for shape in header["camera_shapes_hwc"].values()):
         raise ValueError("external service camera dimensions do not match this session")
+    if execution_mode is not None:
+        if header["execution_mode"] != execution_mode:
+            raise ValueError("LingBot execution mode mismatch; no automatic fallback")
+        if execution_mode == "rtc":
+            validate_rtc_budget(inference_slots, guard_slots, deployment["rtc"]["max_prefix_steps"])
     return header
+
+
+def validate_rtc_budget(inference_slots, guard_slots, max_prefix_steps=49):
+    if any(type(v) is not int or v < 1 for v in (inference_slots, guard_slots)):
+        raise ValueError("LingBot RTC budgets must be positive integer slots")
+    d = inference_slots + guard_slots
+    if d > max_prefix_steps or 50 < 2*d:
+        raise ValueError("LingBot RTC requires d <= rtc_max_delay and 50 >= 2d")
+    return d
 
 
 def require_tool(deployment, actual):

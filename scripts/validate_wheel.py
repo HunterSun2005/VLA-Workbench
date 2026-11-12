@@ -51,6 +51,7 @@ def main(argv=None):
 import sys
 from vla.control.execution import Executor, ExecutionContract
 from vla.control.serial_execution import SerialExecutor, SerialExecutionContract
+from vla.control.lingbot_execution import LingBotRTCExecutor, LingBotRTCContract
 from vla.control.plan_service import PlanGate
 from vla_rollout_protocol import protocol
 from vla_rollout_protocol.external import validate_deployment
