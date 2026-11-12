@@ -36,6 +36,8 @@ RLToken 使用 `vla-train-rl-token --policy.type=rlt_token`，指定新的 SFT c
 
 ## 部署与在线训练
 
+`lingbot-dev` 另支持独立 LingBot V2 串行服务：通过 `--model-backend lingbot_v2` 选择，CLI/Web 共用，完整 50 步执行后才请求下一块。它不支持 RTC/RLT/在线训练，不要求本地 PI05 模型资产。服务启动、外部物理契约及预检见 [LingBot 部署](LINGBOT_DEPLOYMENT.md)。以下默认 PI05 路线保持不变。
+
 ```bash
 # 离线配置检查，不启动硬件
 vla-deploy-franka-pi05-rtc --arms single_left --policy-path outputs/sft/task_run/pretrained_model \

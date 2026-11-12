@@ -4,6 +4,8 @@
 
 使用说明、契约、维护与验收入口统一见 [文档导航](docs/README.md)；旧版本记录见 [历史归档](docs/archive/README.md)。
 
+`lingbot-dev` 增加 [LingBot V2 外部串行部署](docs/LINGBOT_DEPLOYMENT.md)：独立模型服务返回完整 50 步 absolute chunk，CLI/Web 共用 ROS 闭环。默认 PI05/RTC 路线不变。
+
 ## Workbench 整体架构
 
 Workbench 分为 **数据采集 → 模型训练 → 部署推理** 三个部分。采集和部署共用一套 ROS 控制系统，训练通过数据集和 checkpoint 与两端衔接。部署回合经持久回放进入在线 RLT，更新后的 checkpoint 再用于推理。

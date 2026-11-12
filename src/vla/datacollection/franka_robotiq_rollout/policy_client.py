@@ -376,3 +376,35 @@ class AsyncPolicyClient:
             pass
         self._controls.put_nowait(None)
         self._control_thread.join(timeout=self.timeout_s+1)
+
+
+class ExternalPolicyClient(AsyncPolicyClient):
+    """Same single-flight/control separation over TCP; no model imports."""
+
+    def __init__(self, endpoint, timeout_s):
+        self.endpoint = endpoint
+        super().__init__('/unused-external-policy-socket', timeout_s)
+
+    def _connect(self):
+        from vla_rollout_protocol.external import connect
+        return connect(self.endpoint, self.timeout_s)
+
+    def _health_check(self):
+        from vla_rollout_protocol.external import validate_health
+        header = super()._health_check()
+        if header.get('request_id') != -1:
+            raise ValueError('external health response identity mismatch')
+        return validate_health(header)
+
+    def submit(self, *, state, images, **kwargs):
+        # The camera/observation owner may reuse its buffers on the next tick.
+        # Freeze the request before handing it to the networking thread.
+        return super().submit(state=np.array(state, dtype=np.float32, copy=True),
+                              images={key: np.array(value, copy=True) for key, value in images.items()},
+                              **kwargs)
+
+    def close(self):
+        if self._closed:
+            return
+        self.invalidate()
+        super().close()

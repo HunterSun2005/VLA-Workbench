@@ -50,8 +50,11 @@ def main(argv=None):
         '/usr/bin/python3': '''
 import sys
 from vla.control.execution import Executor, ExecutionContract
+from vla.control.serial_execution import SerialExecutor, SerialExecutionContract
 from vla.control.plan_service import PlanGate
 from vla_rollout_protocol import protocol
+from vla_rollout_protocol.external import validate_deployment
+from vla.deployment.external import inspect_service
 from vla.datacollection.franka_robotiq_single_left.auto_record import KeyboardEvents
 from vla.datacollection.franka_robotiq_dual.auto_record import main
 assert not any(name in sys.modules for name in ('torch', 'rclpy', 'pyrealsense2'))

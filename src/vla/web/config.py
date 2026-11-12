@@ -35,6 +35,9 @@ class SessionConfig:
     camera_serials: dict | None = None
     workspace_bounds: dict | None = None
     compliance: dict | None = None
+    model_backend: str = 'pi05'
+    policy_endpoint: str = 'tcp://127.0.0.1:8007'
+    policy_timeout_s: float = 5.0
 
     @classmethod
     def parse(cls, data):
@@ -43,7 +46,7 @@ class SessionConfig:
         result = cls(**data)
         for name in ('workflow','arms','source','schema','action_space','config_path','dataset_root','task',
                      'policy_kind','policy_path','tokenizer_path','handover_path','mode','device',
-                     'model_python','ros_workspace','ros_config','side_camera_serial'):
+                     'model_python','ros_workspace','ros_config','side_camera_serial','model_backend','policy_endpoint'):
             value = getattr(result, name)
             if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
                 raise ValueError(f'invalid {name}')
@@ -70,10 +73,24 @@ class SessionConfig:
             raise ValueError('task is required')
         if result.workflow == 'deploy' and result.policy_kind == 'sft' and result.mode != 'vla':
             raise ValueError('SFT supports VLA only')
+        result.validate_model_backend()
         result.validate_camera_serials()
         result.validate_workspace()
         result.validate_compliance()
         return result
+
+    def validate_model_backend(self):
+        if self.model_backend not in ('pi05', 'lingbot_v2'):
+            raise ValueError('unknown model backend')
+        if (isinstance(self.policy_timeout_s, bool) or not isinstance(self.policy_timeout_s, (int, float))
+                or not math.isfinite(self.policy_timeout_s) or not 0 < self.policy_timeout_s <= 300):
+            raise ValueError('policy_timeout_s must be in (0, 300]')
+        if self.model_backend == 'lingbot_v2':
+            from vla_rollout_protocol.external import endpoint_address
+            endpoint_address(self.policy_endpoint)
+            if (self.workflow != 'deploy' or self.arms != 'single_left' or self.action_space != 'tcp'
+                    or self.mode != 'vla' or self.policy_kind != 'sft' or self.handover_path):
+                raise ValueError('LingBot serial requires single-left TCP SFT/VLA deployment, without handover')
 
     def validate_compliance(self):
         if self.compliance is not None:
@@ -146,7 +163,8 @@ class SessionConfig:
     def default_dataset_root(self):
         if self.workflow == 'collect':
             return f'datasets/raw/franka_{self.arms}_{self.source}_{self.schema}' + ('_side' if self.side_camera_serial else '')
-        return f'datasets/rollouts/franka_{self.arms}_{self.policy_kind}'
+        suffix = 'lingbot_v2' if self.model_backend == 'lingbot_v2' else self.policy_kind
+        return f'datasets/rollouts/franka_{self.arms}_{suffix}'
 
     def dataset_path(self, root):
         value = self.dataset_root if self.dataset_root.strip() else self.default_dataset_root()
@@ -170,7 +188,7 @@ class SessionConfig:
     def modes(self, demo=False):
         if self.workflow != 'deploy':
             return []
-        if self.policy_kind == 'sft':
+        if self.model_backend == 'lingbot_v2' or self.policy_kind == 'sft':
             return ['vla']
         return ['vla','rlt'] + (['auto'] if demo or self.handover_path else [])
 
@@ -208,6 +226,7 @@ def collection_camera_serials(config, hardware=None):
 
 def preflight(config, *, demo=False, root=None):
     checks, errors = [], []
+    config.validate_model_backend()
     if config.action_space != 'tcp':
         errors.append('新会话仅支持 Franky TCP 动作空间')
     effective_compliance = None
@@ -231,8 +250,10 @@ def preflight(config, *, demo=False, root=None):
             checks.append(f'Franky Python: {python}; libfranka {binding["libfranka"]}; tracker/Affine passed')
     except (RuntimeError, ValueError, OSError) as error:
         errors.append(f'Franky 环境检查失败: {error}')
-    for label, path, directory in [('配置', str(config.default_config()), False),
-                                   ('模型 Python', config.model_python, False)]:
+    local_paths = [('配置', str(config.default_config()), False)]
+    if config.model_backend == 'pi05':
+        local_paths.append(('模型 Python', config.model_python, False))
+    for label, path, directory in local_paths:
         p = Path(path).expanduser()
         (checks if p.is_file() else errors).append(f'{label}: {p}')
     checks.append(f'数据集输出目录: {target}')
@@ -304,7 +325,18 @@ def preflight(config, *, demo=False, root=None):
                 checks.append('TCP 工作空间（各臂基座坐标系，米）: ' + json.dumps(bounds, ensure_ascii=False))
         except (OSError, ValueError, KeyError, TypeError) as error:
             errors.append(f'无法配置采集相机: {error}')
-    if config.workflow == 'deploy':
+    if config.workflow == 'deploy' and config.model_backend == 'lingbot_v2':
+        try:
+            from vla.deployment.external import inspect_service
+            from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
+            rollout = load_rollout_config(config.default_config())
+            health = inspect_service(config.policy_endpoint, config.policy_timeout_s,
+                                     tasks=config.tasks or (config.task,), image_size=rollout.image_size)
+            checks.append(f'LingBot 串行服务就绪: {config.policy_endpoint}; 模型 {health["model_version"]}')
+            checks.append('外部部署契约通过；实际 TCP 变换将在控制启用前核对')
+        except (OSError, EOFError, ValueError, TypeError, KeyError) as error:
+            errors.append(f'LingBot 服务检查失败: {error}')
+    if config.workflow == 'deploy' and config.model_backend == 'pi05':
         for label, value in [('模型', config.policy_path), ('tokenizer', config.tokenizer_path)]:
             if not value or not Path(value).expanduser().is_dir():
                 errors.append(f'{label} 必须为已有本地目录')

@@ -1,0 +1,131 @@
+{
+  "deployment": {
+    "version": 2,
+    "kind": "external_deployment",
+    "model_backend": "lingbot_v2",
+    "execution_mode": "serial",
+    "action_spec": {
+      "space": "tcp",
+      "arms": [
+        "left"
+      ],
+      "representation": "absolute",
+      "version": 1,
+      "anchor_rule": "chunk_start_raw_measured_named_fields",
+      "rotation": "columns_0_1_base_relative_left_multiply",
+      "storage": "absolute"
+    },
+    "state_fields": [
+      "tcp_position_x",
+      "tcp_position_y",
+      "tcp_position_z",
+      "tcp_rot6d_col0_x",
+      "tcp_rot6d_col0_y",
+      "tcp_rot6d_col0_z",
+      "tcp_rot6d_col1_x",
+      "tcp_rot6d_col1_y",
+      "tcp_rot6d_col1_z",
+      "gripper_position"
+    ],
+    "action_fields": [
+      "desired_tcp_position_x",
+      "desired_tcp_position_y",
+      "desired_tcp_position_z",
+      "desired_tcp_rot6d_col0_x",
+      "desired_tcp_rot6d_col0_y",
+      "desired_tcp_rot6d_col0_z",
+      "desired_tcp_rot6d_col1_x",
+      "desired_tcp_rot6d_col1_y",
+      "desired_tcp_rot6d_col1_z",
+      "gripper"
+    ],
+    "units": {
+      "translation": "metres",
+      "rotation": "matrix_columns_0_1",
+      "state_gripper": "metres",
+      "action_gripper": "open_fraction_0_1"
+    },
+    "camera_keys": [
+      "observation.images.base",
+      "observation.images.left_wrist"
+    ],
+    "horizon": 50,
+    "fps": 30,
+    "frame_stride": 1,
+    "base_frame": "left_fr3_link0",
+    "camera_shapes_hwc": {
+      "observation.images.base": [
+        224,
+        224,
+        3
+      ],
+      "observation.images.left_wrist": [
+        224,
+        224,
+        3
+      ]
+    },
+    "tool_definition": {
+      "left": {
+        "base": "left_fr3_link0",
+        "tip": "left_fr3_link8",
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          [
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      }
+    },
+    "artifacts": {
+      "weights": "0000000000000000000000000000000000000000000000000000000000000000",
+      "training_config": "0000000000000000000000000000000000000000000000000000000000000000",
+      "processor": "0000000000000000000000000000000000000000000000000000000000000000",
+      "robot_mapping": "0000000000000000000000000000000000000000000000000000000000000000",
+      "norm_stats": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "tasks": [
+    "Pick and place."
+  ],
+  "state": [
+    0.4,
+    0.0,
+    0.3,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.04
+  ],
+  "anchor": [
+    0.4,
+    0.0,
+    0.3,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.5
+  ]
+}

@@ -10,6 +10,7 @@
 | --- | --- |
 | 采集、SFT／RLT 训练、部署、暂停与保存恢复 | [工作流](WORKFLOWS.md) |
 | Web 会话、接管、监控和姿态库 | [Web 面板](WEB_PANEL.md) |
+| 独立 LingBot V2 服务、外部契约与串行推理 | [LingBot 部署](LINGBOT_DEPLOYMENT.md) |
 | 离线预览、整回合筛选与字段／动作空间导出 | [数据处理](DATA_PROCESSING.md) |
 | 诊断锁占用、处理废弃 Git index 锁 | [锁文件](LOCKS.md) |
 | 运行当前提交的验收并读取报告 | [自动化验收](ACCEPTANCE.md) |

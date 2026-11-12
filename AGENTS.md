@@ -2,7 +2,7 @@
 
 ## Scope and Git
 
-- Maintain this independent repository on `ros-dev`. Inspect the current branch and working tree before editing; preserve unrelated changes and existing tasks.
+- Maintain the original PI05 line on `ros-dev`; the authorized external LingBot serial integration lives on `lingbot-dev`. Inspect the current branch and working tree before editing; preserve unrelated changes and existing tasks.
 - Keep commits local. Do not add/change remotes, fetch, push, publish, or merge into `main` unless explicitly requested. Existing remote configuration is not authorization to use it.
 - Read-only retrieval of official Python dependencies and exact upstream revisions declared in `ros_ws/dependencies.repos` is allowed. Do not modify migration source repositories, third-party checkouts, or existing environments.
 - Serialize Git mutations (`add`, `commit`, checkout, reset, etc.); never run them concurrently against the same Git directory. For status polling use `git --no-optional-locks status --short` to avoid unnecessary index writes. Do not terminate another process to free a lock.
@@ -21,6 +21,8 @@
 - Preserve manual recovery after queue exhaustion, storage blockage or faults. Late inference results, reconnects and successful storage recovery must not re-enable motion.
 - Keep model inference and control messages independent. Generation changes revoke old results; committed prefixes and installed Actor suffixes must remain protected.
 - Accept only current contracts: wire/model/statistics v2, recording schema 5, training semantics/online run v3, Replay v4. Do not add old asset/protocol conversion or fallback paths. Official base weights may initialize new training.
+- Explicit exception on `lingbot-dev`: external LingBot serial inference uses its own version-2 external deployment contract and native model statistics. Validate physical I/O, TCP, sampling and artifact identities; do not claim compliance with Workbench SFT/RLT training contracts or fabricate training provenance. PI05 validation is unchanged. Normal serial inference holds are planned states; faults/timeouts still require manual recovery.
+- This integration may add the matching service in `/data0/sht/lingbot-vla-v2`; preserve its existing training changes and environments.
 - Preserve execution provenance, actual timestamps, anchors and validity masks end to end. Control callbacks must not encode video or perform disk writes/fsync; storage failures preserve uncommitted records for retry.
 - See `docs/EXECUTION_RTC_RLT.md` for protocol, state transitions, loss/reward semantics and acceptance limits; `docs/ROS_ACTION_CONTRACT.md` and `docs/DATA_COLLECTION_FORMAT.md` define action/data requirements.
 

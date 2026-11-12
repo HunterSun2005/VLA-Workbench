@@ -19,6 +19,7 @@ class ExecutionState(str, Enum):
     HUMAN = 'human'
     POLICY = 'policy'
     WAITING = 'waiting_resume'
+    WAITING_INFERENCE = 'waiting_inference'
     STORAGE = 'storage_blocked'
     FAULT = 'fault'
 

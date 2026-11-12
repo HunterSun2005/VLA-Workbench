@@ -49,6 +49,9 @@ def main(argv=None):
     parser.add_argument('--mode', choices=['vla', 'rlt', 'auto'], default='vla')
     parser.add_argument('--tokenizer-path', default='')
     parser.add_argument('--model-python', default=os.environ.get('VLA_PYTHON', sys.executable))
+    parser.add_argument('--model-backend', choices=['pi05', 'lingbot_v2'], default='pi05')
+    parser.add_argument('--policy-endpoint', default='tcp://127.0.0.1:8007')
+    parser.add_argument('--policy-timeout-s', type=float, default=5.0)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--execute', action='store_true')
     mode.add_argument('--check-only', action='store_true')
@@ -61,7 +64,8 @@ def main(argv=None):
         action_space=args.action_space or 'tcp', config_path=str(args.config or ''),
         dataset_root=str(args.dataset_root or ''), task=args.task or "", resume=args.resume, side_camera_serial=args.side_camera_serial,
         policy_path=args.policy_path, handover_path=args.handover_path, policy_kind=args.policy_kind, mode=args.mode, tokenizer_path=args.tokenizer_path,
-        model_python=args.model_python, ros_workspace=str(root/'ros_ws'), ros_config=str(args.hardware_config or ''))
+        model_python=args.model_python, ros_workspace=str(root/'ros_ws'), ros_config=str(args.hardware_config or ''),
+        model_backend=args.model_backend, policy_endpoint=args.policy_endpoint, policy_timeout_s=args.policy_timeout_s)
     rollout = load_rollout_config(config.default_config())
     arms = 'dual' if len(rollout.arms) == 2 else 'single_left'
     tasks = tuple(dict.fromkeys(args.tasks or rollout.tasks))
@@ -71,7 +75,15 @@ def main(argv=None):
                      source=args.source or rollout.input_source,
                      action_space=args.action_space or rollout.action_space,
                      dataset_root=str(args.dataset_root or (rollout.dataset_root if args.config else '')))
-    if config.workflow == 'deploy' and config.policy_path:
+    config.validate_model_backend()
+    if config.model_backend == 'lingbot_v2':
+        if args.online:
+            parser.error('LingBot serial does not support online training')
+        from vla.deployment.external import inspect_service
+        health = inspect_service(config.policy_endpoint, config.policy_timeout_s,
+                                 tasks=config.tasks, image_size=rollout.image_size)
+        print(f'LingBot serial service ready: {config.policy_endpoint}; model={health["model_version"]}')
+    if config.workflow == 'deploy' and config.model_backend == 'pi05' and config.policy_path:
         from vla.actions import ActionSpec
         from vla.actions.metadata import checkpoint_contract
         spec = ActionSpec.from_dict(checkpoint_contract(config.policy_path)['action_spec'])
@@ -133,6 +145,7 @@ def main(argv=None):
         return SimpleNamespace(images={k:v[1] for k,v in frames.items()}, timestamps={k:v[0] for k,v in frames.items()})
     preview=CameraPreview(directory,snapshot,enabled=not args.no_preview).start()
     next_status = 0.
+    last_external_status = None
     try:
         while True:
             backend.tick()
@@ -148,6 +161,11 @@ def main(argv=None):
                 preview.update_status({**status, 'mode':status['state'], 'critical':'critical' if status.get('critical') else 'normal'})
                 console_status(f"{status['state']} episode={status['episode']} frames={status['frames']} "
                                f"controller={status['controller_state']}")
+                if config.model_backend == 'lingbot_v2':
+                    external_status = (status.get('execution_state'), status.get('error'))
+                    if external_status != last_external_status:
+                        print(f'LingBot {external_status[0]}; error={external_status[1] or "none"}', flush=True)
+                        last_external_status = external_status
                 next_status = time.monotonic()+1
             time.sleep(.005)
     finally:

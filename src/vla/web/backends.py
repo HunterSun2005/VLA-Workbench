@@ -56,6 +56,13 @@ class BaseBackend:
 
     def start_policy(self, rollout):
         config = self.config
+        if config.model_backend == 'lingbot_v2':
+            from vla.deployment.external import inspect_service
+            config.validate_model_backend()
+            inspect_service(config.policy_endpoint, config.policy_timeout_s,
+                            tasks=rollout.tasks, image_size=rollout.image_size)
+            return replace(rollout, model_backend='lingbot_v2', policy_endpoint=config.policy_endpoint,
+                           policy_timeout_s=config.policy_timeout_s)
         socket_path = self.directory/'policy.sock'
         args = ['-m','vla.web.policy_server','--kind',config.policy_kind,
                 '--policy-path',config.policy_path,'--tokenizer-path',config.tokenizer_path,
@@ -94,7 +101,7 @@ class BaseBackend:
             raise ValueError('arm configuration mismatch')
         c = self.config.apply_rollout_compliance(self.config.apply_rollout_workspace(c))
         space = self.config.action_space
-        if self.config.workflow == 'deploy' and self.config.policy_path:
+        if self.config.workflow == 'deploy' and self.config.model_backend == 'pi05' and self.config.policy_path:
             from vla.actions.metadata import checkpoint_contract
             space = checkpoint_contract(self.config.policy_path)['action_spec']['space']
         if c.backend == 'franky' and space != 'tcp':
@@ -316,7 +323,7 @@ class ROSBackend(BaseBackend):
         if rollout is not None and config.workflow == 'collect':
             from vla.datacollection.franka_robotiq_rollout.config import CameraConfig
             rollout = replace(rollout, cameras=tuple(CameraConfig(role, serial) for role, serial in self.camera_serials.items()))
-        if config.workflow == 'deploy' and config.policy_path:
+        if config.workflow == 'deploy' and (config.policy_path or config.model_backend == 'lingbot_v2'):
             rollout = self.start_policy(rollout)
         self._worker_client = None
         self._start_franky_worker(rollout)

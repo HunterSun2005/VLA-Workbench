@@ -132,6 +132,8 @@ class RolloutConfig:
     tasks: tuple[str, ...] = ()
     inference_slots: int = 4
     installation_guard_slots: int = 1
+    model_backend: str = 'pi05'
+    policy_endpoint: str = ''
 
     @property
     def policy_state_dim(self) -> int:

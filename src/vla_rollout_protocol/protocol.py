@@ -41,7 +41,7 @@ def send_packet(
         array = np.ascontiguousarray(value)
         if array.dtype.hasobject:
             raise ValueError(f"object arrays are not supported: {name}")
-        raw = memoryview(array).cast("B")
+        raw = memoryview(array).cast("B") if array.size else memoryview(b"")
         descriptors.append(
             {
                 "name": name,

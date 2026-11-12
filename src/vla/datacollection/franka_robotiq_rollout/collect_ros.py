@@ -271,7 +271,13 @@ class RolloutCollector(Node):
 
         self.policy_client = None
         if not demonstration:
-            self.policy_client = AsyncPolicyClient(config.socket_path, config.policy_timeout_s)
+            if config.model_backend == 'lingbot_v2':
+                from .policy_client import ExternalPolicyClient
+                self.policy_client = ExternalPolicyClient(config.policy_endpoint, config.policy_timeout_s)
+            elif config.model_backend == 'pi05':
+                self.policy_client = AsyncPolicyClient(config.socket_path, config.policy_timeout_s)
+            else:
+                raise ValueError('unknown policy model backend')
             self._validate_policy_contract()
         self.require_online = bool(self.policy_client and self.policy_client.contract.get('online_enabled'))
         self._full_episode = bool(self.require_online and self.policy_client.contract.get('online_full_episode'))
@@ -389,11 +395,24 @@ class RolloutCollector(Node):
                                      else np.asarray(a.workspace_min) for a in config.arms]).tolist(),
             'upper': np.concatenate([self.servos[a.name].model.upper_limits if config.action_space == 'joint'
                                      else np.asarray(a.workspace_max) for a in config.arms]).tolist()}
+        if config.model_backend == 'lingbot_v2':
+            metadata['execution'] = {'version': 2, 'loop': 'single_30hz',
+                                     'execution_mode': 'serial', 'timeout_s': config.policy_timeout_s}
+            metadata['recording_contract']['control_fingerprint'] = fingerprint({
+                'base': metadata['recording_contract']['control_fingerprint'],
+                'execution_mode': 'serial', 'serial_version': 2, 'timeout_s': config.policy_timeout_s})
         if self.policy_client is not None:
-            from vla.actions.metadata import require_recording_source
-            require_recording_source(self.policy_client.contract['action_contract'], metadata['recording_contract'])
-            if self.policy_client.contract['action_contract']['execution_projection'] != metadata['execution_projection']:
-                raise ValueError('model/deployment execution projection mismatch')
+            if config.model_backend == 'lingbot_v2':
+                from vla_rollout_protocol.external import require_tool
+                deployment = self.policy_client.contract['deployment_contract']
+                require_tool(deployment, tool)
+                metadata['external_deployment_contract'] = deployment
+                metadata['external_model_version'] = self.policy_client.contract['model_version']
+            else:
+                from vla.actions.metadata import require_recording_source
+                require_recording_source(self.policy_client.contract['action_contract'], metadata['recording_contract'])
+                if self.policy_client.contract['action_contract']['execution_projection'] != metadata['execution_projection']:
+                    raise ValueError('model/deployment execution projection mismatch')
         self._effective_metadata = metadata
         self.writer = V30DatasetWriter(
             config.dataset_root,
@@ -420,13 +439,22 @@ class RolloutCollector(Node):
         self._waiting_resume = False
         if self.policy_client is not None:
             model = self.policy_client.contract
-            horizons = {**model['plan_horizons'], 'auto': max(model['plan_horizons'].values())}
-            execution = ExecutionContract(config.action_spec, horizons,
-                metadata['recording_contract']['control_fingerprint'],
-                metadata['recording_contract']['kinematics_fingerprint'],
-                metadata['recording_contract']['tool_fingerprint'], frame_stride=model['frame_stride'],
-                inference_slots=config.inference_slots, guard_slots=config.installation_guard_slots)
-            self._execution = Executor(execution, session_id=uuid.uuid4().hex,
+            executor_type = Executor
+            if config.model_backend == 'lingbot_v2':
+                from vla.control.serial_execution import SerialExecutionContract, SerialExecutor
+                execution = SerialExecutionContract(config.action_spec,
+                    metadata['recording_contract']['control_fingerprint'],
+                    metadata['recording_contract']['kinematics_fingerprint'],
+                    metadata['recording_contract']['tool_fingerprint'], timeout_s=config.policy_timeout_s)
+                executor_type = SerialExecutor
+            else:
+                horizons = {**model['plan_horizons'], 'auto': max(model['plan_horizons'].values())}
+                execution = ExecutionContract(config.action_spec, horizons,
+                    metadata['recording_contract']['control_fingerprint'],
+                    metadata['recording_contract']['kinematics_fingerprint'],
+                    metadata['recording_contract']['tool_fingerprint'], frame_stride=model['frame_stride'],
+                    inference_slots=config.inference_slots, guard_slots=config.installation_guard_slots)
+            self._execution = executor_type(execution, session_id=uuid.uuid4().hex,
                                      model_version=model.get('model_version', model['checkpoint_fingerprint']), epoch_ns=epoch,
                                      project=self.coordinator.project)
             self._slot_clock = self._execution.control_clock
@@ -454,6 +482,9 @@ class RolloutCollector(Node):
 
     def _validate_policy_contract(self) -> None:
         contract = self.policy_client.contract
+        if self.config.model_backend == 'lingbot_v2':
+            from vla_rollout_protocol.external import validate_health
+            validate_health(contract, tasks=self.config.tasks, image_size=self.config.image_size)
         expected_cameras = [camera.feature_key for camera in self.config.cameras]
         expected_robot_type = (
             "franka_robotiq_dual" if len(self.config.arms) == 2 else "franka_robotiq"
@@ -1008,6 +1039,9 @@ class RolloutCollector(Node):
                 or result.get('sequence') != pending['sequence'] or result.get('slot_id') != pending['slot_id']):
             raise RuntimeError(result.get('error') or result.get('fault') or 'target acknowledgement rejected')
         self._last_target_applied_ns = result['applied_at_ns']
+        from vla.control.serial_execution import SerialExecutor
+        if isinstance(getattr(self, '_execution', None), SerialExecutor):
+            self._execution.acknowledge(pending.get('context', {}).get('execution'))
         if self._journal is not None:
             self._journal_event(('target_applied', pending['generation'], pending['sequence'],
                                  pending['slot_id'], result['applied_at_ns'], result['references']))
@@ -1199,7 +1233,11 @@ class RolloutCollector(Node):
         if self.policy_client is None:
             return
         result = self.policy_client.poll_latest()
-        if result is not None and self._execution.install(result, time.monotonic_ns()):
+        if result is None:
+            return
+        from vla.control.serial_execution import SerialExecutor
+        options = {'start_slot': self._slot_id} if isinstance(self._execution, SerialExecutor) else {}
+        if self._execution.install(result, time.monotonic_ns(), **options):
             self._web_switch_pending = False
             self._plan_latency_ms = (time.monotonic_ns()-result.request.observed_at_ns)/1e6
 
@@ -1499,12 +1537,15 @@ class RolloutCollector(Node):
         self,
         raw_state: np.ndarray,
         images: dict[str, np.ndarray],
+        *, observed_at_ns=None,
     ) -> None:
         if self._intervention or self._waiting_resume or self.coordinator.mode != 'active':
             return
         mode = self.policy_client.control_mode or ('rlt' if self._phase == 'rl' else 'vla')
         plan = self._execution.request(slot=self._slot_id, anchor=self._raw_anchor(raw_state),
-                                     observation_id=self._slot_id, observed_at_ns=time.monotonic_ns(), policy=mode)
+                                     observation_id=self._slot_id,
+                                     observed_at_ns=(time.monotonic_ns() if observed_at_ns is None else observed_at_ns),
+                                     policy=mode)
         if plan is None:
             return
         submitted = self.policy_client.submit(
@@ -1731,7 +1772,10 @@ class RolloutCollector(Node):
                                                 generation=self.coordinator.generation, slot_id=self._slot_id)
                 else:
                     if record_images:
-                        self._submit_policy(raw_state, images)
+                        if getattr(self.config, 'model_backend', 'pi05') == 'lingbot_v2':
+                            self._submit_policy(raw_state, images, observed_at_ns=now_ns)
+                        else:
+                            self._submit_policy(raw_state, images)
                     self._publish_policy(values, 1/self.config.fps)
                 if self.coordinator.command_id != previous:
                     self._track_control(dt)
@@ -2179,6 +2223,17 @@ class RolloutCollector(Node):
                 return True
             if self._recording:
                 raise RuntimeError('finish storage cleanup before recovery')
+            if getattr(self.config, 'model_backend', 'pi05') == 'lingbot_v2':
+                from .policy_client import ExternalPolicyClient
+                old = self.policy_client
+                replacement = ExternalPolicyClient(self.config.policy_endpoint, self.config.policy_timeout_s)
+                if replacement.contract != old.contract:
+                    replacement.close()
+                    raise RuntimeError('external model changed; start a new session')
+                replacement.set_control_mode('vla')
+                replacement._next_request_id = old._next_request_id
+                old.close()
+                self.policy_client = replacement
             if self.require_online:
                 self.policy_client.recover_online()
             if self._worker_client is not None:

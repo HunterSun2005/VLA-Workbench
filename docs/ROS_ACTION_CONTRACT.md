@@ -23,6 +23,8 @@
 
 ## 控制与记录
 
+`lingbot-dev` 的外部串行部署使用明确标识的 external deployment v2，允许 LingBot 原生统计。服务必须声明物理单位、10D 字段顺序、基座/TCP、相机角色、50 步/30 Hz 采样及资产指纹；Workbench 校验这些字段并保留执行投影。此例外不生成训练来源，不放宽 PI05/SFT/RLT 的模型统计契约。记录仍为 schema 5，等待保持标为 `system_hold` 并排除监督，原观测时间与实际安装时间分别保存。详见 [LingBot 部署](LINGBOT_DEPLOYMENT.md)。
+
 Franky 路线只接受绝对 TCP 目标。GELLO 通过 FK、Gamepad 和策略都更新同一个 TCP 参考位姿，worker 使用 `CartesianImpedanceTracker.set_target()` 持续跟踪；Gamepad 松杆后保持最后参考位姿。新会话拒绝旧 ROS backend、关节动作空间和旧 tracking rate／IK 调参字段；CartesianServo 只供隔离的历史验证工具使用。
 
 Franky 默认阻抗参数为平移刚度 1000 N/m、旋转刚度 50 Nm/rad、平移误差裁剪 0.008 m、旋转误差裁剪 0.04 rad、单次目标步长 0.03 m/0.10 rad。Web 支持启动前覆盖初值和运行中调参。参数草稿与 worker 确认值分离，仅实际变化的裁剪、力矩变化率和增益时间常数会停止并重建 tracker；刚度调用 `set_gains`，不变参数不重启控制。刚度上限为 1200 N/m、80 Nm/rad，裁剪下限为 0.005 m、0.02 rad。

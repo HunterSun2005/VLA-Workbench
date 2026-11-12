@@ -250,6 +250,24 @@ def phase(browser, name):
     browser.wait(f'document.querySelector("#livePanel").dataset.phase==={json.dumps(name)}')
 
 
+def test_lingbot_selection_preserves_pi05_fields_and_sends_remote_config(session_browser):
+    browser, scenario, _ = session_browser
+    browser.wait("document.getElementById('livePanel').dataset.phase==='configure'")
+    browser.click('#deployTab')
+    browser.fill('[name="policy_path"]', '/local/pi05')
+    browser.fill('[name="tokenizer_path"]', '/local/tokenizer')
+    browser.fill('[name="model_backend"]', 'lingbot_v2')
+    assert browser.js("return !document.getElementById('externalModelFields').hidden && document.getElementById('localModelFields').hidden")
+    browser.fill('[name="policy_endpoint"]', 'tcp://127.0.0.1:8007')
+    value = browser.js('return config()')
+    assert value['model_backend'] == 'lingbot_v2' and value['policy_kind'] == 'sft'
+    assert value['policy_path'] == '' and value['tokenizer_path'] == '' and value['policy_timeout_s'] == 5
+    browser.fill('[name="model_backend"]', 'pi05')
+    value = browser.js('return config()')
+    assert value['policy_path'] == '/local/pi05' and value['tokenizer_path'] == '/local/tokenizer'
+    assert browser.js("return document.getElementById('externalModelFields').hidden && !document.getElementById('localModelFields').hidden")
+
+
 def test_session_layout_and_lifecycle(session_browser):
     b, scenario, root = session_browser
     assert b.js('return document.querySelector("#configHost").hidden')

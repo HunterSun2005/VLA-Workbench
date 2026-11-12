@@ -40,7 +40,7 @@ class SessionStage {
   this.id=id;this.saved=saved||this.saved;this.configKey=JSON.stringify(this.saved);
   if(!this.saved)return;
   const c=this.saved,fields=[['任务',c.task],['机械臂',c.arms==='dual'?'双臂 · 左 + 右':'单左臂'],['输入源',c.source==='gello'?'GELLO':'Gamepad'],['输出位置',c.dataset_root]];
-  if(c.workflow==='deploy')fields.push(['部署模型',`${c.policy_kind==='sft'?'PI0.5 SFT':'RLT'} · ${c.policy_path||'未指定'}`]);
+  if(c.workflow==='deploy')fields.push(['部署模型',c.model_backend==='lingbot_v2'?`LingBot V2 串行 · ${c.policy_endpoint}`:`${c.policy_kind==='sft'?'PI0.5 SFT':'RLT'} · ${c.policy_path||'未指定'}`]);
   const summary=document.getElementById('summaryFields');summary.replaceChildren();
   for(const [label,value] of fields){const pair=document.createElement('div'),term=document.createElement('dt'),description=document.createElement('dd');term.textContent=label;description.textContent=value||'—';pair.append(term,description);summary.append(pair);}
  }

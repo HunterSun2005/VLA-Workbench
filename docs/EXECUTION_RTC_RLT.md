@@ -1,10 +1,12 @@
 # 统一执行、RTC 与 RLT 数据闭环
 
-实现在 `ros-dev` 维护。ROS 进程拥有动作时隙、执行队列和运动代次；模型服务只返回候选块。Web 与终端共用 `RolloutCollector`／`ControlCoordinator`。模型 Python 与 ROS Python 分离。当前提交的验证方式见 [自动化验收](ACCEPTANCE.md)，[历史归档](archive/EXECUTION_2026-11-07.md)保留初次验收快照。
+PI05 主线在 `ros-dev` 维护；`lingbot-dev` 增加 [LingBot 外部串行部署](LINGBOT_DEPLOYMENT.md)。ROS 进程拥有动作时隙、执行队列和运动代次；模型服务只返回候选块。Web 与终端共用 `RolloutCollector`／`ControlCoordinator`。模型 Python 与 ROS Python 分离。当前提交的验证方式见 [自动化验收](ACCEPTANCE.md)，[历史归档](archive/EXECUTION_2026-11-07.md)保留初次验收快照。
 
 ## 协议与时间轴
 
 Unix socket 使用 NumPy 数组协议 v2，magic 为 `VLARLT02`。旧 magic、旧数据、旧模型部署契约、旧 Replay 和旧训练语义直接拒绝；不提供转换入口。官方基础权重可以初始化带新契约的新训练。
+
+外部 LingBot 服务通过 TCP 使用同一 wire v2，但采用明确的 `external_deployment` v2 物理契约及原生统计。此例外不绕过 PI05 训练来源校验。下面的 RTC 前缀/预算/裁头规则适用于 PI05；LingBot 的 `SerialExecutionContract` 始终空前缀、从索引 0 执行 50 步，原请求时间不改写，实际安装 slot/time 另写 `install_serial`。最终目标 ACK 后才重新采集观测，正常等待保持最后目标且不作为监督动作。
 
 | 契约 | 版本 |
 | --- | ---: |
@@ -36,6 +38,7 @@ Unix socket 使用 NumPy 数组协议 v2，magic 为 `VLARLT02`。旧 magic、�
 | --- | --- | --- |
 | standby | 初始化、回合结束、正常停止 | 用户启用并完成复位确认 |
 | preparing | 用户启用／手动恢复，准备首块 | 已安装有效后缀到达执行边界 |
+| waiting_inference | LingBot 串行启用或末动作 ACK 后的正常等待 | 当前有效完整 chunk 安装；超时/断连转入人工恢复 |
 | human | 人工接管／人工控制 | 用户显式归还；Web 点击具体策略即请求归还，底层仅设置策略模式的接口仍保留人工控制 |
 | policy | 执行已安装策略动作 | 接管、暂停、结束、耗尽或故障 |
 | waiting_resume | 策略队列耗尽 | 明确手动恢复；迟到结果不能退出此状态 |

@@ -197,6 +197,10 @@ class Session:
             self.c.transition(fault=True, reason=f'{arm} watchdog')
         else:
             self.c.acknowledge(arm, generation, command_id, message.position, now)
+            if arm == 'left' and hasattr(self, 'serial_pending'):
+                record = self.serial_pending.pop((generation, command_id), None)
+                if record is not None:
+                    self.serial.acknowledge(record)
 
     def publish(self, arm, q, gripper, generation, command_id):
         if arm in self.drop_publish:
@@ -239,7 +243,15 @@ class Session:
                                 p, r = self.servos[arm].forward_tcp(m.joints, m.tool_position, m.tool_rotation)
                                 tcp[arm] = (p + tcp_offset, r, .45)
                             target = self.c.gamepad_target(tcp, 1/30)
+                        serial_record = None
+                        if record and hasattr(self, 'serial'):
+                            measured = self.c.gello_target({a: self.last_seen[a][1] for a in self.models},
+                                                          {a: .45 for a in self.models})
+                            serial_record = self.serial.step(slot, now_ns, measured[:10])
+                            target = np.r_[serial_record.accepted, measured[10:]]
                         accepted = self.c.accept(target, source=self.c.owner, generation=self.c.generation, slot_id=slot)
+                        if serial_record is not None:
+                            self.serial_pending[(accepted.generation, accepted.command_id)] = serial_record
                         if record:
                             self.accept_times.append(accepted.accepted_at_ns)
                     if slot is not None:
@@ -364,6 +376,7 @@ def main():
         raise RuntimeError('validation requires Python assertions; unset PYTHONOPTIMIZE')
     parser = argparse.ArgumentParser()
     parser.add_argument('--duration', type=float, default=600)
+    parser.add_argument('--serial', action='store_true', help='Exercise serial single-left chunks; right mock arm holds')
     args = parser.parse_args()
     if not 0 < args.duration <= 900: parser.error('duration must be in (0,900]')
     directory = Path(tempfile.mkdtemp(prefix='vla-ros-control-'))
@@ -378,6 +391,15 @@ def main():
         session = Session(directory); session.initialize(); session.configure()
         report['checks'] = session.faults()
         print('Fault checks passed:', report['checks'], flush=True)
+        if args.serial:
+            from serial_validation import SerialValidation
+            session.c.transition()
+            session.wait(lambda: session.c.mode == 'standby')
+            session.coordinator('tcp')
+            measured = session.c.gello_target({a: session.last_seen[a][1] for a in session.models},
+                                             {a: .45 for a in session.models})
+            session.serial = SerialValidation(session.slot_clock.epoch_ns, measured[:10])
+            session.serial_pending = {}
         session.sent.clear(); session.received.clear(); session.delays.clear()
         start = time.monotonic_ns(); report['start_ns'] = start
         report['resource_samples'] = [{'elapsed_s':0., **session.resources()}]
@@ -390,6 +412,10 @@ def main():
         end = time.monotonic_ns(); report['end_ns'] = end
         report['accept'] = intervals(session.accept_times)
         report['tracking'] = intervals(session.tick_times)
+        if args.serial:
+            report['serial'] = session.serial.report()
+            assert report['serial']['completed_chunks'] > 0 and report['serial']['hold_slots'] > 0
+            report['checks'].append('serial full chunks, inference holds and final diagnostic ACK gating')
         report['first_diagnostic_delay_ms'] = distribution(session.delays)
         skew=[]
         for arm,gen,ident in session.received:
@@ -406,6 +432,8 @@ def main():
         report['error'] = f'{type(error).__name__}: {error}'
         raise
     finally:
+        if session and hasattr(session, 'serial'):
+            session.serial.close()
         if session: session.close()
         rclpy.try_shutdown(); lease.close()
         for arm in ('left','right'):
