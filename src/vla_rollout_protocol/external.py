@@ -93,6 +93,24 @@ def validate_deployment(value, *, require_artifacts=True):
             for v in artifacts.values()
         ):
             raise ValueError("external deployment requires all artifact SHA256 fingerprints")
+    if "model_frame_adapter" in value:
+        adapter = value["model_frame_adapter"]
+        if (not isinstance(adapter, dict)
+                or set(adapter) != {"kind", "model_tool_definition", "weights_sha256"}
+                or adapter["kind"] != "same_origin_tcp_rotation_v1"):
+            raise ValueError("invalid external model frame adapter")
+        weights = adapter["weights_sha256"]
+        artifacts = value.get("artifacts")
+        if (not isinstance(weights, str) or len(weights) != 64
+                or any(c not in "0123456789abcdef" for c in weights)
+                or not isinstance(artifacts, dict) or artifacts.get("weights") != weights):
+            raise ValueError("model frame adapter must bind the selected weights SHA256")
+        model = {k: v for k, v in value.items() if k != "model_frame_adapter"}
+        model["tool_definition"] = adapter["model_tool_definition"]
+        validate_deployment(model, require_artifacts=require_artifacts)
+        if not np.allclose(model["tool_definition"]["left"]["position"],
+                           tools["left"]["position"], atol=1e-9, rtol=0):
+            raise ValueError("model frame adapter requires the same physical TCP origin")
     return value
 
 

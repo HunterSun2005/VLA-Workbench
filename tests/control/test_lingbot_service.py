@@ -224,6 +224,68 @@ def test_tcp_mismatch_and_native_statistics_identity_are_explicit():
         require_tool(deployment, other)
 
 
+def frame_adapted_deployment():
+    deployment = json.loads(json.dumps(FIXTURE['deployment']))
+    deployment['tool_definition']['left']['position'] = [0., 0., .174]
+    model_tool = json.loads(json.dumps(deployment['tool_definition']))
+    c = 2**-.5
+    model_tool['left']['rotation'] = [[c, c, 0.], [-c, c, 0.], [0., 0., 1.]]
+    deployment['model_frame_adapter'] = {
+        'kind': 'same_origin_tcp_rotation_v1', 'model_tool_definition': model_tool,
+        'weights_sha256': deployment['artifacts']['weights']}
+    return deployment
+
+
+def test_checkpoint_bound_frame_contract_conformance_and_wire_tool(server_module):
+    from vla_rollout_protocol.external import health_contract
+    d = frame_adapted_deployment()
+    expected = health_contract(d, FIXTURE['tasks'])
+    assert expected == server_module.health_contract(d, FIXTURE['tasks'])
+    validate_health(expected)
+    require_tool(d, d['tool_definition'])
+    with pytest.raises(ValueError, match='TCP transform mismatch'):
+        require_tool(d, d['model_frame_adapter']['model_tool_definition'])
+    without = {k: v for k, v in d.items() if k != 'model_frame_adapter'}
+    assert expected['model_version'] != health_contract(without, FIXTURE['tasks'])['model_version']
+    other = json.loads(json.dumps(d))
+    other['model_frame_adapter']['model_tool_definition']['left']['rotation'] = np.eye(3).tolist()
+    assert expected['model_version'] != health_contract(other, FIXTURE['tasks'])['model_version']
+
+
+@pytest.mark.parametrize('change', ['kind', 'missing_tool', 'null', 'extra', 'weights',
+                                   'unbound', 'bad_artifacts', 'position', 'rotation', 'base', 'tip'])
+def test_frame_adapter_malformed_or_unbound_is_rejected_by_both_repos(server_module, change):
+    from vla_rollout_protocol.external import validate_deployment
+    d = frame_adapted_deployment()
+    adapter = d['model_frame_adapter']
+    tool = adapter['model_tool_definition']['left']
+    if change == 'kind':
+        adapter['kind'] = 'implicit_rotation'
+    elif change == 'missing_tool':
+        del adapter['model_tool_definition']
+    elif change == 'null':
+        d['model_frame_adapter'] = None
+    elif change == 'extra':
+        adapter['unknown'] = True
+    elif change == 'weights':
+        adapter['weights_sha256'] = 'f'*64
+    elif change == 'unbound':
+        del d['artifacts']
+    elif change == 'bad_artifacts':
+        d['artifacts'] = None
+    elif change == 'position':
+        tool['position'][2] = .175
+    elif change == 'rotation':
+        tool['rotation'][0][0] = 2.
+    else:
+        tool[change] = 'wrong_frame'
+    from importlib import import_module
+    server_validator = import_module(server_module.__package__+'.workbench_contract').validate_deployment
+    for validator in (validate_deployment, server_validator):
+        with pytest.raises(ValueError):
+            validator(d, require_artifacts=False)
+
+
 def test_server_rejects_bad_observation_and_nonempty_prefix(server_module):
     contract = server_module.health_contract(FIXTURE['deployment'], FIXTURE['tasks'])
     _, req = plan(contract['model_version'])

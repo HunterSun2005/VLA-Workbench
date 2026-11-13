@@ -23,7 +23,25 @@ LingBot 仓库的 `deploy/workbench_server.py` 在自己的 Python 环境运行�
 
 ## 启动 LingBot 服务
 
-先将 LingBot 的 `configs/deployment/workbench_single_left.example.json` 复制到独立部署文件。填写真实的 `tool_definition.left`：`base`、`tip`、`position`（3 维米）、`rotation`（3×3 旋转矩阵）。它必须对应训练数据所用 TCP，并与 Workbench 的 URDF/工具配置一致。模板故意为 null，未经确认不能直接运行；图像尺寸也须匹配部署 YAML。
+先将 LingBot 的 `configs/deployment/workbench_single_left.example.json` 复制到独立部署文件。填写真实的 `tool_definition.left`：`base`、`tip`、`position`（3 维米）、`rotation`（3×3 旋转矩阵）。它声明通信/控制端使用的 TCP，必须与 Workbench 的 URDF/工具配置一致。默认要求训练数据也使用相同定义；仅下述显式模型坐标适配允许姿态轴不同。模板故意为 null，未经确认不能直接运行；图像尺寸也须匹配部署 YAML。
+
+### 当前旧硬件轴模型的显式适配
+
+当前 `global_step_10000` RTC 模型的训练数据使用硬件 EE 轴：相对法兰 Z 偏移约 0.174 米，绕 Z 旋转 −45°。Workbench 使用 `flange_aligned_tcp_v1`：保留同一物理 TCP 位置，姿态轴与法兰平行。因此该模型的本机部署声明 `/data0/sht/VLA-Workbench/runtime/lingbot/deployment.json` 使用单位旋转的 `tool_definition`，另显式设置：
+
+```json
+{
+  "model_frame_adapter": {
+    "kind": "same_origin_tcp_rotation_v1",
+    "model_tool_definition": {"left": {"base": "left_fr3_link0", "tip": "left_fr3_link8", "position": [0, 0, 0.17399999499320984], "rotation": [[0.7071067811865475, 0.7071067811865476, 0], [-0.7071067811865476, 0.7071067811865475, 0], [0, 0, 1]]}},
+    "weights_sha256": "填入该 checkpoint 的 artifacts.weights SHA256"
+  }
+}
+```
+
+此字段要求完整、正确的工具定义、相同的 TCP 原点及明确绑定的权重 SHA256，不支持位置变换、隐式猜测或自动套用。服务加载时仍重算所有资产指纹；适配定义参与模型身份。服务在原生归一化前转换观测、锚点和 RTC 承诺前缀的姿态，在解码后把动作后缀转换回控制坐标，最后精确回填原通信前缀。旋转右乘 `R_wire_tool.T @ R_model_tool`，不是绕基座左乘；XYZ 与夹爪单位/数值保持不变。控制端、执行投影与记录始终使用逻辑 TCP。
+
+后续使用 Workbench 逻辑 TCP 数据训练的模型**省略 `model_frame_adapter`**，走原始无转换路径；不要复制当前模型的适配声明到新 checkpoint。使用旧硬件轴数据重新训练的模型仍需独立核实坐标定义并显式绑定对应权重。
 
 在 LingBot 环境中启动，例如：
 
