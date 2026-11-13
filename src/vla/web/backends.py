@@ -112,8 +112,11 @@ class BaseBackend:
         if c.backend == 'franky' and space != 'tcp':
             raise ValueError('Franky Cartesian impedance deployments require a TCP checkpoint')
         c = replace(c, action_space=space, input_source=self.config.source)
+        tasks = self.config.tasks or (
+            (self.config.task,) if self.config.model_backend == 'lingbot_v2'
+            else tuple(dict.fromkeys((self.config.task, *c.tasks))))
         return replace(c, dataset_root=Path(self.config.dataset_root), task=self.config.task,
-                       tasks=self.config.tasks or tuple(dict.fromkeys((self.config.task, *c.tasks))),
+                       tasks=tasks,
                        joy_socket_path=self.directory/'joy.sock',
                        worker_socket_path=self.directory/'franky.sock')
 

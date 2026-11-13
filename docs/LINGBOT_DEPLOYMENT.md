@@ -91,6 +91,8 @@ python -m vla.cli.ros_session --workflow deploy --arms single_left \
 
 Web 部署页选择 **LingBot V2**，填写服务地址、模式（默认 RTC）、推理时隙（14）、保护时隙（1）和网络超时（默认 5 秒），选择单左臂并配置相同任务。预检连接外部服务；开始会话不启动模型进程，关闭会话不关闭 LingBot。PI05 的模型路径草稿在切换后端时保留。后端参数由 CLI/Web SessionConfig 提供，控制/相机参数仍由原部署 YAML 提供。
 
+Web 未显式提供多任务列表时，LingBot 会话只使用页面填写的当前任务；不会把部署 YAML 中的示例任务追加进去。显式任务列表及顺序仍须与服务完全一致，预检与实际启动使用同一任务列表。
+
 ## RTC 时序与记录
 
 `lingbot_execution_mode=rtc`、`lingbot_inference_slots=14`、`lingbot_guard_slots=1` 只用于 LingBot。PI05 保持原预算和执行路径。30 Hz / stride=1 下，冻结前缀 `d=14+1=15`；预检要求 `d <= rtc_max_delay` 且 `50 >= 2d`。网络超时不延长 RTC 的 14 槽推理期限。
