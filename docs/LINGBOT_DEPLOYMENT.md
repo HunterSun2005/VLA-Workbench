@@ -4,6 +4,8 @@
 
 实机前可在 LingBot 环境运行其 `scripts/workbench_offline_eval.py`：用明确的 QLoRA DCP RTC checkpoint、部署声明和原生训练数据，离线比较空前缀、示范前缀和静止保持前缀，检查物理动作误差、首次接续跳变、精确保留前缀及 GPU 延迟。它不启动服务、ROS 或硬件；输入快照及结果必须写入新的独立目录。详见 LingBot 的 `deploy/WORKBENCH.md`「真实模型的离线评估」。训练数据复现不代表 held-out 泛化或实机成功率；未投影目标的逐槽速度诊断也不能代替实际控制验证。
 
+要从配对示范起点检查后续节点，使用 LingBot 的 `scripts/workbench_rtc_node_eval.py`：每 20 帧采样，比较空前缀、示范前缀和上次模型目标留下的 15 步前缀。后续状态/图像仍沿示范推进，目标以未投影、忽略真实迟到的虚拟槽拼接；这是固定记录观测下的模型诊断，不是 ROS 执行验收或闭环 rollout。它不会设置或移动实机到示范起点。
+
 ## 进程与物理契约
 
 LingBot 仓库的 `deploy/workbench_server.py` 在自己的 Python 环境运行，负责加载、归一化、图像处理、55D 槽位映射、反归一化。Workbench 不导入 LingBot、不管理外部模型进程。ROS 拥有唯一执行队列，执行投影、接管、记录与故障处理仍在 Workbench。
