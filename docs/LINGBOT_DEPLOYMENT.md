@@ -2,6 +2,8 @@
 
 `lingbot-dev` 接入独立 LingBot 服务，CLI 与 Web 仍共用 ROS collector/coordinator。默认后端为 `pi05`，原 PI05 checkpoint 校验、RTC 和训练入口保持不变。LingBot 默认 RTC，保留显式串行模式。只支持单左臂 TCP 10D、base/left_wrist 两相机、30 Hz、stride=1、完整 50 步 chunk；不支持 Actor/RLT、在线训练或双臂。
 
+实机前可在 LingBot 环境运行其 `scripts/workbench_offline_eval.py`：用明确的 QLoRA DCP RTC checkpoint、部署声明和原生训练数据，离线比较空前缀、示范前缀和静止保持前缀，检查物理动作误差、首次接续跳变、精确保留前缀及 GPU 延迟。它不启动服务、ROS 或硬件；输入快照及结果必须写入新的独立目录。详见 LingBot 的 `deploy/WORKBENCH.md`「真实模型的离线评估」。训练数据复现不代表 held-out 泛化或实机成功率；未投影目标的逐槽速度诊断也不能代替实际控制验证。
+
 ## 进程与物理契约
 
 LingBot 仓库的 `deploy/workbench_server.py` 在自己的 Python 环境运行，负责加载、归一化、图像处理、55D 槽位映射、反归一化。Workbench 不导入 LingBot、不管理外部模型进程。ROS 拥有唯一执行队列，执行投影、接管、记录与故障处理仍在 Workbench。
