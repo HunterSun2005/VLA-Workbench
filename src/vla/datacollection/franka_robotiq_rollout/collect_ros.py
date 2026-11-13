@@ -1912,8 +1912,11 @@ class RolloutCollector(Node):
                     self._publish_policy(values, 1/self.config.fps)
                 if self.coordinator.command_id != previous:
                     self._track_control(dt)
-                    if record_images and self._recording:
-                        self._pending_submission['frame'] = (
+                    # A policy timeout/queue boundary also changes command_id,
+                    # but revokes the pending target instead of submitting one.
+                    pending = self._pending_submission
+                    if record_images and self._recording and pending is not None:
+                        pending['frame'] = (
                             raw_state.copy(), dict(values), {key:image.copy() for key,image in images.items()},
                             now_ns, self._sensor_frame_snapshot(now_ns))
             except (KeyError, ValueError, RuntimeError, np.linalg.LinAlgError) as error:

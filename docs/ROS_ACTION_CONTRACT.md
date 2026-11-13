@@ -39,6 +39,8 @@ tracker 在显式启用准备中从实测 TCP／关节初始化，所有臂准�
 
 `target_applied` 审计关联 generation、sequence、slot、worker 应用时间及实际参考；失败保留 `target_failure` 与部分应用事实。控制回调只提交有界内存任务，编码、文件写入和 fsync 留在后台。存储恢复不会恢复控制。新单循环实现标识、IPC v2、worker 版本、binding 二进制哈希与阻抗参数组成控制指纹，旧指纹数据和 checkpoint 不能混用。
 
+观测帧只关联本时隙实际创建的待确认目标。策略超时或队列边界会撤销待提交目标并改变控制身份；身份变化本身不代表发生了新提交，不能把帧附加到已撤销的目标。该路径保留手动恢复状态，迟到推理结果或停止确认均不能自动恢复运动。
+
 Gamepad 默认使用旧单臂已验证的 `raw_joy` 布局（`joy_node`），显式选择时才使用 SDL 标准布局，姿态增量为 `Exp(R_measured · ω_tool · dt) · R_target`，平移参考不随姿态旋转。输入布局、工具轴积分实现及 worker 实现版本绑定控制指纹。GELLO 驱动缓存含成功采样时间和序号；collector 以源采样时间作为有序消息身份，重复／倒序／过期消息不刷新新鲜度，关节和夹爪同帧传递。
 
 调参等待期间停止积分、接受和发送新目标，清空旧待发送目标；当前 generation 的 request ID 确认后，等待新的接受目标再继续跟踪。暂停、停止或切换控制权撤销等待，迟到确认不恢复运动。回合起始 journal identity 保存有效参数；回合内已确认变化以 `compliance` 审计事件保存请求 ID、generation、worker sequence、时间和参数，不增加 schema 字段。
