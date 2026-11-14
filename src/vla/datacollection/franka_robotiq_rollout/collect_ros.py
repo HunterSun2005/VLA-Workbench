@@ -912,6 +912,10 @@ class RolloutCollector(Node):
                     if worker:
                         data['hardware_tcp'] = list(worker.hardware_tcp_pose)
                         data['hardware_reference_tcp'] = list(worker.hardware_reference_tcp_pose)
+                        data['nominal_tcp'] = list(worker.nominal_tcp_pose)
+                        data['tracker_reference_tcp'] = list(worker.reference_tcp_pose)
+                        data['tracking_offset'] = list(worker.tracking_offset)
+                        data['tracking_status'] = worker.tracking_status
                 except (ValueError, KeyError, IndexError) as error:
                     data['error'] = str(error)
         return result
@@ -1103,12 +1107,24 @@ class RolloutCollector(Node):
         if isinstance(getattr(self, '_execution', None), SerialExecutor):
             self._execution.acknowledge(pending.get('context', {}).get('execution'))
         if self._journal is not None:
-            self._journal_event(('target_applied', pending['generation'], pending['sequence'],
-                                 pending['slot_id'], result['applied_at_ns'], result['references']))
-            self._journal_event(('hardware_target_applied', pending['generation'], pending['sequence'],
-                                 pending['slot_id'], result['applied_at_ns'],
-                                 {s['arm']: s['hardware_reference_tcp_pose'] for s in result.get('states', [])
-                                  if s.get('hardware_reference_tcp_pose')}))
+            identity = (pending['generation'], pending['sequence'], pending['slot_id'], result['applied_at_ns'])
+            events = [('target_applied', *identity, result['references']),
+                      ('hardware_target_applied', *identity,
+                       {s['arm']: s['hardware_reference_tcp_pose'] for s in result.get('states', [])
+                        if s.get('hardware_reference_tcp_pose')}),
+                      ('tracking_correction', *identity,
+                       {s['arm']: {key: s[key] for key in (
+                                     'nominal_tcp_pose', 'reference_tcp_pose', 'tracking_offset', 'tracking_status')
+                                  if key in s} for s in result.get('states', [])})]
+            for index, event in enumerate(events):
+                try:
+                    self._journal_event(event)
+                except RuntimeError:
+                    # _journal_event retains the failed event; retain the rest
+                    # of this receipt too, even though motion is being revoked.
+                    from vla.datacollection.episode_journal import freeze
+                    self._pending_events.extend(freeze(rest) for rest in events[index+1:])
+                    raise
         if pending['frame'] is not None and self._recording:
             raw, values, images, observed, sensors = pending['frame']
             self._record_frame(raw, values, images, observed, sensor_frames=sensors,

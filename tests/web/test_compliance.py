@@ -48,6 +48,35 @@ def test_runtime_tuning_ack_does_not_block_pause(tmp_path):
     assert rt.results[cid]['status'] == 'completed'
 
 
+def test_browser_static_correction_is_explicit_and_requires_ack(session_browser):
+    b, scenario, _ = session_browser
+    phase(b, 'configure')
+    b.wait('document.querySelector("[data-compliance=tracking_integral_gain]").value==="0"')
+    b.fill('[data-compliance=tracking_integral_gain]', '0.3', 'input')
+    b.fill('[data-compliance=tracking_max_offset_m]', '0.008', 'input')
+    b.click('#preflight')
+    b.wait('!document.querySelector("#preflight").disabled')
+    assert scenario['checks'][-1]['compliance']['tracking_integral_gain'] == .3
+    assert scenario['checks'][-1]['compliance']['tracking_max_offset_m'] == .008
+    b.click('#start'); phase(b, 'running')
+    assert scenario['posts'][-1]['compliance']['tracking_integral_gain'] == .3
+    values = {**asdict(Compliance()), 'tracking_integral_gain': .3, 'tracking_max_offset_m': .008}
+    scenario.update(state='standby', compliance={'pending': False, 'values': values})
+    b.wait('document.querySelector("[data-effective=tracking_integral_gain]").textContent.endsWith("0.3")')
+    b.fill('[data-compliance=tracking_integral_gain]', '0', 'input')
+    b.wait('!document.querySelector("#applyCompliance").disabled')
+    b.click('#applyCompliance')
+    b.wait('!!document.querySelector("#compliancePanel").dataset.pendingRequest')
+    cid = b.js('return document.querySelector("#compliancePanel").dataset.pendingRequest')
+    assert scenario['commands'][-1]['args']['values']['tracking_integral_gain'] == 0
+    assert b.js('return document.querySelector("[data-effective=tracking_integral_gain]").textContent').endswith('0.3')
+    scenario['compliance'] = {'values': {**values, 'tracking_integral_gain': 0}, 'pending': False,
+                             'request': {'request_id': cid, 'status': 'applied'}}
+    scenario['command_results'] = [{'command_id': cid, 'operation': 'compliance', 'status': 'completed'}]
+    b.wait('!document.querySelector("#compliancePanel").dataset.pendingRequest')
+    b.wait('document.querySelector("[data-effective=tracking_integral_gain]").textContent.endsWith("0")')
+
+
 @pytest.mark.parametrize('session_browser', [False, True], indirect=True)
 def test_browser_draft_and_correlated_ack(session_browser):
     b, scenario, root = session_browser
@@ -116,7 +145,7 @@ def test_restart_retains_confirmed_compliance_and_reload_keeps_draft(session_bro
     phase(b, 'configure')
     b.click('#start'); phase(b, 'running')
     # Runtime settings differ from the immutable initial session config.
-    values = dict(translational_stiffness=1000, rotational_stiffness=50,
+    values = dict(asdict(Compliance()), translational_stiffness=1000, rotational_stiffness=50,
                   nullspace_stiffness=20, translational_clip=.05, rotational_clip=.3,
                   max_step=.05, max_step_rad=.2, max_delta_tau=.5, gains_time_constant=.1)
     scenario.update(state='standby', compliance={'pending': False, 'values': values})

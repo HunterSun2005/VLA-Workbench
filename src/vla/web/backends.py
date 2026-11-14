@@ -208,7 +208,9 @@ class BaseBackend:
                 raise ValueError('compliance values must be an object')
             allowed = {'translational_stiffness', 'rotational_stiffness', 'nullspace_stiffness',
                        'translational_clip', 'rotational_clip', 'max_step', 'max_step_rad',
-                       'max_delta_tau', 'gains_time_constant'}
+                       'max_delta_tau', 'gains_time_constant', 'tracking_integral_gain',
+                       'tracking_max_offset_m', 'tracking_max_offset_rad',
+                       'tracking_max_linear_rate', 'tracking_max_angular_rate'}
             if not values or set(values) - allowed:
                 raise ValueError('unknown or empty Franky compliance values')
             if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value)
@@ -373,9 +375,11 @@ class ROSBackend(BaseBackend):
         import json
         worker_python = self._worker_python
         worker_config = self.directory / 'franky-worker.json'
+        bounds = {arm.name: [list(arm.workspace_min), list(arm.workspace_max)] for arm in rollout.arms}
         arms = {
             arm: {
                 'robot_ip': self.hardware[f'{arm.upper()}_ROBOT_IP'],
+                'workspace_bounds': bounds[arm] if rollout.workspace_limits_enabled else None,
             }
             for arm in self.arms
         }

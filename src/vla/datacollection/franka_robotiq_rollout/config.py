@@ -18,6 +18,11 @@ FRANKY_COMPLIANCE_DEFAULTS = {
     "max_step_rad": 0.10,
     "max_delta_tau": 0.2,
     "gains_time_constant": 0.1,
+    "tracking_integral_gain": 0.,
+    "tracking_max_offset_m": .01,
+    "tracking_max_offset_rad": .20,
+    "tracking_max_linear_rate": .002,
+    "tracking_max_angular_rate": .03,
 }
 
 
@@ -297,11 +302,15 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
     compliance_keys = {
         "translational_stiffness", "rotational_stiffness", "nullspace_stiffness",
         "translational_clip", "rotational_clip", "max_step", "max_step_rad",
-        "max_delta_tau", "gains_time_constant",
+        "max_delta_tau", "gains_time_constant", "tracking_integral_gain",
+        "tracking_max_offset_m", "tracking_max_offset_rad",
+        "tracking_max_linear_rate", "tracking_max_angular_rate",
     }
     unknown_compliance = set(compliance_raw) - compliance_keys
     if unknown_compliance:
         raise ValueError("unknown Franky compliance parameters: " + ", ".join(sorted(unknown_compliance)))
+    from vla.control.franky.worker import Compliance
+    Compliance.from_mapping(compliance_raw)  # Same finite/type/range checks as Web and worker.
     franky_compliance = {**FRANKY_COMPLIANCE_DEFAULTS,
                          **{key: float(value) for key, value in compliance_raw.items()}}
     if not (0 < franky_compliance['translational_stiffness'] <= 1200):

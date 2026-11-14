@@ -71,6 +71,39 @@ def test_fault_boundary_stops_worker_without_rearming():
     assert requests == [('stop', 'session', 4)]
 
 
+@pytest.mark.parametrize('blocked', [False, True])
+def test_correction_receipt_keeps_nominal_actual_and_offset_on_storage_blockage(blocked):
+    node, _, results, _, _ = collector()
+    nominal = [.4, 0, .3, 0, 0, 0, 1]
+    actual = [.401, 0, .3, 0, 0, 0, 1]
+    state = {'arm': 'left', 'nominal_tcp_pose': nominal, 'reference_tcp_pose': actual,
+             'hardware_reference_tcp_pose': actual, 'tracking_offset': [.001, 0, 0, 0, 0, 0],
+             'tracking_status': 'correcting'}
+    results['target'] = {'session_id': 'session', 'request_id': 'target', 'request_status': 'applied',
+                         'generation': 3, 'sequence': 4, 'slot_id': 3, 'applied_at_ns': 1234,
+                         'references': {'left': actual}, 'states': [state]}
+    node._pending_submission = {'generation': 3, 'sequence': 4, 'slot_id': 3, 'request_id': 'target', 'frame': None}
+    node._pending_events = []
+    accepted = []
+    def event(value):
+        if blocked and value[0] == 'hardware_target_applied':
+            raise RuntimeError('storage blocked')
+        accepted.append(value)
+    node._journal = SimpleNamespace(event=event)
+    if blocked:
+        with pytest.raises(RuntimeError, match='storage blocked'):
+            node._consume_submission()
+    else:
+        node._consume_submission()
+    receipt_events = [*accepted, *node._pending_events]
+    assert [e[0] for e in receipt_events] == ['target_applied', 'hardware_target_applied', 'tracking_correction']
+    correction = receipt_events[-1][-1]['left']
+    np.testing.assert_array_equal(correction['nominal_tcp_pose'], nominal)
+    np.testing.assert_array_equal(correction['reference_tcp_pose'], actual)
+    assert correction['tracking_status'] == 'correcting'
+    assert node._pending_submission is None
+
+
 def test_close_releases_worker_before_storage_and_cameras():
     import threading
     node, _, _, _, _ = collector()

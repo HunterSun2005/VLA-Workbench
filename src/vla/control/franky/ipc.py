@@ -92,6 +92,9 @@ class WorkerState:
     hardware_flange_to_tcp_pose: tuple[float, ...] = ()
     hardware_tcp_pose: tuple[float, ...] = ()
     hardware_reference_tcp_pose: tuple[float, ...] = ()
+    nominal_tcp_pose: tuple[float, ...] = ()
+    tracking_offset: tuple[float, ...] = ()
+    tracking_status: str = 'disabled'
     generation: int = -1
     sequence: int = -1
     tracker_running: bool = False
@@ -112,7 +115,8 @@ class WorkerState:
             raise ValueError("worker state torques must contain seven joints when present")
         import math
         for key, width in (('joints', 7), ('joint_velocity', 7), ('joint_torque', 7),
-                           ('external_joint_torque', 7), ('target_joints', 7), ('force', 3), ('torque', 3)):
+                           ('external_joint_torque', 7), ('target_joints', 7), ('force', 3), ('torque', 3),
+                           ('tracking_offset', 6)):
             values = value.get(key, ())
             if values and (len(values) != width or not all(math.isfinite(float(x)) for x in values)):
                 raise ValueError(f'invalid worker state {key}')
@@ -133,6 +137,9 @@ class WorkerState:
             hardware_flange_to_tcp_pose=tuple(_validate_pose(value['hardware_flange_to_tcp_pose'])) if value.get('hardware_flange_to_tcp_pose') else (),
             hardware_tcp_pose=tuple(_validate_pose(value['hardware_tcp_pose'])) if value.get('hardware_tcp_pose') else (),
             hardware_reference_tcp_pose=tuple(_validate_pose(value['hardware_reference_tcp_pose'])) if value.get('hardware_reference_tcp_pose') else (),
+            nominal_tcp_pose=tuple(_validate_pose(value['nominal_tcp_pose'])) if value.get('nominal_tcp_pose') else (),
+            tracking_offset=tuple(float(x) for x in value.get('tracking_offset', ())),
+            tracking_status=str(value.get('tracking_status', 'disabled')),
             generation=int(value.get("generation", -1)),
             sequence=int(value.get("sequence", -1)),
             tracker_running=bool(value.get("tracker_running", False)),

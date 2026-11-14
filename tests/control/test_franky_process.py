@@ -30,7 +30,7 @@ def wait_for(function, timeout=5):
 
 
 @contextmanager
-def process_worker(arms=('left',), target_timeout=3., state_timeout=3., tool_pose=None):
+def process_worker(arms=('left',), target_timeout=3., state_timeout=3., tool_pose=None, workspace_bounds=None):
     python = worker_python(ROOT)
     if not python.is_file():
         pytest.skip('persistent Franky wheel environment not installed')
@@ -40,6 +40,9 @@ def process_worker(arms=('left',), target_timeout=3., state_timeout=3., tool_pos
                'target_timeout_s': target_timeout, 'state_timeout_s': state_timeout}
         if tool_pose is not None:
             cfg['tool_pose'] = tool_pose
+        if workspace_bounds is not None:
+            for arm in cfg['arms'].values():
+                arm['workspace_bounds'] = workspace_bounds
         config = root/'config.json'
         config.write_text(json.dumps(cfg))
         log = (root/'process.log').open('w+')
@@ -117,6 +120,51 @@ def test_real_tracker_lifecycle_and_explicit_recovery(arms):
         for arm in arms:
             with HardwareLease(arm, directory=root/'leases'):
                 pass
+
+
+def test_static_absolute_pose_correction_receipts_frames_bounds_and_stop():
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+    from vla.control.franky.tcp_frame import TCPFrame
+    from vla.control.franky.ipc import WorkerState
+
+    tool = [0, 0, .174, *Rotation.from_euler('z', -np.pi/4).as_quat()]
+    frame = TCPFrame(tool)
+    bounds = [[-.005, -.005, -.005], [.005, .005, .005]]
+    with process_worker(tool_pose=tool, workspace_bounds=bounds) as (root, _, _):
+        (root/'capture-targets').touch()
+        request(root, 'compliance', -1, values={'tracking_integral_gain': .5})
+        assert request(root, 'reset', 1)['request_status'] == 'applied'
+        goal = frame.to_logical(np.array([.0048, 0, 0, 0, 0, 0, 1.]))
+        for seq in range(1, 40):
+            result = request(root, 'target', 1, sequence=seq, slot_id=seq,
+                             timestamp_ns=time.monotonic_ns(), arms={'left': {'pose': goal.tolist()}})
+            assert result['request_status'] == 'applied'
+            time.sleep(1/30)
+        state = WorkerState.from_dict(result['states'][0])
+        np.testing.assert_allclose(state.nominal_tcp_pose, goal, atol=1e-12)
+        assert .0048 < state.reference_tcp_pose[0] <= .005
+        assert state.tracking_status == 'workspace_limited'
+        np.testing.assert_allclose(state.tracking_offset[0], state.reference_tcp_pose[0]-goal[0], atol=1e-12)
+        np.testing.assert_allclose(result['references']['left'], state.reference_tcp_pose, atol=1e-12)
+        np.testing.assert_allclose(state.hardware_reference_tcp_pose,
+                                   frame.to_hardware(state.reference_tcp_pose), atol=1e-12)
+        captured = json.loads((root/'targets.jsonl').read_text().splitlines()[-1])
+        np.testing.assert_allclose(captured['translation'], state.hardware_reference_tcp_pose[:3])
+        # Queries/duplicates do not integrate or bypass the target clock.
+        for _ in range(3):
+            health = request(root)['states'][0]
+            assert health['tracking_offset'] == list(state.tracking_offset)
+        duplicate = request(root, 'target', 1, sequence=39, slot_id=39,
+                            timestamp_ns=time.monotonic_ns(), arms={'left': {'pose': goal.tolist()}})
+        assert duplicate['request_status'] == 'ignored'
+        assert duplicate['states'][0]['tracking_offset'] == list(state.tracking_offset)
+        stopped = request(root, 'stop', 2)['states'][0]
+        assert stopped['tracking_offset'] == [0.]*6 and not stopped['tracker_running']
+        assert stopped['reference_tcp_pose'] == stopped['nominal_tcp_pose'] == []
+        stale = request(root, 'target', 1, sequence=40, slot_id=40,
+                        timestamp_ns=time.monotonic_ns(), arms={'left': {'pose': goal.tolist()}})
+        assert stale['request_status'] == 'ignored' and not stale['states'][0]['tracker_running']
 
 
 def test_watchdog_expires_despite_health_and_duplicate_traffic():

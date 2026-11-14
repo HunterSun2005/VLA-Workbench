@@ -45,6 +45,12 @@ Gamepad 默认使用旧单臂已验证的 `raw_joy` 布局（`joy_node`），显
 
 调参等待期间停止积分、接受和发送新目标，清空旧待发送目标；当前 generation 的 request ID 确认后，等待新的接受目标再继续跟踪。暂停、停止或切换控制权撤销等待，迟到确认不恢复运动。回合起始 journal identity 保存有效参数；回合内已确认变化以 `compliance` 审计事件保存请求 ID、generation、worker sequence、时间和参数，不增加 schema 字段。
 
+Franky 可显式启用有界静态误差补偿（默认关闭）。动作、来源和承诺前缀仍是绝对
+逻辑 TCP 目标；worker `nominal_tcp_pose` 与补偿后的 `reference_tcp_pose` 分别保存，
+后者才是目标 ACK `references` 及硬件参考审计的实际参考。schema 5 的异步
+`tracking_correction` 事件保存两者、偏置与饱和／等待状态，补偿不写回训练动作。
+参数及 worker 实现版本 7 参与控制身份。具体边界见 [Franky 环境](FRANKY_ENVIRONMENT.md#绝对位姿的静态误差补偿)。
+
 独立字段包括：
 
 | 字段 | 含义 |

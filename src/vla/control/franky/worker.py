@@ -24,6 +24,7 @@ from vla.core.hardware_lease import HardwareLease
 from .ipc import decode_packet, encode_packet
 from .binding import check_binding
 from .tcp_frame import TCPFrame, TCP_FRAME
+from .pose_correction import PoseErrorCompensator
 
 
 @dataclass
@@ -37,6 +38,11 @@ class Compliance:
     max_step_rad: float = .10
     max_delta_tau: float = .2
     gains_time_constant: float = .1
+    tracking_integral_gain: float = 0.
+    tracking_max_offset_m: float = .01
+    tracking_max_offset_rad: float = .20
+    tracking_max_linear_rate: float = .002
+    tracking_max_angular_rate: float = .03
 
     def validate(self) -> "Compliance":
         values = asdict(self)
@@ -52,6 +58,13 @@ class Compliance:
             raise ValueError("rotational clip and target steps must be positive")
         if self.max_delta_tau <= 0 or self.gains_time_constant <= 0:
             raise ValueError("tracker dynamics must be positive")
+        for key, lower, upper in (
+                ('tracking_integral_gain', 0., 1.),
+                ('tracking_max_offset_m', 0., .02), ('tracking_max_offset_rad', 0., .35),
+                ('tracking_max_linear_rate', 0., .01), ('tracking_max_angular_rate', 0., .10)):
+            value = getattr(self, key)
+            if not lower <= value <= upper or (key != 'tracking_integral_gain' and value == 0):
+                raise ValueError(f'{key} outside allowed range ({lower}, {upper})')
         return self
 
     @classmethod
@@ -92,11 +105,18 @@ class FrankyArm:
     """One exclusive CartesianImpedanceTracker session."""
 
     def __init__(self, name: str, robot_ip: str, *, gripper_port: str | None = None,
-                 compliance: Compliance | None = None, realtime_config: str = "ignore"):
+                 compliance: Compliance | None = None, realtime_config: str = "ignore",
+                 workspace_bounds=None):
         self.name = name
         self.robot_ip = robot_ip
         self.compliance = (compliance or Compliance()).validate()
         self.realtime_config = realtime_config
+        self.workspace_bounds = None
+        if workspace_bounds is not None:
+            bounds = np.asarray(workspace_bounds, dtype=float)
+            if bounds.shape != (2, 3) or not np.isfinite(bounds).all() or np.any(bounds[0] >= bounds[1]):
+                raise ValueError('invalid Franky workspace bounds')
+            self.workspace_bounds = bounds.copy()
         # The Franky worker owns the FCI arm exclusively. Gripper ownership
         # remains with the ROS peripheral stack, so gripper_port is optional.
         self._lease = None
@@ -105,6 +125,9 @@ class FrankyArm:
         self.robot = None
         self.tracker = None
         self.target_pose: np.ndarray | None = None
+        self.nominal_pose: np.ndarray | None = None
+        self.correction = PoseErrorCompensator()
+        self._target_time = None
         self._tcp_frame: TCPFrame | None = None
         self.target_generation = -1
         self.target_sequence = -1
@@ -153,12 +176,7 @@ class FrankyArm:
         # user action.
         self._check_tracker()
         raw = self.robot.state
-        if self.tracker is not None and hasattr(raw, 'time'):
-            stamp = raw.time.to_sec()
-            if stamp != self._robot_stamp:
-                self._robot_stamp, self._robot_stamp_at = stamp, time.monotonic()
-            elif time.monotonic() - self._robot_stamp_at > self.state_timeout_s:
-                raise RuntimeError('Franky measured state timestamp stalled')
+        self._check_state_time(raw)
         frame = self._frame(raw)
         hardware_pose = _affine_pose(raw.O_T_EE)
         pose = frame.to_logical(hardware_pose)
@@ -183,11 +201,24 @@ class FrankyArm:
                                                 if self.target_pose is not None else []),
                 "desired_tcp_pose": desired_pose.tolist() if desired_pose is not None else [],
                 "reference_tcp_pose": self.target_pose.tolist() if self.target_pose is not None else [],
+                "nominal_tcp_pose": self.nominal_pose.tolist() if self.nominal_pose is not None else [],
+                "tracking_offset": self.correction.offset.tolist(),
+                "tracking_status": self.correction.status,
                 "force": force[:3].tolist(), "torque": force[3:].tolist(),
                 "generation": self.target_generation, "sequence": self.target_sequence,
                 "tracker_running": bool(self.tracker is not None and self._tracker_running()),
                 "state_valid": True,
                 "fault": self.fault}
+
+    def _check_state_time(self, raw):
+        if self.tracker is not None and hasattr(raw, 'time'):
+            stamp = float(raw.time.to_sec())
+            if not math.isfinite(stamp) or (self._robot_stamp is not None and stamp < self._robot_stamp):
+                raise RuntimeError('invalid or regressing Franky measured state timestamp')
+            if stamp != self._robot_stamp:
+                self._robot_stamp, self._robot_stamp_at = stamp, time.monotonic()
+            elif time.monotonic() - self._robot_stamp_at > self.state_timeout_s:
+                raise RuntimeError('Franky measured state timestamp stalled')
 
     def _tracker_running(self) -> bool:
         if self.tracker is None:
@@ -237,6 +268,9 @@ class FrankyArm:
         # discontinuity.
         raw = self.robot.state
         self.target_pose = self._frame(raw).to_logical(_affine_pose(raw.O_T_EE))
+        self.nominal_pose = self.target_pose.copy()
+        self.correction.reset()
+        self._target_time = None
 
     def set_target(self, pose: list[float], generation: int, sequence: int) -> None:
         self._check_tracker()
@@ -244,23 +278,50 @@ class FrankyArm:
             raise RuntimeError("tracker is not armed; explicit reset required")
         pose_array = np.array(pose, dtype=np.float64, copy=True)
         pose_array[3:] /= np.linalg.norm(pose_array[3:])
-        if self.target_pose is not None:
-            delta = pose_array[:3] - self.target_pose[:3]
+        pose_array = self._limit_target(pose_array, self.nominal_pose)
+        nominal = pose_array.copy()
+        now = time.monotonic()
+        dt = min(1/30, max(0., now-self._target_time)) if self._target_time is not None else 0.
+        raw = self.robot.state
+        self._check_state_time(raw)
+        frame = self._frame(raw)
+        measured = frame.to_logical(_affine_pose(raw.O_T_EE))
+        pose_array = self.correction.update(pose_array, measured, dt, self.compliance)
+        if self.workspace_bounds is not None:
+            projected = np.clip(pose_array[:3], *self.workspace_bounds)
+            if np.linalg.norm(projected-pose_array[:3]) > 1e-12:
+                pose_array[:3] = projected
+                self.correction.offset[:3] = projected-nominal[:3]
+                self.correction.status = 'workspace_limited'
+        limited = self._limit_target(pose_array, self.target_pose)
+        if (np.linalg.norm(limited[:3]-pose_array[:3]) > 1e-12
+                or (Rotation.from_quat(limited[3:]) * Rotation.from_quat(pose_array[3:]).inv()).magnitude() > 1e-12):
+            # The last step limiter also participates in anti-windup.
+            self.correction.offset[:3] = limited[:3]-nominal[:3]
+            self.correction.offset[3:] = (Rotation.from_quat(limited[3:]) * Rotation.from_quat(nominal[3:]).inv()).as_rotvec()
+            self.correction.status = 'step_limited'
+        self.tracker.set_target(_pose_to_affine(self.franky, frame.to_hardware(limited)))
+        self.target_pose, self.nominal_pose = limited, nominal
+        self._target_time = now
+        self.target_generation = generation
+        self.target_sequence = sequence
+        self._check_tracker()
+
+    def _limit_target(self, pose_array, previous_pose):
+        pose_array = pose_array.copy()
+        if previous_pose is not None:
+            delta = pose_array[:3] - previous_pose[:3]
             distance = float(np.linalg.norm(delta))
             if distance > self.compliance.max_step:
-                pose_array[:3] = self.target_pose[:3] + delta * self.compliance.max_step / distance
-            previous = Rotation.from_quat(self.target_pose[3:])
+                pose_array[:3] = previous_pose[:3] + delta * self.compliance.max_step / distance
+            previous = Rotation.from_quat(previous_pose[3:])
             current = Rotation.from_quat(pose_array[3:])
             delta_r = current * previous.inv()
             vector = delta_r.as_rotvec()
             angle = float(np.linalg.norm(vector))
             if angle > self.compliance.max_step_rad:
                 pose_array[3:] = (Rotation.from_rotvec(vector * self.compliance.max_step_rad / angle) * previous).as_quat()
-        self.tracker.set_target(_pose_to_affine(self.franky, self._frame().to_hardware(pose_array)))
-        self.target_pose = pose_array
-        self.target_generation = generation
-        self.target_sequence = sequence
-        self._check_tracker()
+        return pose_array
 
     def reset(self, generation: int) -> None:
         self.stop(recover=False)
@@ -271,14 +332,19 @@ class FrankyArm:
         self._start_tracker()
 
     def stop(self, *, recover: bool = False) -> None:
-        if self.tracker is not None:
-            try:
-                self.tracker.stop()
-            finally:
-                self.tracker = None
-        if self.robot is not None:
-            self.robot.join_motion()
-        self.target_pose = None
+        try:
+            if self.tracker is not None:
+                try:
+                    self.tracker.stop()
+                finally:
+                    self.tracker = None
+            if self.robot is not None:
+                self.robot.join_motion()
+        finally:
+            self.target_pose = None
+            self.nominal_pose = None
+            self.correction.reset()
+            self._target_time = None
         if recover and self.robot is not None:
             self.robot.recover_from_errors()
 
@@ -293,6 +359,9 @@ class FrankyArm:
         self.robot.recover_from_errors()
         self.fault = None
         self.target_pose = None
+        self.nominal_pose = None
+        self.correction.reset()
+        self._target_time = None
         self._robot_stamp = None
 
     def update_compliance(self, values: Mapping[str, Any]) -> Compliance:
@@ -302,8 +371,10 @@ class FrankyArm:
         if not changed:
             return self.compliance
         if self.tracker is not None and changed.intersection({
-                "translational_clip", "rotational_clip", "max_delta_tau", "gains_time_constant"}):
-            pose = self.target_pose.copy() if self.target_pose is not None else None
+                "translational_clip", "rotational_clip", "max_delta_tau", "gains_time_constant",
+                "tracking_integral_gain", "tracking_max_offset_m", "tracking_max_offset_rad",
+                "tracking_max_linear_rate", "tracking_max_angular_rate"}):
+            pose = self.nominal_pose.copy() if self.nominal_pose is not None else None
             self.stop()
             self.compliance = next_value
             if pose is not None:
@@ -334,7 +405,7 @@ class FrankyArm:
 
 class FrankyWorker:
     """One generation-fenced owner, with a watchdog independent of client traffic."""
-    IMPLEMENTATION_VERSION = 6
+    IMPLEMENTATION_VERSION = 7
 
     def __init__(self, arms, *, session_id, compliance=None, target_timeout_s=.1,
                  state_timeout_s=.5):
@@ -343,7 +414,8 @@ class FrankyWorker:
         self.session_id = str(session_id)
         base = Compliance.from_mapping(compliance)
         self.arms = {name: FrankyArm(name, str(value['robot_ip']),
-                                    compliance=Compliance.from_mapping({}, base))
+                                    compliance=Compliance.from_mapping({}, base),
+                                    workspace_bounds=value.get('workspace_bounds'))
                      for name, value in arms.items()}
         self._lock = threading.RLock()
         self.generation = self.sequence = self.timestamp_ns = self.slot_id = -1
