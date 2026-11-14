@@ -243,11 +243,11 @@ def test_partial_translation_release_reanchors_once_and_preserves_other_axes():
     before = t.position.copy()
     joy.axes[1] = 0.
     drive(c, values, 1/30)
-    np.testing.assert_allclose(t.position, [.4, c.config.gamepad_xy_speed/30, .3], atol=1e-12)
+    np.testing.assert_allclose(t.position, [.4, before[1]+c.config.gamepad_xy_speed/30, before[2]], atol=1e-12)
     # Move the measurement after the release: neutral X must keep its latched reference.
     values['left.robot_state'].o_t_ee.pose.position.x = .39
     drive(c, values, 1/30)
-    assert t.position[0] == pytest.approx(.39)
+    assert t.position[0] == pytest.approx(.4)
 
 
 @pytest.mark.parametrize('profile', ['single_left', 'dual'])
@@ -277,8 +277,9 @@ def test_xyz_motion_keeps_absolute_orientation_despite_measured_drift(profile, m
         projected = c.coordinator.project(c._input_action)
         for index, arm in enumerate(c.config.arms):
             measured = Rotation.from_quat([values[f'{arm.name}.robot_state'].o_t_ee.pose.orientation.x, values[f'{arm.name}.robot_state'].o_t_ee.pose.orientation.y, values[f'{arm.name}.robot_state'].o_t_ee.pose.orientation.z, values[f'{arm.name}.robot_state'].o_t_ee.pose.orientation.w]).as_matrix()
-            expected = matrix_to_rot6d(measured)
-            np.testing.assert_allclose(c._gamepad_targets[arm.name].rotation, measured, atol=1e-12)
+            reference = initial[arm.name][1]
+            expected = matrix_to_rot6d(reference)
+            np.testing.assert_allclose(c._gamepad_targets[arm.name].rotation, reference, atol=1e-12)
             offset = index*c.config.action_spec.width
             np.testing.assert_allclose(projected[offset+3:offset+9], expected, atol=1e-7)
 
@@ -296,13 +297,13 @@ def test_partial_angular_release_uses_calibrated_axis_with_following_error():
     p = t.position.copy()
     joy.axes[4] = 0.  # Release vertical tilt; keep horizontal and the prior twist reference.
     drive(c, values, 1/30)
-    held = measured
+    held = Rotation.from_rotvec(basis @ [0., .05, .03]).as_matrix() @ measured
     expected = Rotation.from_rotvec(basis[:,1]*c.config.gamepad_tilt_speed/30).as_matrix() @ held
     np.testing.assert_allclose(t.rotation, expected, atol=1e-12)
     np.testing.assert_array_equal(t.position, p)
     # Only the horizontal increment continues; released-axis error is not reset every tick.
     drive(c, values, 1/30)
-    expected = Rotation.from_rotvec(basis[:,1]*c.config.gamepad_tilt_speed/30).as_matrix() @ measured
+    expected = Rotation.from_rotvec(basis[:,1]*c.config.gamepad_tilt_speed/30).as_matrix() @ expected
     np.testing.assert_allclose(t.rotation, expected, atol=1e-12)
 
 
@@ -344,7 +345,7 @@ def test_input_gap_holds_once_then_fresh_input_resumes_without_catchup(monkeypat
     values['left.robot_state'].o_t_ee.pose.position.x = .39
     clock[0] += 70_000_000
     c._publish_gamepad(values, 1/30)
-    np.testing.assert_array_equal(t.position, [.39,0,.3])
+    np.testing.assert_array_equal(t.position, [.4,0,.3])
     np.testing.assert_allclose(t.rotation, r, atol=1e-12)
     c._latest['left.gamepad'] = (clock[0], joy)
     c._publish_gamepad(values, 1/30)

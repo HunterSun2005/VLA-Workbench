@@ -25,7 +25,7 @@ python3 scripts/validate.py --checks timing --timing-lingbot-rtc --timing-franky
 
 默认每项检查最多运行 900 秒，`--timeout` 可调整；超时先向本次检查的进程组发送中断，留出最多 30 秒进行清理，再终止该组。不会结束既有采集／训练／硬件会话。模型检查禁用 GPU 和在线模型下载；ROS 检查由独立 ROS Python 运行。`timing` 使用现有 mock overlay；缺失依赖时检查失败并保留错误，不自动构建或安装环境。
 
-`--timing-franky-velocity` 使用隔离 worker 中官方 2.0.0 wheel 的真实运动构造器及固定状态 fake Robot，额外检查每臂 100 Hz 伺服；原 ROS mock 控制器仍独立检查 1000 Hz。该选项不执行原生 FCI 闭环，不证明实机连续性或精度。
+`--timing-franky-velocity` 使用隔离 worker 中官方 2.0.0 wheel 的真实运动构造器及固定状态 fake Robot，开启目标与速度平滑，交替提交 gamepad／gello／policy／pose 来源的绝对目标，报告各来源接受数量并检查每臂 100 Hz 伺服；原 ROS mock 控制器仍独立检查 1000 Hz。来源等价与采集动作重放另由确定性回归测试核对。该选项不执行原生 FCI 闭环，不证明实机连续性或精度。
 
 ## 报告
 

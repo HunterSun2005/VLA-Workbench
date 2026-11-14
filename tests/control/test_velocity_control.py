@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 from vla.control.franky.velocity_control import (
-    VelocityControl, tracking_twist, smooth_pose, return_twist, validate_context)
+    VelocityControl, tracking_twist, smooth_pose, validate_context)
 from vla.control.franky.worker import FrankyArm
 
 IDENTITY = np.array([0., 0, 0, 0, 0, 0, 1])
@@ -35,10 +35,10 @@ def fake_arm():
 @pytest.mark.parametrize('vector', [[.0001,0,0],[.04,-.03,.02],[1.,2.,-3.]])
 def test_policy_twist_matches_old_unsmoothed_limit_and_tau(vector):
     target = IDENTITY.copy(); target[:3] = vector
-    result = tracking_twist(IDENTITY, target, CONTEXT, VelocityControl())
+    result = tracking_twist(IDENTITY, target, VelocityControl())
     distance = np.linalg.norm(vector)
     expected = np.asarray(vector)*min(1., .05*.15/distance)/.15
-    if distance <= .0008: expected[:] = 0
+    if distance <= .0005: expected[:] = 0
     np.testing.assert_allclose(result[:3], expected)
     assert np.linalg.norm(result[:3]) <= .05+1e-12
 
@@ -47,39 +47,18 @@ def test_rotation_shortest_path_and_smoothing_are_on_so3():
     a = IDENTITY.copy(); b = IDENTITY.copy()
     a[3:] = Rotation.from_euler('z',179,degrees=True).as_quat()
     b[3:] = Rotation.from_euler('z',-179,degrees=True).as_quat()
-    result = tracking_twist(a,b,CONTEXT,VelocityControl())
+    result = tracking_twist(a,b,VelocityControl())
     assert 0 < result[5] <= .2
     midpoint = smooth_pose(a,b,.5)
     assert Rotation.from_quat(midpoint[3:]).magnitude() == pytest.approx(np.pi)
     b[3:] *= -1
-    np.testing.assert_allclose(tracking_twist(a,b,CONTEXT,VelocityControl()),result)
+    np.testing.assert_allclose(tracking_twist(a,b,VelocityControl()),result)
 
 
-def test_manual_release_never_chases_accumulated_error():
-    target = IDENTITY.copy(); target[:3]=[.01,.02,.03]
-    target[3:] = Rotation.from_rotvec([.1,.2,.3]).as_quat()
-    context = dict(CONTEXT, source='gamepad', linear_active=[True,False,False],
-                   angular_active=[False,False,True], rotation_basis=np.eye(3).tolist())
-    result = tracking_twist(IDENTITY,target,validate_context(context),VelocityControl())
-    assert result[1] == result[2] == result[3] == result[4] == 0
-    assert result[5] == pytest.approx(.3)
-    context.update(linear_active=[False]*3,angular_active=[False]*3)
-    np.testing.assert_array_equal(tracking_twist(IDENTITY,target,context,VelocityControl()),np.zeros(6))
-
-
-def test_released_axis_error_does_not_slow_active_axis():
-    target = IDENTITY.copy(); target[:3] = [.001, .1, -.1]
-    context = dict(CONTEXT, source='gamepad', linear_active=[True,False,False],
-                   angular_active=[False]*3, rotation_basis=np.eye(3).tolist())
-    result = tracking_twist(IDENTITY, target, context, VelocityControl())
-    np.testing.assert_allclose(result, [.03, 0, 0, 0, 0, 0])
-
-
-@pytest.mark.parametrize('distance,cap',[(.1,.03),(.01,.005),(.002,.001)])
-def test_saved_return_distance_braking(distance,cap):
-    target=IDENTITY.copy(); target[0]=distance
-    assert return_twist(IDENTITY,target)[0] == pytest.approx(cap)
-    np.testing.assert_array_equal(return_twist(target,target),np.zeros(6))
+@pytest.mark.parametrize('distance,expected',[(.0004,0.),(.0006,.004),(.002,.002/.15),(.1,.05)])
+def test_common_braking_reaches_saved_pose_tolerance(distance, expected):
+    target = IDENTITY.copy(); target[0] = distance
+    assert tracking_twist(IDENTITY, target, VelocityControl())[0] == pytest.approx(expected)
 
 
 def test_reset_is_nonmoving_ack_requires_first_sdk_submission_and_stop_clears():
@@ -112,23 +91,45 @@ def test_defaults_and_strict_configuration():
 
 
 @pytest.mark.parametrize('target_smoothing,velocity_smoothing', [(False,False),(True,False),(False,True),(True,True)])
-def test_smoothing_switches_are_independent_and_manual_input_bypasses_them(target_smoothing, velocity_smoothing):
-    arm = fake_arm()
-    arm.velocity_control = VelocityControl(target_smoothing_enabled=target_smoothing,
-                                           velocity_smoothing_enabled=velocity_smoothing)
-    arm.reset(1)
-    arm.set_target(IDENTITY.tolist(), 1, 1, CONTEXT)
-    arm.servo_once()
-    target = IDENTITY.copy(); target[0] = .005
-    arm.set_target(target.tolist(), 1, 2, CONTEXT)
-    assert arm.target_pose[0] == pytest.approx(.005 * (.75 if target_smoothing else 1.))
-    expected = tracking_twist(IDENTITY, arm.target_pose, CONTEXT, arm.velocity_control)
-    # A deterministic 30 Hz equivalent interval also checks the EMA exponent.
-    arm.last_servo_ns = None
-    event = arm.servo_once()
-    np.testing.assert_allclose(event['twist'], expected * (.7 if velocity_smoothing else 1.))
-    manual = dict(CONTEXT, source='gamepad', linear_active=[True,False,False],
-                  angular_active=[False]*3, rotation_basis=np.eye(3).tolist())
-    arm.set_target(target.tolist(), 1, 3, manual)
-    np.testing.assert_allclose(arm.target_pose, target)
-    np.testing.assert_allclose(arm.servo_once()['twist'], [.15,0,0,0,0,0])
+def test_all_sources_have_identical_references_and_twists_with_smoothing(monkeypatch, target_smoothing, velocity_smoothing):
+    import vla.control.franky.worker as module
+    clock = [1_000_000_000]
+    monkeypatch.setattr(module.time, 'monotonic_ns', lambda:clock[0])
+    traces = []
+    for source in ('gamepad','gello','policy','pose'):
+        arm = fake_arm()
+        arm.velocity_control = VelocityControl(target_smoothing_enabled=target_smoothing,
+                                               velocity_smoothing_enabled=velocity_smoothing)
+        arm.reset(1)
+        trace = []
+        for slot, (x, angle) in enumerate([(0.,0.),(.005,.04),(.02,.2),(.0004,.003),(0.,0.)]):
+            target = IDENTITY.copy(); target[0] = x
+            target[3:] = Rotation.from_rotvec([0, angle, 0]).as_quat()
+            clock[0] = 1_000_000_000 + slot * 30_000_000
+            arm.set_target(target.tolist(),1,slot,{'source':source,'dt':1/30})
+            if slot == 1:
+                assert arm.target_pose[0] == pytest.approx(.005*(.75 if target_smoothing else 1.))
+            for tick in range(3):
+                clock[0] = 1_000_000_000 + slot*30_000_000 + tick*10_000_000
+                event = arm.servo_once()
+                assert event['source'] == source
+                np.testing.assert_array_equal(event['absolute_target'], target)
+                trace.append(np.r_[event['reference_tcp'],event['twist']])
+            if slot == 1:
+                expected = tracking_twist(IDENTITY, arm.target_pose, arm.velocity_control)
+                if velocity_smoothing:
+                    # Three 10 ms EMA updates from an initially zero velocity.
+                    expected *= 1 - .3**.9
+                np.testing.assert_allclose(event['twist'], expected)
+        traces.append(np.array(trace))
+        arm.stop()
+        assert arm.target_pose is None and not arm.servo_ready
+    for trace in traces[1:]:
+        np.testing.assert_array_equal(trace, traces[0])
+
+
+def test_source_context_is_provenance_only_and_rejects_old_control_masks():
+    for source in ('gamepad','gello','policy','pose'):
+        assert validate_context({'source':source,'dt':1/30})['source'] == source
+    with pytest.raises(ValueError, match='only source and dt'):
+        validate_context({'source':'gamepad','dt':1/30,'linear_active':[False]*3})

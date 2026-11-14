@@ -53,9 +53,9 @@ control:
     velocity_smoothing_alpha: 0.30
 ```
 
-策略／GELLO 持续跟踪绝对目标。可选目标平滑使用位置及 SO(3) 插值；可选速度平滑包含角速度并按实际周期换算系数。两项默认关闭，独立于 SDK 的 `limit_rate=False`、`cutoff_frequency=100 Hz`。CLI 支持 `--target-smoothing`、`--no-target-smoothing`、`--velocity-smoothing`、`--no-velocity-smoothing`；Web 面板提供独立开关和 worker 确认状态。
+手柄／GELLO／策略／回位统一先产生绝对目标，再由同一执行算法跟踪。来源与输入周期只保留为上下文，不改变误差增益、限速、死区或平滑。可选目标平滑使用位置及 SO(3) 插值；可选速度平滑包含角速度并按实际周期换算系数。两项默认关闭，独立于 SDK 的 `limit_rate=False`、`cutoff_frequency=100 Hz`。CLI 支持 `--target-smoothing`、`--no-target-smoothing`、`--velocity-smoothing`、`--no-velocity-smoothing`；Web 面板提供独立开关和 worker 确认状态。
 
-手柄按实测位姿每接受时隙重新锚定，释放的通道不追赶累积参考。Normal XY/Z 为 0.02/0.01 m/s，倾斜/绕轴为 0.15/0.30 rad/s；Fast 只放大 XYZ 五倍，0.3 s 切换。X/B 是 TCP 工具轴旋转，不是关节 7 直接控制。保存点和快捷回位提交绝对最终目标，100 Hz 伺服以原反馈减速算法接近，保存点上限 0.03 m/s、0.15 rad/s，实测 0.5 mm/2° 内完成，30 s 超时。
+手柄在 ROS 前端按可接受时隙积分连续绝对目标；刚释放的通道一次性收回实测位姿，随后保持，其他通道继续积分。输入过期进入保持，恢复新输入时重新锚定实测，不补算缺口。Normal XY/Z 为 0.02/0.01 m/s，倾斜/绕轴为 0.15/0.30 rad/s；Fast 只放大 XYZ 五倍，0.3 s 切换。X/B 是 TCP 工具轴旋转，不是关节 7 直接控制。保存点和快捷回位提交绝对最终目标，100 Hz 伺服使用统一的误差／时间常数算法减速接近，默认上限 0.05 m/s、0.20 rad/s，实测 0.5 mm/2° 内完成，30 s 超时。
 
 统一逻辑 TCP 仍为 `flange_aligned_tcp_v1`：原点是物理 TCP，安装旋转只改变轴向表达。SDK Twist 使用 base 轴，`ee_frame` 为 identity，不重复施加 45° 或平移偏置。
 
@@ -72,3 +72,11 @@ bash scripts/validate_ros_control.sh --duration 600 --lingbot-rtc --franky-veloc
 ```
 
 harness 使用独立 DDS domain、固定状态 mock ROS controller，以及官方 wheel 的真实运动构造与假 Robot 边界；记录 30 Hz 接受、100 Hz worker 提交和 1000 Hz mock controller 的独立频率。它不运行真实 FCI，不证明实机跟踪精度、手感、相机吞吐、GPU 时延或任务成功率。实际启动仍须使用 CLI 的显式 `--execute` 或 Web 的启动操作；本次开发不操作硬件。
+
+## 采集与推理的一致性
+
+worker implementation 9 的顺序固定为：接受绝对 TCP 目标 → 可选 XYZ／SO(3) 目标平滑 → 与实测求误差 → 时间常数换算与限幅／死区 → 可选速度平滑 → 工作空间边界约束 → SDK 提交。位置死区为 0.5 mm，姿态死区为 0.01 rad；回位完成仍要求实测 0.5 mm／2°。两项平滑对手柄、GELLO、策略和回位全部生效，开启时松杆也遵循同一滤波响应，紧急停止／故障仍直接撤销目标并停止原生运动。
+
+`action` 始终记录平滑前、投影后的接受绝对目标；不能把平滑后参考再次作为训练动作，否则部署会重复平滑。`velocity_servo` 独立记录来源、原始绝对目标、平滑参考、观测与派生速度。同样的目标序列、反馈、参数、时序和滤波初始状态应产生同样的执行输出；只传入相同的一个目标值并不足以消除滤波历史差异。
+
+本次改变控制指纹和手柄前端积分语义（human_input 9）。已有进程须手动重启为新 worker，旧 worker 明确拒绝；旧指纹数据不能续录，不改写历史数据或模型声明来绕过身份校验。采集和部署应使用相同的有效速度参数和平滑开关，回合内已确认的调参仍由审计保留。

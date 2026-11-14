@@ -174,7 +174,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
                                     hardware_flange_to_tcp_pose=(0., 0., 0., 0., 0., 0., 1.),
                                     hardware_tcp_pose=(0., 0., 0., 0., 0., 0., 1.)) for a in config.arms}
         client = SimpleNamespace(fault=None, target_available=True, result=lambda key:self._test_receipts.get(key), states=lambda: states, close=lambda: None,
-            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 6,
+            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 9,
                                    'tcp_frame': 'flange_aligned_tcp_v1'},
             velocity_control_values=lambda: config.franky_velocity_control)
         self._test_receipts = {}
@@ -775,6 +775,60 @@ def test_collector_single_loop_through_unix_ipc_to_real_tracker_fake_robot(colle
             c._worker_client=fake; c._worker_session_id='collector-test'
             c.coordinator.publish=original_publish
             c._pending_submission=None
+
+
+def test_recorded_gamepad_goals_replay_with_identical_policy_smoothing(collector, ros_module, monkeypatch):
+    from scipy.spatial.transform import Rotation
+    from tests.control.test_velocity_control import fake_arm
+    from vla.control.franky.velocity_control import VelocityControl
+    from vla.control.geometry import rot6d_to_matrix
+    import vla.control.franky.worker as worker_module
+
+    c = collector
+    clock, tick = clocked_control(c, ros_module, monkeypatch)
+    monkeypatch.setattr(worker_module, 'time', SimpleNamespace(
+        monotonic_ns=lambda: clock[0], monotonic=lambda: clock[0]/1e9))
+
+    def make_arm():
+        arm = fake_arm()
+        arm.robot.state.O_T_EE[:3, 3] = [.4, 0, .3]
+        arm.velocity_control = VelocityControl(target_smoothing_enabled=True, velocity_smoothing_enabled=True)
+        arm.reset(1)
+        return arm
+
+    live = make_arm()
+    submitted = []
+    original_publish = c.coordinator.publish
+
+    def publish(name, target, gripper, generation, command_id):
+        original_publish(name, target, gripper, generation, command_id)
+        if name == 'left':
+            live.set_target(target.tolist(), 1, command_id, {'source': 'gamepad', 'dt': 1/30})
+            event = live.servo_once()
+            submitted.append((clock[0], event))
+
+    c.coordinator.publish = publish
+    joy = c._latest['left.gamepad'][1]
+    for value in (0., 1., 1., 1., 1., 0., 0.):
+        joy.axes[1] = value
+        joy.axes[3] = value
+        tick()
+    assert not c._faulted and len(c._actions) == len(submitted)-1
+    assert any(np.linalg.norm(np.array(event['reference_tcp'])[:3] - np.array(event['absolute_target'])[:3]) > 1e-6
+               for _, event in submitted)
+
+    replay = make_arm()
+    for slot, (action, (stamp, original)) in enumerate(zip(c._actions, submitted)):
+        clock[0] = stamp
+        pose = np.r_[action[:3], Rotation.from_matrix(rot6d_to_matrix(action[3:9])).as_quat()]
+        # The recording retains the accepted goal, never the filtered reference.
+        np.testing.assert_allclose(pose, original['absolute_target'], atol=1e-7, rtol=0)
+        replay.set_target(pose.tolist(), 1, slot, {'source': 'policy', 'dt': 1/30})
+        event = replay.servo_once()
+        np.testing.assert_allclose(event['reference_tcp'], original['reference_tcp'], atol=1e-7, rtol=0)
+        np.testing.assert_allclose(event['twist'], original['twist'], atol=1e-6, rtol=0)
+    live.stop()
+    replay.stop()
 
 
 def test_gamepad_release_and_packet_gap_keep_absolute_action_and_fault_latched(collector, ros_module, monkeypatch):

@@ -63,31 +63,12 @@ def smooth_pose(previous, target, alpha):
     return result
 
 
-def return_twist(measured, target):
+def tracking_twist(measured, target, config):
+    """One execution law for every absolute TCP target, independent of source."""
     position, rotation = pose_error(measured, target)
-    distance, angle = np.linalg.norm(position), np.linalg.norm(rotation)
-    if distance <= .0005 and angle <= np.deg2rad(2):
-        return np.zeros(6)
-    cap = .005 * distance/.01 if distance <= .01 else .005 + min(1., (distance-.01)/.07) * (.03-.005)
-    return np.r_[limit_norm(8*position, min(.03, cap)),
-                 limit_norm(3*rotation, .15) if angle > np.deg2rad(2) else np.zeros(3)]
-
-
-def tracking_twist(measured, target, context, config):
-    position, rotation = pose_error(measured, target)
-    source = context['source']
-    if source == 'pose':
-        return return_twist(measured, target)
-    if source == 'gamepad':
-        dt = context['dt']
-        linear = limit_norm(np.where(context['linear_active'], position/dt, 0.), .16)
-        # Tool-channel release cancellation is applied in the measured base basis.
-        basis = Rotation.from_quat(measured[3:]).as_matrix() @ np.asarray(context['rotation_basis'])
-        angular = basis @ (np.where(context['angular_active'], basis.T @ (rotation/dt), 0.))
-        return np.r_[linear, limit_norm(angular, .30)]
     linear = limit_norm(position, config.max_linear_speed * config.tracking_tau_s) / config.tracking_tau_s
     angular = limit_norm(rotation, config.max_angular_speed * config.tracking_tau_s) / config.tracking_tau_s
-    if np.linalg.norm(position) <= .0008:
+    if np.linalg.norm(position) <= .0005:
         linear[:] = 0
     if np.linalg.norm(rotation) <= .01:
         angular[:] = 0
@@ -98,15 +79,9 @@ def validate_context(value):
     if not isinstance(value, dict) or value.get('source') not in ('policy', 'gamepad', 'gello', 'pose'):
         raise ValueError('absolute target requires a valid source context')
     result = dict(value)
+    if set(result) != {'source', 'dt'}:
+        raise ValueError('absolute target context accepts only source and dt; input masks belong in the frontend')
     dt = result.get('dt')
     if isinstance(dt, bool) or not isinstance(dt, (float, int)) or not math.isfinite(dt) or not 0 < dt <= 1/30 + 1e-6:
         raise ValueError('invalid absolute target dt')
-    if result['source'] == 'gamepad':
-        for key in ('linear_active', 'angular_active'):
-            if not isinstance(result.get(key), (list, tuple)) or len(result[key]) != 3 or any(type(x) is not bool for x in result[key]):
-                raise ValueError(f'invalid gamepad {key}')
-        basis = np.asarray(result.get('rotation_basis'), dtype=float)
-        if (basis.shape != (3, 3) or not np.isfinite(basis).all()
-                or not np.allclose(basis.T@basis, np.eye(3), atol=1e-7) or np.linalg.det(basis) < .999999):
-            raise ValueError('invalid gamepad rotation basis')
     return result

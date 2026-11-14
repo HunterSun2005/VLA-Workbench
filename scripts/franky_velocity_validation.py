@@ -19,6 +19,7 @@ class VelocityValidation:
         cfg = self.directory/'config.json'
         cfg.write_text(json.dumps({'session_id':'velocity-validation',
             'arms':{a:{'robot_ip':a} for a in ('left','right')},
+            'velocity_control':{'target_smoothing_enabled':True, 'velocity_smoothing_enabled':True},
             'target_timeout_s':.1, 'state_timeout_s':.5}))
         self.log = (self.directory/'worker.log').open('w')
         python = worker_python(root)
@@ -28,6 +29,7 @@ class VelocityValidation:
         self.ack = 0
         self.stamps = {'left':[],'right':[]}
         self.accepted = 0
+        self.sources = {name:0 for name in ('gamepad','gello','policy','pose')}
         deadline = time.monotonic()+20
         while not (self.directory/'worker.sock').exists():
             if self.child.poll() is not None or time.monotonic()>deadline:
@@ -54,20 +56,26 @@ class VelocityValidation:
 
     def submit(self, accepted):
         targets={}
+        source = tuple(self.sources)[self.accepted % len(self.sources)]
         for index,arm in enumerate(('left','right')):
             block=accepted.target[10*index:10*index+10]
             pose=np.r_[block[:3],Rotation.from_matrix(rot6d_to_matrix(block[3:9])).as_quat()]
-            targets[arm]={'pose':pose.tolist(),'context':{'source':'policy','dt':1/30}}
-        self.accepted+=1
-        return self.exchange('target', sequence=self.accepted, slot_id=accepted.command_id,
-                             timestamp_ns=time.monotonic_ns(),arms=targets)
+            targets[arm]={'pose':pose.tolist(),'context':{'source':source,'dt':1/30}}
+        sequence = self.accepted+1
+        response = self.exchange('target', sequence=sequence, slot_id=accepted.command_id,
+                                 timestamp_ns=time.monotonic_ns(),arms=targets)
+        self.accepted=sequence
+        self.sources[source]+=1
+        return response
 
     def report(self):
         from validate_ros_control import intervals
         self.exchange('stop',generation=2)
         return {'sdk':'official Franky 2.0.0+libfranka.0.21.2',
                 'boundary':'real SDK motion constructors; fixed-state fake Robot; no FCI',
-                'accepted':self.accepted, 'servo':{arm:intervals(stamps) for arm,stamps in self.stamps.items()}}
+                'accepted':self.accepted, 'sources':dict(self.sources),
+                'target_smoothing_enabled':True, 'velocity_smoothing_enabled':True,
+                'servo':{arm:intervals(stamps) for arm,stamps in self.stamps.items()}}
 
     def close(self):
         if self.child.poll() is None:

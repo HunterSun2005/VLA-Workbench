@@ -356,6 +356,9 @@ class RolloutCollector(Node):
                                                 'generation': -1, 'request_id': uuid.uuid4().hex})
         if ready.get('tcp_frame') != TCP_FRAME:
             raise RuntimeError('Franky worker TCP frame mismatch; restart with the current worker')
+        from vla.control.franky.worker import FrankyWorker
+        if ready.get('implementation_version') != FrankyWorker.IMPLEMENTATION_VERSION:
+            raise RuntimeError('Franky worker execution semantics mismatch; restart with the current worker')
         from vla.core.franky_runtime import semantic_binding
         binding_identity = semantic_binding(ready['binding_fingerprint'])
         if (set(self._worker_client.states()) != {a.name for a in config.arms}
@@ -394,11 +397,11 @@ class RolloutCollector(Node):
             'policy_gripper_speed', 'workspace_limits_enabled')}
         metadata['recording_contract']['control_fingerprint'] = fingerprint({
             'python': control_parameters, 'cpp': controller_parameters,
-            'cartesian_tracking': 'absolute_30hz_velocity_100hz_ack_v2',
-            'human_input': {'version': 8, 'shortcut_orientation': 'logical_yaw_zero_downward_z', 'gamepads': {a.name: asdict(a.gamepad) for a in config.arms},
+            'cartesian_tracking': 'source_independent_absolute_30hz_velocity_100hz_ack_v3',
+            'human_input': {'version': 9, 'shortcut_orientation': 'logical_yaw_zero_downward_z', 'gamepads': {a.name: asdict(a.gamepad) for a in config.arms},
                             'fast_translation_multiplier': 5.,
                             'rotation_inputs': 'calibrated_hardware_tool_in_logical_tcp',
-                            'release': 'measured_anchor_each_slot_zero_released_channels',
+                            'release': 'frontend_measured_channel_once_then_absolute_hold',
                             'hold_timeout_s': config.gamepad_hold_timeout_s,
                             'joy_timeout_s': config.gamepad_joy_timeout_s,
                             'gello_sample_timeout_s': config.gello_sample_timeout_s},
@@ -1023,15 +1026,6 @@ class RolloutCollector(Node):
         bucket = self._pending_worker_targets.setdefault(key, {})
         source = self.coordinator.owner
         context = {'source': source, 'dt': 1/self.config.fps}
-        if source == 'gamepad':
-            from .gamepad import gamepad_rotation_basis
-            manual = self._gamepad_targets[name]
-            if manual.pose_return is not None:
-                context['source'] = 'pose'
-            else:
-                context.update(linear_active=[bool(x) for x in manual.linear_active],
-                               angular_active=[bool(x) for x in manual.angular_active],
-                               rotation_basis=(manual.hardware_to_logical_rotation @ gamepad_rotation_basis(arm.gamepad)).tolist())
         bucket[name] = {'pose': np.asarray(target, dtype=float).tolist(), 'context': context}
         expected = {configured.name for configured in self.config.arms}
         if set(bucket) == expected:
@@ -1586,7 +1580,7 @@ class RolloutCollector(Node):
             if target is None:
                 return False
             gamepad_message = values[f"{arm.name}.gamepad"]
-            from .gamepad import decode_cartesian_gamepad_values, gamepad_rotation_basis
+            from .gamepad import decode_cartesian_gamepad_values, gamepad_rotation_basis, release_rotation_reference
             decoded = decode_cartesian_gamepad_values(gamepad_message.axes, gamepad_message.buttons, arm.gamepad, self.config)
             measured_position, measured_rotation = schema.pose_from_stamped(values[f"{arm.name}.robot_state"].o_t_ee)
             now_ns = time.monotonic_ns()
@@ -1595,6 +1589,10 @@ class RolloutCollector(Node):
             if age < 0 or age > self.config.gamepad_joy_timeout_s:
                 raise RuntimeError(f'input stream interrupted: stale {arm.name}.gamepad')
             input_hold = age > self.config.gamepad_hold_timeout_s
+            if target.input_hold and not input_hold:
+                # Resume from fresh feedback, never integrate an input gap.
+                target.position, target.rotation = measured_position.copy(), measured_rotation.copy()
+                target.linear_active = target.angular_active = (False, False, False)
             buttons = list(gamepad_message.buttons)
             old = self._previous_buttons.get(arm.name, [0]*len(buttons))
             edge = lambda index: not input_hold and len(buttons) > index and buttons[index] and not (len(old) > index and old[index])
@@ -1623,7 +1621,11 @@ class RolloutCollector(Node):
                 basis = target.hardware_to_logical_rotation @ gamepad_rotation_basis(arm.gamepad)
                 linear_active = np.abs(velocity) > 1e-9
                 angular_active = np.abs(basis.T @ angular) > 1e-9
-                target.position, target.rotation = measured_position.copy(), measured_rotation.copy()
+                released = np.asarray(target.linear_active) & ~linear_active
+                target.position[released] = measured_position[released]
+                target.rotation = release_rotation_reference(
+                    measured_rotation, target.rotation, basis,
+                    np.asarray(target.angular_active) & ~angular_active)
                 target.linear_active, target.angular_active = tuple(linear_active), tuple(angular_active)
                 target.position = target.position + velocity*dt
                 if self.config.workspace_limits_enabled:

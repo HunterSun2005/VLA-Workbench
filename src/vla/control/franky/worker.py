@@ -194,8 +194,7 @@ class FrankyArm:
         if self.workspace_bounds is not None and np.any((target[:3] < self.workspace_bounds[0]-1e-9) | (target[:3] > self.workspace_bounds[1]+1e-9)):
             raise ValueError('absolute target outside workspace')
         previous = self.target_pose
-        if (previous is not None and context['source'] in ('policy', 'gello')
-                and self.velocity_control.target_smoothing_enabled):
+        if previous is not None and self.velocity_control.target_smoothing_enabled:
             target = smooth_pose(previous, target, self.velocity_control.target_smoothing_alpha)
         self.nominal_pose = np.asarray(pose, dtype=float).copy()
         self.target_pose = target
@@ -232,8 +231,8 @@ class FrankyArm:
         frame = self._frame(raw)
         measured = frame.to_logical(_affine_pose(raw.O_T_EE))
         observed = time.monotonic_ns()
-        twist = tracking_twist(measured, self.target_pose, self.context, self.velocity_control)
-        if self.context['source'] in ('policy', 'gello') and self.velocity_control.velocity_smoothing_enabled:
+        twist = tracking_twist(measured, self.target_pose, self.velocity_control)
+        if self.velocity_control.velocity_smoothing_enabled:
             dt = (observed-self.last_servo_ns)/1e9 if self.last_servo_ns is not None else 1/30
             alpha = self.velocity_control.velocity_smoothing_alpha ** (30*min(.1, max(0., dt)))
             twist = alpha*self.last_twist + (1-alpha)*twist
@@ -252,7 +251,7 @@ class FrankyArm:
         applied = time.monotonic_ns()
         self.last_twist, self.last_servo_ns = twist, observed
         event = {'arm': self.name, 'generation': self.target_generation,
-                'sequence': self.target_sequence, 'observed_at_ns': observed,
+                'sequence': self.target_sequence, 'source': self.context['source'], 'observed_at_ns': observed,
                 'applied_at_ns': applied, 'measured_tcp': measured.tolist(),
                 'absolute_target': self.nominal_pose.tolist(), 'reference_tcp': self.target_pose.tolist(),
                 'twist': twist.tolist()}
@@ -318,7 +317,7 @@ class FrankyArm:
 
 class FrankyWorker:
     """One generation-fenced owner, with a watchdog independent of client traffic."""
-    IMPLEMENTATION_VERSION = 8
+    IMPLEMENTATION_VERSION = 9
 
     def __init__(self, arms, *, session_id, velocity_control=None, target_timeout_s=.1,
                  state_timeout_s=.5):

@@ -419,7 +419,7 @@ class ROSBackend(BaseBackend):
                             and set(states) == set(self.arms)
                             and all(v.state_valid and not v.fault for v in states.values())
                             and semantic_binding(response.get('binding_fingerprint', {})) == semantic_binding(self._worker_binding)
-                            and response.get('implementation_version') == 8
+                            and response.get('implementation_version') == 9
                             and response.get('velocity_control') == rollout.franky_velocity_control):
                         client.request_now(message)
                         client._session_id = self.directory.name
