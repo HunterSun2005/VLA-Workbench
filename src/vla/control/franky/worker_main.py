@@ -14,7 +14,7 @@ def main() -> None:
     parser.add_argument("--config", type=Path)
     parser.add_argument("--socket-path", type=Path)
     parser.add_argument("--check-only", action="store_true",
-                        help="check tracker API and loaded libfranka without opening hardware")
+                        help="check velocity API and loaded libfranka without opening hardware")
     args = parser.parse_args()
     if not args.check_only and (args.config is None or args.socket_path is None):
         parser.error("--config and --socket-path are required unless --check-only is used")
@@ -23,10 +23,12 @@ def main() -> None:
         print(json.dumps(fingerprint, indent=2, sort_keys=True))
         return
     config = json.loads(args.config.read_text(encoding="utf-8"))
+    if 'compliance' in config:
+        raise ValueError('Tracker compliance removed; migrate to velocity_control')
     worker = FrankyWorker(
         config["arms"],
         session_id=str(config["session_id"]),
-        compliance=config.get("compliance"),
+        velocity_control=config.get("velocity_control"),
         target_timeout_s=config.get("target_timeout_s", .1),
         state_timeout_s=config.get("state_timeout_s", .5),
     )

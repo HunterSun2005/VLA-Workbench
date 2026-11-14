@@ -47,7 +47,7 @@ case "$TELEOP_MODE" in
     ;;
 esac
 
-ROS2_WS="${ROS2_WS:-${VLA_ROOT:-$PWD}/ros_ws}"
+ROS2_WS="${ROS2_WS:-${VLA_ROS_WORKSPACE:-${VLA_ROOT:-$PWD}/runtime/ros/current}}"
 FRANKA_ROS2_WS="${FRANKA_ROS2_WS:-$ROS2_WS}"
 ROBOTIQ_ROS2_SETUP="${ROBOTIQ_ROS2_SETUP:-$ROS2_WS/install/local_setup.bash}"
 OPENROBOTS_LIB_DIR="${OPENROBOTS_LIB_DIR:-/opt/openrobots/lib}"

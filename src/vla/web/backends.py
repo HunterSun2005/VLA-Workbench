@@ -1,5 +1,6 @@
 """Managed adapters invoke original coordinators; no keystroke emulation."""
 from __future__ import annotations
+from vla.core.ros_workspace import ros_workspace
 from contextlib import ExitStack
 from dataclasses import replace
 import importlib
@@ -104,7 +105,7 @@ class BaseBackend:
         expected = ('left','right') if self.config.arms == 'dual' else ('left',)
         if tuple(a.name for a in c.arms) != expected:
             raise ValueError('arm configuration mismatch')
-        c = self.config.apply_rollout_compliance(self.config.apply_rollout_workspace(c))
+        c = self.config.apply_rollout_velocity_control(self.config.apply_rollout_workspace(c))
         space = self.config.action_space
         if self.config.workflow == 'deploy' and self.config.model_backend == 'pi05' and self.config.policy_path:
             from vla.actions.metadata import checkpoint_contract
@@ -200,32 +201,26 @@ class BaseBackend:
             if was_positioning and mode != 'human':
                 self.enabled = False
             self._policy_armed = self.enabled and not active and not c._teleop_enabled
-        elif op == 'compliance':
+        elif op == 'velocity_control':
             if self.config.workflow not in ('collect', 'deploy'):
-                raise ValueError('阻抗参数只适用于采集或部署会话')
+                raise ValueError('速度控制参数只适用于采集或部署会话')
             values = args.get('values')
             if not isinstance(values, dict):
-                raise ValueError('compliance values must be an object')
-            allowed = {'translational_stiffness', 'rotational_stiffness', 'nullspace_stiffness',
-                       'translational_clip', 'rotational_clip', 'max_step', 'max_step_rad',
-                       'max_delta_tau', 'gains_time_constant', 'tracking_integral_gain',
-                       'tracking_max_offset_m', 'tracking_max_offset_rad',
-                       'tracking_max_linear_rate', 'tracking_max_angular_rate'}
-            if not values or set(values) - allowed:
-                raise ValueError('unknown or empty Franky compliance values')
-            if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value)
-                   for value in values.values()):
-                raise ValueError('Franky compliance values must be finite numbers')
-            if not hasattr(c, 'update_compliance'):
-                raise RuntimeError('当前控制后端不支持 Franky 阻抗调参')
-            request_id = c.update_compliance(values, request_id=args.get('_request_id'))
+                raise ValueError('velocity_control values must be an object')
+            if not values:
+                raise ValueError('empty Franky velocity_control values')
+            from vla.control.franky.velocity_control import VelocityControl
+            VelocityControl.from_mapping(values)
+            if not hasattr(c, 'update_velocity_control'):
+                raise RuntimeError('当前控制后端不支持 Franky 速度控制调参')
+            request_id = c.update_velocity_control(values, request_id=args.get('_request_id'))
             def completed():
-                status = c.compliance_status()
+                status = c.velocity_control_status()
                 request = status.get('request') or {}
                 if request.get('request_id') != request_id:
-                    raise RuntimeError('compliance request was superseded')
+                    raise RuntimeError('velocity_control request was superseded')
                 if request.get('status') in ('failed', 'cancelled'):
-                    raise RuntimeError(request.get('error') or 'compliance update failed')
+                    raise RuntimeError(request.get('error') or 'velocity_control update failed')
                 return request.get('status') == 'applied'
             return completed
         elif op == 'critical' and (self.config.workflow == 'collect' or getattr(c, 'require_online', False)):
@@ -253,7 +248,7 @@ class BaseBackend:
         if controls is not None:
             arms['left'].update(speed='fast' if controls.high_speed else 'normal', speed_scale=controls.speed_scale,
                                 transition=abs(controls.speed_scale-(controls.config.speed_modes.high_multiplier if controls.high_speed else 1.))>1e-6)
-        ops = ['enable','pause','record','save','discard','stop','compliance']
+        ops = ['enable','pause','record','save','discard','stop','velocity_control']
         if hasattr(c,'recover_fault'):
             ops.append('recover')
         if self.config.workflow == 'deploy':
@@ -280,8 +275,8 @@ class BaseBackend:
                              'name':c.config.subtasks[c._subtask_index]}
                             if self.config.workflow == 'collect' and getattr(c.config, 'subtasks', ()) else None),
                 'rtc': c.policy_client.contract.get('rtc_enabled',False) if c.policy_client else False}
-        if hasattr(c, 'compliance_status'):
-            status['compliance'] = c.compliance_status()
+        if hasattr(c, 'velocity_control_status'):
+            status['velocity_control'] = c.velocity_control_status()
         if hasattr(c, 'input_diagnostics'):
             status['input_diagnostics'] = c.input_diagnostics()
         return status
@@ -340,7 +335,7 @@ class ROSBackend(BaseBackend):
         # Both arm/gripper command routes go through managed coordinators, including GELLO.
         env = clean_environment(root,'/usr/bin/python3',ros=True)
         env.update(self.hardware, VLA_RUN_MODE='managed', CONTROL_OWNER='rollout', TELEOP_MODE='duo' if config.arms == 'dual' else 'single_left',
-                   ROS2_WS=str(config.ros_workspace or Path(root)/'ros_ws'),
+                   ROS2_WS=str(ros_workspace(root, config.ros_workspace)),
                    VLA_WEB_READY_FILE=str(self.directory/'hardware.ready'),
                    LOG_DIR=str(self.directory/'ros'), STATE_DIR=str(self.directory/'ros-state'), START_CAMERAS='0',
                    VLA_WORKER_SESSION_ID=self.directory.name,
@@ -386,7 +381,7 @@ class ROSBackend(BaseBackend):
         worker_config.write_text(json.dumps({
             'session_id': self.directory.name,
             'arms': arms,
-            'compliance': rollout.franky_compliance,
+            'velocity_control': rollout.franky_velocity_control,
             'target_timeout_s': rollout.control_discontinuity_timeout_s,
             'state_timeout_s': rollout.gamepad_state_timeout_s,
         }, indent=2) + '\n')
@@ -424,7 +419,8 @@ class ROSBackend(BaseBackend):
                             and set(states) == set(self.arms)
                             and all(v.state_valid and not v.fault for v in states.values())
                             and semantic_binding(response.get('binding_fingerprint', {})) == semantic_binding(self._worker_binding)
-                            and response.get('compliance') == rollout.franky_compliance):
+                            and response.get('implementation_version') == 8
+                            and response.get('velocity_control') == rollout.franky_velocity_control):
                         client.request_now(message)
                         client._session_id = self.directory.name
                         return
@@ -456,7 +452,7 @@ class ROSBackend(BaseBackend):
         import yaml
         from rclpy.parameter import Parameter
         from vla.paths import resource
-        ws = Path(self.config.ros_workspace or self.root/'ros_ws')
+        ws = ros_workspace(self.root, self.config.ros_workspace)
         source = Path(self.hardware.get('GELLO_CONFIG','franka_gello_duo.yaml'))
         if not source.is_absolute():
             source = ws/'src/franka_gello_state_publisher/config'/source

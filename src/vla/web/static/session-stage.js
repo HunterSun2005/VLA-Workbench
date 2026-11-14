@@ -16,8 +16,8 @@ class SessionStage {
   });
   this.drawer.addEventListener('close',()=>{
    document.getElementById('configHome').append(document.getElementById('sessionConfig'));
-   const compliance=document.getElementById('compliancePanel');
-   compliance.querySelectorAll('input,button').forEach(el=>el.disabled=false);
+   const velocity_control=document.getElementById('velocity_controlPanel');
+   velocity_control.querySelectorAll('input,select,button').forEach(el=>el.disabled=false);
    configureView();
    document.getElementById('viewConfig').focus({preventScroll:true});
   });
@@ -78,9 +78,9 @@ class SessionStage {
  }
  openDrawer(){
   document.getElementById('drawerBody').append(document.getElementById('sessionConfig'));
-  const compliance=document.getElementById('compliancePanel');
-  document.getElementById('drawerBody').append(compliance);
-  compliance.querySelectorAll('input,button').forEach(el=>el.disabled=true);
+  const velocity_control=document.getElementById('velocity_controlPanel');
+  document.getElementById('drawerBody').append(velocity_control);
+  velocity_control.querySelectorAll('input,select,button').forEach(el=>el.disabled=true);
   this.drawer.showModal();
   if(!matchMedia('(prefers-reduced-motion: reduce)').matches)this.drawer.animate([{opacity:0,transform:'translateX(24px)'},{opacity:1,transform:'translateX(0)'}],{duration:220,easing:'ease-out'});
  }

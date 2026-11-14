@@ -178,6 +178,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model-python', default=os.environ.get('VLA_PYTHON', sys.executable))
     parser.add_argument('--checks', nargs='+', choices=CHECKS, default=['model', 'ros', 'wheel'])
+    parser.add_argument('--timing-lingbot-rtc', action='store_true', help='Include LingBot RTC in the mock timing check')
+    parser.add_argument('--timing-franky-velocity', action='store_true', help='Include official Franky SDK constructors with a fake Robot (no FCI)')
     parser.add_argument('--output', type=Path, help='New artifact directory; defaults to artifacts/validation/RUN')
     parser.add_argument('--timeout', type=float, default=900, help='Deadline per selected check in seconds')
     args = parser.parse_args(argv)
@@ -199,7 +201,9 @@ def main(argv=None):
                   '--junitxml='+str(output/'model.xml')],
         'ros': ['bash', 'scripts/test_ros.sh', 'tests/ros', '-q', '--junitxml='+str(output/'ros.xml')],
         'wheel': [args.model_python, 'scripts/validate_wheel.py', '--output', str(output/'wheel')],
-        'timing': ['bash', 'scripts/validate_ros_control.sh', '--duration', '600'],
+        'timing': ['bash', 'scripts/validate_ros_control.sh', '--duration', '600',
+                   *(['--lingbot-rtc'] if args.timing_lingbot_rtc else []),
+                   *(['--franky-velocity'] if args.timing_franky_velocity else [])],
     }
     report = {'schema_version': 1, 'run_id': run_id, 'started_at': datetime.now(timezone.utc).isoformat(),
               'source': source, 'model_python': args.model_python, 'scope': 'offline; no physical devices',

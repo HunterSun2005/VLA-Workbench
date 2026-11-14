@@ -55,12 +55,17 @@ def test_raw_shortcuts_preserve_original_geometry_and_are_bounded(monkeypatch,pr
             np.testing.assert_allclose(goal.rotation,delta@r,atol=1e-12)
             # Base-Z rotation preserves tool tilt; no change of TCP XYZ.
             np.testing.assert_allclose(goal.rotation[2,:],r[2,:],atol=1e-12)
-    assert np.linalg.norm(t.position-p)<=c.config.max_linear_velocity/30+1e-12
-    assert Rotation.from_matrix(t.rotation@r.T).magnitude()<=.3/30+1e-12
+    np.testing.assert_allclose(t.position, goal.position)
+    np.testing.assert_allclose(t.rotation, goal.rotation)
+    from vla.control.franky.velocity_control import return_twist
+    velocity=return_twist(np.r_[p,Rotation.from_matrix(r).as_quat()],
+                          np.r_[t.position,Rotation.from_matrix(t.rotation).as_quat()])
+    assert np.linalg.norm(velocity[:3])<=.03+1e-12
+    assert np.linalg.norm(velocity[3:])<=.15+1e-12
     # Same held button does not renew the deadline or recapture a moving pose.
     deadline=goal.deadline
     for _ in range(5):
-        tick(follow=True)
+        tick(follow=False)
         assert t.pose_return is goal and goal.deadline==deadline
         if button!=6:
             np.testing.assert_array_equal(t.position,p)
@@ -217,7 +222,7 @@ def test_control_boundary_cancels_shortcut_without_resuming(monkeypatch):
     tick()
     t = c._gamepad_targets['left']
     assert t.pose_return is not None
-    c._pending_compliance = c._execution = c._pending_frame = c._journal = None
+    c._pending_velocity_control = c._execution = c._pending_frame = c._journal = None
     c._pending_worker_targets, c._last_gripper_goal = {}, {}
     c._segment_id = 0
     c._control_boundary(reason='operator pause')

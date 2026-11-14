@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from vla.datacollection.franka_robotiq_rollout.collect_ros import RolloutCollector
-from vla.control.franky.worker import Compliance
+from vla.control.franky.worker import VelocityControl
 from dataclasses import asdict
 from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
 from vla.control.ros.cartesian_servo import CartesianServo
@@ -15,9 +15,9 @@ from vla.control.ros.cartesian_servo import CartesianServo
 
 def collector():
     node = RolloutCollector.__new__(RolloutCollector)
-    values = asdict(Compliance())
+    values = asdict(VelocityControl())
     results, requests, faults = {}, [], []
-    node.config = SimpleNamespace(fps=30, backend='franky', franky_compliance=values, gamepad_state_timeout_s=.5)
+    node.config = SimpleNamespace(fps=30, backend='franky', franky_velocity_control=values, gamepad_state_timeout_s=.5)
     node._lock = threading.RLock()
     node._faulted = False
     node._journal = None
@@ -25,43 +25,43 @@ def collector():
     node._pending_submission = None
     node._pending_lifecycle = None
     node._recording = False
-    node._pending_compliance = None
+    node._pending_velocity_control = None
     node._worker_session_id = 'session'
     node.coordinator = SimpleNamespace(generation=3, mode='standby', command_id=1)
     node._worker_client = SimpleNamespace(
-        fault=None, compliance_values=lambda: values.copy(), result=results.get,
-        compliance=lambda *args: requests.append(args), states=lambda: {},
+        fault=None, servo_events=lambda:[], acknowledge_audit=lambda _:None, velocity_control_values=lambda: values.copy(), result=results.get,
+        velocity_control=lambda *args: requests.append(args), states=lambda: {},
         stop=lambda *args: requests.append(('stop', *args)),
         reset=lambda *args: requests.append(('reset', *args)))
     node._latch_fault = faults.append
     return node, values, results, requests, faults
 
 
-def test_compliance_needs_matching_request_ack_even_if_values_already_match():
+def test_velocity_control_needs_matching_request_ack_even_if_values_already_match():
     node, values, results, requests, faults = collector()
-    node.update_compliance({'translational_stiffness': values['translational_stiffness']})
+    node.update_velocity_control({'max_linear_speed': values['max_linear_speed']})
     request_id = requests[-1][2]
     node._poll_worker_states()
-    assert node.compliance_status()['pending']
+    assert node.velocity_control_status()['pending']
     results['unrelated'] = {'request_status': 'applied'}
     node._poll_worker_states()
-    assert node.compliance_status()['pending']
-    results[request_id] = {'session_id': 'session', 'request_status': 'applied', 'request_id': request_id, 'generation': 3, 'compliance': values}
+    assert node.velocity_control_status()['pending']
+    results[request_id] = {'session_id': 'session', 'request_status': 'applied', 'request_id': request_id, 'generation': 3, 'velocity_control': values}
     node._poll_worker_states()
-    assert not node.compliance_status()['pending'] and not faults
+    assert not node.velocity_control_status()['pending'] and not faults
 
 
-def test_compliance_timeout_and_rejection_latch_fault_keep_effective_values():
+def test_velocity_control_timeout_and_rejection_latch_fault_keep_effective_values():
     for response in (None, {'request_status': 'failed', 'error': 'second arm failed'}):
         node, values, results, requests, faults = collector()
-        node.update_compliance({'translational_stiffness': 900})
+        node.update_velocity_control({'max_linear_speed': 0.04})
         if response is None:
-            node._pending_compliance['started'] = time.monotonic()-1
+            node._pending_velocity_control['started'] = time.monotonic()-1
         else:
             results[requests[-1][2]] = response
         node._poll_worker_states()
-        assert faults and not node.compliance_status()['pending']
-        assert node.compliance_status()['values']['translational_stiffness'] == 1100
+        assert faults and not node.velocity_control_status()['pending']
+        assert node.velocity_control_status()['values']['max_linear_speed'] == 0.05
 
 
 def test_fault_boundary_stops_worker_without_rearming():
@@ -72,13 +72,12 @@ def test_fault_boundary_stops_worker_without_rearming():
 
 
 @pytest.mark.parametrize('blocked', [False, True])
-def test_correction_receipt_keeps_nominal_actual_and_offset_on_storage_blockage(blocked):
+def test_smoothed_reference_receipt_survives_storage_blockage(blocked):
     node, _, results, _, _ = collector()
     nominal = [.4, 0, .3, 0, 0, 0, 1]
     actual = [.401, 0, .3, 0, 0, 0, 1]
     state = {'arm': 'left', 'nominal_tcp_pose': nominal, 'reference_tcp_pose': actual,
-             'hardware_reference_tcp_pose': actual, 'tracking_offset': [.001, 0, 0, 0, 0, 0],
-             'tracking_status': 'correcting'}
+             'hardware_reference_tcp_pose': actual}
     results['target'] = {'session_id': 'session', 'request_id': 'target', 'request_status': 'applied',
                          'generation': 3, 'sequence': 4, 'slot_id': 3, 'applied_at_ns': 1234,
                          'references': {'left': actual}, 'states': [state]}
@@ -96,12 +95,36 @@ def test_correction_receipt_keeps_nominal_actual_and_offset_on_storage_blockage(
     else:
         node._consume_submission()
     receipt_events = [*accepted, *node._pending_events]
-    assert [e[0] for e in receipt_events] == ['target_applied', 'hardware_target_applied', 'tracking_correction']
-    correction = receipt_events[-1][-1]['left']
-    np.testing.assert_array_equal(correction['nominal_tcp_pose'], nominal)
-    np.testing.assert_array_equal(correction['reference_tcp_pose'], actual)
-    assert correction['tracking_status'] == 'correcting'
+    assert [e[0] for e in receipt_events] == ['target_applied', 'hardware_target_applied']
+    np.testing.assert_array_equal(receipt_events[0][-1]['left'], actual)
     assert node._pending_submission is None
+
+
+@pytest.mark.parametrize('blocked', [False,True])
+def test_final_velocity_audit_drains_even_after_worker_fault(blocked):
+    node, _, _, _, faults = collector()
+    event = {'audit_id':1, 'generation':3, 'sequence':4, 'twist':[0]*6}
+    events, acks = [event], []
+    node._worker_client.servo_events = lambda:events.copy()
+    node._worker_client.acknowledge_audit = lambda key:(acks.append(key), events.clear())
+    node._worker_client.fault = 'native motion failed'
+    node._pending_events = []
+    accepted = []
+    def save(value):
+        if blocked:raise RuntimeError('storage blocked')
+        accepted.append(value)
+    node._journal = SimpleNamespace(event=save)
+    if blocked:
+        with pytest.raises(RuntimeError,match='storage blocked'):
+            node._poll_worker_states()
+    else:
+        node._poll_worker_states()
+        assert faults
+    assert acks == [1] and not events
+    saved, = [*accepted,*node._pending_events]
+    assert saved[0] == 'velocity_servo'
+    assert saved[1]['audit_id'] == 1 and saved[1]['sequence'] == 4
+    np.testing.assert_array_equal(saved[1]['twist'], event['twist'])
 
 
 def test_close_releases_worker_before_storage_and_cameras():
@@ -159,20 +182,20 @@ def test_explicit_franky_urdf_is_used_and_missing_override_is_rejected(monkeypat
         node._load_kinematic_model(arm)
 
 
-def test_late_compliance_ack_cannot_resume_a_new_generation():
+def test_late_velocity_control_ack_cannot_resume_a_new_generation():
     node, values, results, requests, faults = collector()
-    node.update_compliance({'rotational_stiffness': 60}, request_id='web-command')
-    assert node.compliance_status()['request']['request_id'] == 'web-command'
+    node.update_velocity_control({'max_angular_speed': 0.15}, request_id='web-command')
+    assert node.velocity_control_status()['request']['request_id'] == 'web-command'
     node.coordinator.generation += 1
-    results['web-command']={'request_id':'web-command','generation':3,'request_status':'applied','compliance':values}
+    results['web-command']={'request_id':'web-command','generation':3,'request_status':'applied','velocity_control':values}
     node._poll_worker_states()
-    assert node.compliance_status()['request']['status']=='cancelled'
-    assert not node.compliance_status()['pending'] and not faults
+    assert node.velocity_control_status()['request']['status']=='cancelled'
+    assert not node.velocity_control_status()['pending'] and not faults
 
 
 def test_tuning_freezes_the_single_control_loop():
     node, _, _, _, _ = collector()
-    node.update_compliance({'rotational_stiffness': 60})
+    node.update_velocity_control({'max_angular_speed': 0.15})
     node._pending_storage_error = None
     node._slot_clock = SimpleNamespace(poll=lambda _:0)
     node._last_control_tick = time.monotonic()-1/30

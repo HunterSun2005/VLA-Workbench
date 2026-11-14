@@ -16,11 +16,16 @@ python3 scripts/validate.py --checks model wheel
 
 # 只有控制／时序改动需要运行十分钟固定状态 ROS mock 测量
 python3 scripts/validate.py --checks timing
+
+# LingBot RTC 与官方 Franky 速度 SDK 边界（fake Robot，不连接 FCI）
+python3 scripts/validate.py --checks timing --timing-lingbot-rtc --timing-franky-velocity
 ```
 
 默认产物位于忽略目录 `artifacts/validation/<UTC时间>-<commit>-<随机标识>/`。通过 `--output /path/to/new-report-directory` 指定新的归档位置；拒绝覆盖已有目录。指定目录应在 Git 忽略范围内或仓库外，避免报告自身被当成源码变化。报告、日志、JUnit、wheel 均不提交到 Git；需要长期保留时归档整个结果目录。
 
 默认每项检查最多运行 900 秒，`--timeout` 可调整；超时先向本次检查的进程组发送中断，留出最多 30 秒进行清理，再终止该组。不会结束既有采集／训练／硬件会话。模型检查禁用 GPU 和在线模型下载；ROS 检查由独立 ROS Python 运行。`timing` 使用现有 mock overlay；缺失依赖时检查失败并保留错误，不自动构建或安装环境。
+
+`--timing-franky-velocity` 使用隔离 worker 中官方 2.0.0 wheel 的真实运动构造器及固定状态 fake Robot，额外检查每臂 100 Hz 伺服；原 ROS mock 控制器仍独立检查 1000 Hz。该选项不执行原生 FCI 闭环，不证明实机连续性或精度。
 
 ## 报告
 

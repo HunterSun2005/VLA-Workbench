@@ -27,6 +27,7 @@ nice -n 10 bash scripts/test.sh -q -p no:cacheprovider tests/web
 | --- | --- |
 | Web 状态、接口、配置及监控 | `tests/web` |
 | 单臂 gamepad、控制安全与采集 | `tests/control tests/rlt/test_cartesian_gamepad.py tests/rlt/test_dual_gamepad_record.py` |
+| 官方 Franky 速度接口／libfranka 迁移 | `tests/control tests/web tests/rlt/test_ros_gripper_commands.py tests/rlt/test_terminal.py`，另用 `scripts/test_ros.sh tests/ros`；十分钟 mock 见 [验收选项](../docs/ACCEPTANCE.md) |
 | ROS／双臂启动与采集 | `tests/rlt/test_teleop_entrypoints.py tests/rlt/test_dual_gamepad_record.py tests/rlt/test_franka_dual_sft_recorder.py` |
 | 数据字段、处理、视频和恢复 | `tests/control/test_episode_journal.py tests/control/test_media_process.py tests/rlt/test_franka_absolute_recorder.py tests/rlt/test_extract_dataset_features.py tests/rlt/test_dataset_processing.py tests/web/test_processing.py` |
 | 部署协议、RTC 与人工接管 | `tests/control/test_execution.py tests/control/test_plan_service.py tests/rlt/test_franka_rollout_collection.py tests/rlt/test_franka_pi05_rtc_deployment.py tests/rlt/test_rlt_ac_rtc.py tests/rlt/test_franka_sft_server.py` |

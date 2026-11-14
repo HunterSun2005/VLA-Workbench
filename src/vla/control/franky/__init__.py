@@ -7,11 +7,11 @@ from .ipc import (
     decode_packet,
     encode_packet,
 )
-from .worker import Compliance, FrankyWorker, FrankyWorkerServer, check_binding
+from .worker import VelocityControl, FrankyWorker, FrankyWorkerServer, check_binding
 
 __all__ = [
     "IPC_VERSION",
-    "Compliance",
+    "VelocityControl",
     "FrankyWorker",
     "FrankyWorkerClient",
     "FrankyWorkerServer",

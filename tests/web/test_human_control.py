@@ -117,7 +117,7 @@ def test_manual_input_reaches_transport_before_recording(deployment, ros_module,
     assert sent and not c._faulted and not c._recording and c._journal is None
     assert not c._states
     if c.config.input_source == 'gamepad':
-        assert sent[-1][1][0] > sent[0][1][0] + .001
+        assert all(.4 < item[1][0] <= .4+c.config.gamepad_xy_speed/30+1e-9 for item in sent)
         assert not periods  # Franky accepts TCP directly; no outer IK tracking.
     else:
         assert sent[-1][2] == pytest.approx(.7)

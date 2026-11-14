@@ -54,11 +54,11 @@ def test_missing_installation_transform_cannot_start_tracker():
     from types import SimpleNamespace
     from vla.control.franky.worker import FrankyArm
     arm = FrankyArm('left', 'mock')
-    arm.robot = SimpleNamespace(join_motion=lambda: None, state=SimpleNamespace(q=np.zeros(7)))
+    arm.robot = SimpleNamespace(is_in_control=False, join_motion=lambda: None, state=SimpleNamespace(q=np.zeros(7)))
     arm.franky = SimpleNamespace(CartesianImpedanceTracker=lambda *a, **kw: pytest.fail('tracker started without tool calibration'))
     with pytest.raises(RuntimeError, match='measured F_T_EE is required'):
         arm.reset(1)
-    assert arm.tracker is None
+    assert not arm.servo_ready
 
 
 def test_real_wheel_receives_offset_once_and_feedback_is_logical():

@@ -18,12 +18,15 @@ def check_source(workspace: Path) -> None:
             f"libfranka source does not match dependencies.repos ({expected}). "
             "Prepare a fresh workspace from the pinned manifest; existing checkouts are not overwritten.")
     cmake = (source / "CMakeLists.txt").read_text()
-    if not re.search(r"set\(libfranka_VERSION\s+0\.19\.0\s*\)", cmake):
-        raise RuntimeError("ROS build requires libfranka 0.19.0 source")
+    if not re.search(r"set\(libfranka_VERSION\s+0\.21\.2\s*\)", cmake):
+        raise RuntimeError("ROS build requires libfranka 0.21.2 source")
 
 
 if __name__ == "__main__":
     try:
-        check_source(Path(__file__).resolve().parents[1] / "ros_ws")
+        import os
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
+        from vla.core.ros_workspace import ros_workspace
+        check_source(ros_workspace(Path(__file__).resolve().parents[1]))
     except (OSError, RuntimeError) as error:
         sys.exit(str(error))

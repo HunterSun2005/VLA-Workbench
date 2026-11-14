@@ -18,19 +18,19 @@ flowchart TD
   P[姿态库：登记恢复目标] --> C
   C --> I[异步 Unix IPC：最多一条在途目标]
   I --> W[独立 Franky worker]
-  W --> T[CartesianImpedanceTracker：1000 Hz 阻抗闭环]
+  W --> T[100 Hz 位姿反馈 → CartesianVelocityMotion → 原生 FCI]
   W --> A[匹配目标确认 + 实测状态]
   A --> C
   C --> D[确认后记录：后台视频编码和持久化]
 ```
 
-采集与部署只使用 **Franky + 绝对 TCP**，每臂 10D（位置、rot6d、绝对夹爪开度）。Gamepad、GELLO、策略和姿态恢复共用上述提交入口。ROS 保留输入、夹爪、相机和协调器；独立 Python 3.10 worker 使用固定 Franky wheel 与 libfranka 0.19.0，独占机械臂。模型进程不直接控制硬件。
+采集与部署只使用 **Franky + 绝对 TCP**，每臂 10D（位置、rot6d、绝对夹爪开度）。Gamepad、GELLO、策略和姿态恢复共用上述提交入口。ROS 保留输入、夹爪、相机和协调器；独立 Python 3.10 worker 使用固定 Franky wheel 与 libfranka 0.21.2，独占机械臂。模型进程不直接控制硬件。
 
-30 Hz 回调顺序检查状态和确认、生成候选、接受并非阻塞提交目标。IPC 未确认时跳过当前时隙，不积分、不接受、不生成该时隙记录；不排队积压目标，不补发历史动作。策略队列按真实时隙前进。Gamepad 松杆仅将刚释放方向的参考收回到实测位姿一次，随后固定保持，Franky 的每次参考变化上限不随频率降低而放大。
+30 Hz 回调顺序检查状态和确认、生成候选、接受并非阻塞提交目标。IPC 未确认时跳过当前时隙，不积分、不接受、不生成该时隙记录；不排队积压目标，不补发历史动作。策略队列按真实时隙前进。Gamepad 每时隙从实测位姿重锚，释放通道不再追赶累积目标。
 
-提交时冻结观察和接受动作，匹配 session、generation、sequence、request ID、slot 的成功确认后才进入记录流程。偶发相机缺帧跳过整行数据，持续过期超过 `sync_tolerance_ms` 才停控；缺口保留真实时隙和 segment，训练与 Replay 不跨缺口拼接。实际应用时间与 tracker 参考写入执行审计，不能用实测位姿替代 action。
+提交时冻结观察和接受动作，匹配 session、generation、sequence、request ID、slot 的成功确认后才进入记录流程。偶发相机缺帧跳过整行数据，持续过期超过 `sync_tolerance_ms` 才停控；缺口保留真实时隙和 segment，训练与 Replay 不跨缺口拼接。实际应用时间、速度与伺服参考写入执行审计，不能用实测位姿替代 action。
 
-启用时显式准备 tracker，暂停、接管、故障立即撤销旧代次。目标请求／目标流期限默认 100 ms，通信／状态期限 500 ms；健康查询不刷新目标流。停止、恢复后保持待命，重连和迟到确认不能恢复运动。详细契约见 [动作与记录](docs/ROS_ACTION_CONTRACT.md) 和 [执行闭环](docs/EXECUTION_RTC_RLT.md)。旧 ROS/IK 图保留在 [历史架构图](docs/diagrams/README.md)，不代表当前执行链路。
+启用时显式准备速度伺服，暂停、接管、故障立即撤销旧代次。目标请求／目标流期限默认 100 ms，通信／状态期限 500 ms；健康查询不刷新目标流。停止、恢复后保持待命，重连和迟到确认不能恢复运动。详细契约见 [动作与记录](docs/ROS_ACTION_CONTRACT.md) 和 [执行闭环](docs/EXECUTION_RTC_RLT.md)。旧 ROS/IK 图保留在 [历史架构图](docs/diagrams/README.md)，不代表当前执行链路。
 
 | 架构职责                 | 主要实现位置                                                                                                                              | 检查入口                                                                                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -120,7 +120,7 @@ CHECK_ONLY=1 bash scripts/franka/start_teleop_duo.sh
 
 系统前提是 ROS 2 Humble、MoveIt/ros2_control、Robotiq description/controllers、Joy、PyKDL，以及本机 `/opt/openrobots` 的原生依赖。Dynamixel SDK、串口库和 ROS 采集用的 NumPy/OpenCV/相机等依赖安装在 `ros_ws/python_deps`，版本固定在 `ros_ws/requirements-python.lock`；不改动系统 Python，也不引入模型 Conda 环境。版本快照见 `ros_ws/system-packages.lock`；第三方源码精确提交见 `ros_ws/dependencies.repos`。本轮没有安装或更改系统 ROS。
 
-首次使用先执行 `/usr/bin/python3 scripts/install_franky_worker.py`，将锁定 wheel 安装到独立的 `runtime/franky/current` 环境。`CHECK_ONLY=1` 校验配置及 worker 依赖，不连接硬件；真实启动必须显式传入 `--execute`。统一路线由 ROS 协调器管理控制权，独立 Franky worker 使用 `CartesianImpedanceTracker` 执行 TCP 目标。libfranka 统一锁定为 **0.19.0**，worker 会在连接硬件前核对实际加载的动态库；依赖来源、wheel 选择、离线检查与现有安装迁移边界见 [Franky 环境](docs/FRANKY_ENVIRONMENT.md)。
+首次使用先执行 `/usr/bin/python3 scripts/install_franky_worker.py`，将锁定 wheel 安装到独立的 `runtime/franky/current` 环境。`CHECK_ONLY=1` 校验配置及 worker 依赖，不连接硬件；真实启动必须显式传入 `--execute`。统一路线由 ROS 协调器管理控制权，独立 Franky worker 使用 官方 Franky 2.0.0 `CartesianVelocityMotion` 跟踪绝对 TCP 目标。libfranka 统一锁定为 **0.21.2**，worker 会在连接硬件前核对实际加载的动态库；依赖来源、wheel 选择、离线检查与现有安装迁移边界见 [Franky 环境](docs/FRANKY_ENVIRONMENT.md)。
 
 ## 功能入口
 

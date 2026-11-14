@@ -8,12 +8,12 @@ function sessionRunning(){
  if(current?.status?.final)return false;
  return Boolean(active?.alive)||['starting','standby','active','recording','saving','fault'].includes(current?.status?.state);
 }
-let complianceDefaults={};
+let velocity_controlDefaults={};
 let checking=false, confirming=false, startBaseline=null, confirmTimer=null;
 const configLocked=()=>creating||checking||confirming||sessionStage.locked||sessionRunning();
 function restoreSessionConfig(saved){
- complianceEditor.profile(saved.arms+'|'+(saved.config_path||''));
- if(saved.compliance)complianceEditor.setEffective(saved.compliance);
+ velocity_controlEditor.profile(saved.arms+'|'+(saved.config_path||''));
+ if(saved.velocity_control)velocity_controlEditor.setEffective(saved.velocity_control);
  form.elements.workspace_limits_enabled.checked=saved.workspace_limits_enabled!==false;
  for(const [key,value] of Object.entries(saved)){
   const el=form.elements[key];if(!el||key==='workspace_limits_enabled'&&value==null)continue;
@@ -26,7 +26,7 @@ function restoreSessionConfig(saved){
 }
 function lockSetup(){
  const locked=configLocked();$('start').disabled=locked||pending;$('preflight').disabled=locked;$('datasetDefault').disabled=locked;
- for(const el of document.querySelectorAll('[data-compliance]'))el.disabled=sessionStage.drawer.open||(['checking','finished'].includes(sessionStage.phase))||(sessionStage.phase==='configure'&&locked);
+ for(const el of document.querySelectorAll('[data-velocity_control]'))el.disabled=sessionStage.drawer.open||(['checking','finished'].includes(sessionStage.phase))||(sessionStage.phase==='configure'&&locked);
  for(const el of form.elements)if(el.name)el.disabled=locked||workflow==='deploy'&&el.name==='action_space';
  const owner=active?.alive&&active.session_id!==current?.session_id?active.config:current?.config||active?.config;
  $('collectTab').disabled=creating||checking||confirming||sessionStage.phase==='checking'||(sessionRunning()||sessionStage.phase==='finished')&&owner?.workflow!=='collect';
@@ -82,7 +82,7 @@ function renderIssues(message){
 
 function clearPreflight(){const panel=$('preflightResult');panel.hidden=true;panel.replaceChildren();}
 function showPreflight(result, checkedWorkflow){
- if(result.compliance)complianceEditor.setEffective(result.compliance);
+ if(result.velocity_control)velocity_controlEditor.setEffective(result.velocity_control);
  const panel=$('preflightResult'),items=[...new Set(result.errors||[])];panel.replaceChildren();panel.hidden=false;panel.dataset.result=result.ok?'passed':'failed';
  const title=document.createElement('h2');title.textContent=`${checkedWorkflow==='deploy'?'推理部署':'数据采集'} · ${result.ok?'配置检查通过':`配置检查未通过（${items.length} 项）`}`;panel.append(title);
  const output=document.createElement('p');output.className='preflight-output';output.textContent=`输出目录：${result.dataset_root||'—'}${result.existing_episodes!=null?' · 已有 '+result.existing_episodes+' 回合':''}`;panel.append(output);
@@ -94,8 +94,8 @@ function showPreflight(result, checkedWorkflow){
 }
 form.addEventListener('input',clearPreflight);form.addEventListener('change',clearPreflight);
 async function api(path,data){const response=await fetch(path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json','X-VLA-Token':token}:{},body:data?JSON.stringify(data):undefined});let result=await response.json();if(!response.ok){const failure=new Error(result.detail||response.statusText);failure.status=response.status;throw failure;}return result;}
-function config(){const data={workflow,mode:'vla',device:'cuda'};for(const element of form.elements){if(element.name)data[element.name]=element.type==='checkbox'?element.checked:element.value;}data.resume=data.resume==='true';if(data.workflow==='deploy'){data.side_camera_serial='';data.schema='full';if(data.policy_kind==='sft')data.mode='vla';}if(data.arms==='dual'||data.source==='gello')data.schema='full';data.compliance=complianceEditor.values();if(window.readWorkspaceBounds)data.workspace_bounds=readWorkspaceBounds(data);if(window.readCameraSerials)data.camera_serials=readCameraSerials(data);data.policy_timeout_s=Number(data.policy_timeout_s);data.lingbot_inference_slots=Number(data.lingbot_inference_slots);data.lingbot_guard_slots=Number(data.lingbot_guard_slots);if(data.workflow==='collect')data.model_backend='pi05';if(data.model_backend==='lingbot_v2'){data.policy_kind='sft';data.mode='vla';data.policy_path='';data.tokenizer_path='';data.handover_path='';}return data;}
-function configureView(){complianceEditor.profile(form.elements.arms.value+'|'+form.elements.config_path.value);const deploy=workflow==='deploy',external=deploy&&form.elements.model_backend.value==='lingbot_v2';$('externalModelFields').hidden=!external;$('localModelFields').hidden=external;$('sourceLabel').textContent=deploy?'人工接管输入源':'遥操作输入源';$('collectTab').classList.toggle('selected',selectedPage==='collect');$('deployTab').classList.toggle('selected',selectedPage==='deploy');$('processingTab').classList.toggle('selected',selectedPage==='processing');$('modelFields').hidden=!deploy;$('deployCameraHint').hidden=!deploy;$('policy').hidden=!deploy;$('schemaField').hidden=deploy;$('sideCameraField').hidden=deploy;form.elements.schema.options[0].textContent=`完整状态 · ${form.elements.arms.value==='dual'?'100':'50'}D`;form.elements.action_space.value='tcp';form.elements.action_space.disabled=true;$('configPathLabel').textContent=deploy?'部署 YAML':'采集 YAML（Franky TCP 控制与记录参数）';const panel=$('compliancePanel'),running=typeof sessionStage!=='undefined'&&sessionStage.phase==='running';(running?$('workbenchComplianceHost'):$('configComplianceHost')).appendChild(panel);panel.hidden=false;if(sessionStage.phase==='configure')complianceEditor.defaults(form.elements.config_path.value?null:complianceDefaults[form.elements.arms.value],form.elements.arms.value+'|'+form.elements.config_path.value);complianceEditor.draw();updateDatasetPath();lockSetup();window.dispatchEvent(new CustomEvent('vla-config-change'));}
+function config(){const data={workflow,mode:'vla',device:'cuda'};for(const element of form.elements){if(element.name)data[element.name]=element.type==='checkbox'?element.checked:element.value;}data.resume=data.resume==='true';if(data.workflow==='deploy'){data.side_camera_serial='';data.schema='full';if(data.policy_kind==='sft')data.mode='vla';}if(data.arms==='dual'||data.source==='gello')data.schema='full';data.velocity_control=velocity_controlEditor.values();if(window.readWorkspaceBounds)data.workspace_bounds=readWorkspaceBounds(data);if(window.readCameraSerials)data.camera_serials=readCameraSerials(data);data.policy_timeout_s=Number(data.policy_timeout_s);data.lingbot_inference_slots=Number(data.lingbot_inference_slots);data.lingbot_guard_slots=Number(data.lingbot_guard_slots);if(data.workflow==='collect')data.model_backend='pi05';if(data.model_backend==='lingbot_v2'){data.policy_kind='sft';data.mode='vla';data.policy_path='';data.tokenizer_path='';data.handover_path='';}return data;}
+function configureView(){velocity_controlEditor.profile(form.elements.arms.value+'|'+form.elements.config_path.value);const deploy=workflow==='deploy',external=deploy&&form.elements.model_backend.value==='lingbot_v2';$('externalModelFields').hidden=!external;$('localModelFields').hidden=external;$('sourceLabel').textContent=deploy?'人工接管输入源':'遥操作输入源';$('collectTab').classList.toggle('selected',selectedPage==='collect');$('deployTab').classList.toggle('selected',selectedPage==='deploy');$('processingTab').classList.toggle('selected',selectedPage==='processing');$('modelFields').hidden=!deploy;$('deployCameraHint').hidden=!deploy;$('policy').hidden=!deploy;$('schemaField').hidden=deploy;$('sideCameraField').hidden=deploy;form.elements.schema.options[0].textContent=`完整状态 · ${form.elements.arms.value==='dual'?'100':'50'}D`;form.elements.action_space.value='tcp';form.elements.action_space.disabled=true;$('configPathLabel').textContent=deploy?'部署 YAML':'采集 YAML（Franky TCP 控制与记录参数）';const panel=$('velocity_controlPanel'),running=typeof sessionStage!=='undefined'&&sessionStage.phase==='running';(running?$('workbenchVelocityControlHost'):$('configVelocityControlHost')).appendChild(panel);panel.hidden=false;if(sessionStage.phase==='configure')velocity_controlEditor.defaults(form.elements.config_path.value?null:velocity_controlDefaults[form.elements.arms.value],form.elements.arms.value+'|'+form.elements.config_path.value);velocity_controlEditor.draw();updateDatasetPath();lockSetup();window.dispatchEvent(new CustomEvent('vla-config-change'));}
 function showPage(page){if(page!==selectedPage)clearPreflight();selectedPage=page;const processing=page==='processing';$('livePanel').hidden=processing;$('processingPanel').hidden=!processing;if(processing)stopCameras();else{workflow=page;if(session&&!current?.status?.final&&current?.status?.state!=='stopped')cameras(current?.config||active?.config);}configureView();window.dispatchEvent(new CustomEvent('vla-page-change',{detail:page}));}
 $('collectTab').onclick=()=>showPage('collect');$('deployTab').onclick=()=>showPage('deploy');$('processingTab').onclick=()=>showPage('processing');form.elements.resume.onchange=configureView;form.elements.arms.onchange=configureView;form.elements.source.onchange=configureView;form.elements.policy_kind.onchange=configureView;form.elements.model_backend.onchange=configureView;form.elements.config_path.onchange=configureView;
 function requestStatus(text=''){$('requestStatus').textContent=text;$('requestStatus').hidden=!text;}
@@ -115,7 +115,7 @@ async function confirmCreation(){
 $('preflight').onclick=async()=>{
  if(configLocked())return;
  checking=true;clearPreflight();requestStatus('正在检查配置…');refreshLocks();
- try{error('');complianceEditor.assertDraft();await window.prepareHardware?.();const data=config(),result=await api('/api/preflight',data);showPreflight(result,data.workflow);}
+ try{error('');velocity_controlEditor.assertDraft();await window.prepareHardware?.();const data=config(),result=await api('/api/preflight',data);showPreflight(result,data.workflow);}
  catch(e){showPreflight({ok:false,errors:[e.message]},workflow);}
  finally{checking=false;requestStatus('');refreshLocks();}
 };
@@ -123,7 +123,7 @@ form.onsubmit=async event=>{
  event.preventDefault();if(configLocked()||pending)return;
  creating=true;startBaseline=sessionStage.id;requestStatus('正在检查配置…');refreshLocks();let submitted=false;
  try{
-  error('');clearPreflight();complianceEditor.assertDraft();await window.prepareHardware?.();const data=config(),check=await api('/api/preflight',data);showPreflight(check,data.workflow);if(!check.ok)return;
+  error('');clearPreflight();velocity_controlEditor.assertDraft();await window.prepareHardware?.();const data=config(),check=await api('/api/preflight',data);showPreflight(check,data.workflow);if(!check.ok)return;
   // Another tab may have started a session while this check was in flight.
   if(sessionStage.phase!=='configure'||sessionRunning())return;
   requestStatus('正在提交启动请求…');submitted=true;
@@ -150,11 +150,11 @@ async function command(operation,args={},commandId=null){
  if((pending&&!priority)||!current?.session_id)throw new Error('请等待当前命令完成');
  const id=commandId||crypto.randomUUID();pending=true;awaitingCommandId=id;freshness();error('');
  try{await api('/api/commands',{session_id:current.session_id,revision:current.revision,command_id:id,operation,args});}
- catch(e){if(awaitingCommandId===id){awaitingCommandId=null;pending=false;}freshness();error(e.message);if(operation==='compliance')throw e;}
+ catch(e){if(awaitingCommandId===id){awaitingCommandId=null;pending=false;}freshness();error(e.message);if(operation==='velocity_control')throw e;}
 }
 document.querySelectorAll('[data-op]').forEach(button=>button.onclick=()=>{const op=button.dataset.op;if(op==='discard'&&!confirm('丢弃当前未保存回合？'))return;command(op,{outcome:button.dataset.outcome||'success'});});
 document.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>command('mode',{mode:button.dataset.mode}));
-const complianceEditor=new ComplianceEditor($('compliancePanel'),(values,id)=>command('compliance',{values},id),()=>sessionStage.phase);
+const velocity_controlEditor=new VelocityControlEditor($('velocity_controlPanel'),(values,id)=>command('velocity_control',{values},id),()=>sessionStage.phase);
 
 function stopCameras(){window.releasePreview?.();for(const img of document.querySelectorAll('.camera img'))img.removeAttribute('src');}
 function cameras(config){if(selectedPage==='processing')return;stopCameras();const roles=(config?.arms==='dual'?['base','left_wrist','right_wrist']:['base','left_wrist']).concat(config?.workflow==='collect'&&config?.side_camera_serial?['side']:[]);$('cameras').replaceChildren();for(const role of roles){const card=document.createElement('div');card.className='camera stale';card.dataset.role=role;const img=document.createElement('img');img.alt=role;img.dataset.previewSrc=`/api/cameras/${role}?session=${session}`;const title=document.createElement('span');title.className='name';title.textContent=role==='base'?'BASE · 全局':role==='left_wrist'?'LEFT · 左腕':role==='side'?'SIDE · 侧视':'RIGHT · 右腕';const age=document.createElement('span');age.className='age';age.textContent='等待相机';card.append(img,title,age);$('cameras').append(card);}window.startPreviewImages?.();}
@@ -172,8 +172,8 @@ function render(message){
  if(message.session_id&&session!==message.session_id){issueMessages.clear();seenFailedCommands.clear();drawIssues();render.lastState=null;session=message.session_id;awaitingCommandId=null;pending=false;rows=[];epoch=Date.now()/1000-message.now;descriptors=[];if(!s.final&&s.state!=='stopped')cameras(message.config||active?.config);else stopCameras();if(message.config){restoreSessionConfig(message.config);configureView();}}
 
  $('state').textContent=message.config?.model_backend==='lingbot_v2'&&s.state==='recording'?(labels[s.execution_state]||labels[s.state]):(labels[s.state]||s.state);$('episode').textContent=s.episode??'—';$('frames').textContent=`${s.frames??'—'} / ${s.elapsed_s?.toFixed(1)??'—'}s`;$('source').textContent=({pose_return:'恢复姿态',waiting:'等待新动作',idle:'待命',human:'HUMAN',gamepad:'GAMEPAD'}[s.actual_source]||s.actual_source?.toUpperCase()||'—');
- complianceEditor.observe(message.session_id,s.compliance);
- complianceEditor.commandFailure(message.commands);
+ velocity_controlEditor.observe(message.session_id,s.velocity_control);
+ velocity_controlEditor.commandFailure(message.commands);
  if($('inputDiagnostics'))$('inputDiagnostics').textContent=JSON.stringify(s.input_diagnostics||{},null,2);
 
  $('modeState').textContent=s.requested_mode==='human'?(s.enabled?(s.recording?'人工控制 · 记录中':'人工控制 · 摆位中，未记录'):'已选择人工控制 · 等待启用'):s.requested_mode&&!s.recording?`已选择 ${s.requested_mode.toUpperCase()} · ${s.enabled?'开始回合后执行':'等待启用'}`:s.switch_pending?'等待新策略动作':s.requested_mode?`已选择 ${s.requested_mode.toUpperCase()}`:'—';$('probability').textContent=s.probability==null?'—':s.probability.toFixed(3);$('actionContract').textContent=s.action_space?`${s.action_space.toUpperCase()} · ${s.training_representation||'absolute'} · ROS ${s.controller_state||''}`:'动作契约：等待会话';$('latency').textContent=`${s.inference_ms?.toFixed(0)??'—'} ms / ${s.rtc?'ON':'OFF'}`;
@@ -203,7 +203,7 @@ function operationBlock(op,s){
 }
 function freshness(){
  const elapsed=(performance.now()-lastReceive)/1000,s=current?.status||{},isLive=connected&&elapsed<.5&&s.updated_at!=null&&current.now-s.updated_at+elapsed<.5&&!s.final;
- complianceEditor.available=isLive&&(s.available_commands||[]).includes('compliance');complianceEditor.draw();
+ velocity_controlEditor.available=isLive&&(s.available_commands||[]).includes('velocity_control');velocity_controlEditor.draw();
  $('connection').textContent=connected?'已连接':sessionStage.phase==='checking'?'正在确认会话':'连接中断 · 自动重连';$('dot').classList.toggle('live',connected);$('freshness').textContent=isLive?'实时更新':s.final?'会话已结束':'数据过期 / 等待';
  for(const b of document.querySelectorAll('[data-op]')){
   const startupStop=connected&&elapsed<.5&&s.state==='starting'&&b.dataset.op==='stop';
@@ -214,12 +214,12 @@ function freshness(){
  for(const b of document.querySelectorAll('[data-mode]')){
   const supported=(s.modes||[]).includes(b.dataset.mode);
   const blocked=s.saving||['fault','waiting_resume','storage_blocked'].includes(s.state)||['fault','resetting'].includes(s.controller_state);
-  b.disabled=!isLive||(pending&&!s.compliance?.pending)||!supported||blocked||!(s.available_commands||[]).includes('mode');b.title=blocked?'请先完成保存、恢复故障或手动启用控制':!supported?(b.dataset.mode==='auto'?'自动模式需要兼容的分类头资源':b.dataset.mode==='rlt'?'RLT 模式需要兼容的 Actor／RLToken 资源':'启动部署会话后可用'):!isLive?'等待实时会话连接':'';
+  b.disabled=!isLive||(pending&&!s.velocity_control?.pending)||!supported||blocked||!(s.available_commands||[]).includes('mode');b.title=blocked?'请先完成保存、恢复故障或手动启用控制':!supported?(b.dataset.mode==='auto'?'自动模式需要兼容的分类头资源':b.dataset.mode==='rlt'?'RLT 模式需要兼容的 Actor／RLToken 资源':'启动部署会话后可用'):!isLive?'等待实时会话连接':'';
   b.classList.toggle('selected',s.requested_mode===b.dataset.mode);b.setAttribute('aria-pressed',String(s.requested_mode===b.dataset.mode));
  }
  for(const card of document.querySelectorAll('.camera')){if(!card.querySelector('img').getAttribute('src')){card.classList.add('stale');card.querySelector('.age').textContent='预览暂停 · 遥测继续更新';continue;}const frame=current?.cameras?.[card.dataset.role];const age=frame?current.now-frame.captured_at+elapsed:Infinity;card.classList.toggle('stale',!connected||age>.5||age<0);card.querySelector('.age').textContent=Number.isFinite(age)?`${age>.5||!connected?'画面过期':'LIVE'} · ${(age*1000).toFixed(0)} ms · 服务端预览 ${age<=.5&&connected?(frame?.fps?.toFixed(1)??'—'):'—'} FPS`:'等待相机 / 无画面';}
 }
-async function connect(){try{const boot=await api('/api/bootstrap');token=boot.token;demo=boot.demo;active=boot.active;datasetDefaults=boot.dataset_defaults||{};complianceDefaults=boot.compliance_defaults||{};$('datasetBase').textContent=`相对路径基准：${boot.workspace_root}`;$('demo').hidden=!demo;if(!form.elements.model_python.value)form.elements.model_python.value=boot.defaults.model_python;if(active?.config&&!session&&!sessionStage.dismissed.has(active.session_id))restoreSessionConfig(active.config);sessionStage.bootstrap(active);if(active?.alive&&!session)$('state').textContent='启动中';configureView();socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/live`,['vla',token]);socket.onopen=()=>{connected=true;setIssue('web-connection','');};socket.onmessage=event=>render(JSON.parse(event.data));socket.onclose=()=>{connected=false;freshness();setTimeout(connect,1200);};socket.onerror=()=>socket.close();}catch(e){connected=false;setIssue('web-connection',`Web 连接失败：${e.message}`);setTimeout(connect,1500);}}
+async function connect(){try{const boot=await api('/api/bootstrap');token=boot.token;demo=boot.demo;active=boot.active;datasetDefaults=boot.dataset_defaults||{};velocity_controlDefaults=boot.velocity_control_defaults||{};$('datasetBase').textContent=`相对路径基准：${boot.workspace_root}`;$('demo').hidden=!demo;if(!form.elements.model_python.value)form.elements.model_python.value=boot.defaults.model_python;if(active?.config&&!session&&!sessionStage.dismissed.has(active.session_id))restoreSessionConfig(active.config);sessionStage.bootstrap(active);if(active?.alive&&!session)$('state').textContent='启动中';configureView();socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/live`,['vla',token]);socket.onopen=()=>{connected=true;setIssue('web-connection','');};socket.onmessage=event=>render(JSON.parse(event.data));socket.onclose=()=>{connected=false;freshness();setTimeout(connect,1200);};socket.onerror=()=>socket.close();}catch(e){connected=false;setIssue('web-connection',`Web 连接失败：${e.message}`);setTimeout(connect,1500);}}
 const sessionStage=new SessionStage();
 window.addEventListener('vla-layout-change',()=>{for(const p of plots)p.plot.setSize({width:Math.max(250,p.container.clientWidth-12),height:175});});
 window.addEventListener('vla-stage-change',configureView);

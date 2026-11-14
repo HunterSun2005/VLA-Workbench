@@ -16,6 +16,7 @@ from vla.core.hardware_lease import HardwareLease
 
 ROOT = Path(__file__).resolve().parents[2]
 FAKE = Path(__file__).with_name('franky_fake_process.py')
+CONTEXT = {'source': 'policy', 'dt': 1/30}
 POSE = [0.01, 0., 0., 0., 0., 0., 1.]
 
 
@@ -70,6 +71,7 @@ def process_worker(arms=('left',), target_timeout=3., state_timeout=3., tool_pos
 
 def request(root, kind='health', generation=-1, **kwargs):
     if kind == 'target':
+        kwargs['arms'] = {name: dict(value, context=value.get('context', CONTEXT)) for name, value in kwargs['arms'].items()}
         kwargs.setdefault('slot_id', kwargs.get('sequence', 0))
     packet = {'session_id': 's', 'kind': kind, 'generation': generation,
               'request_id': uuid.uuid4().hex, **kwargs}
@@ -89,18 +91,18 @@ def target(root, generation=1, sequence=1, arms=('left',), **kw):
 def test_real_tracker_lifecycle_and_explicit_recovery(arms):
     with process_worker(arms) as (root, child, _):
         ready = request(root)
-        assert ready['binding_fingerprint']['libfranka'] == '0.19.0'
+        assert ready['binding_fingerprint']['libfranka'] == '0.21.2'
         assert not ready['fault'] and all(v['state_valid'] for v in ready['states'])
         assert request(root, 'reset', 1)['request_status'] == 'applied'
         assert not target(root, arms=arms)['fault']
         for seq in range(2, 6):
             assert not target(root, sequence=seq, arms=arms)['fault']
-        gains = request(root, 'compliance', 1, values={'translational_stiffness': 900})
-        assert gains['request_status'] == 'applied' and gains['compliance']['translational_stiffness'] == 900
-        assert request(root, 'compliance', 1, values={'translational_clip': .01})['request_status'] == 'applied'
+        gains = request(root, 'velocity_control', 1, values={'max_linear_speed': .04})
+        assert gains['request_status'] == 'applied' and gains['velocity_control']['max_linear_speed'] == .04
+        assert request(root, 'velocity_control', 1, values={'tracking_tau_s': .2})['request_status'] == 'applied'
         assert request(root, 'stop', 2)['request_status'] == 'applied'
         assert target(root, generation=1, sequence=6, arms=arms)['request_status'] == 'ignored'
-        assert not any(s['tracker_running'] for s in request(root)['states'])
+        assert not any(s['servo_ready'] for s in request(root)['states'])
         assert request(root, 'reset', 3)['request_status'] == 'applied'
         assert not target(root, generation=3, sequence=1, arms=arms)['fault']
         (root/f'fail-tracker-{arms[-1]}').touch()
@@ -112,7 +114,7 @@ def test_real_tracker_lifecycle_and_explicit_recovery(arms):
         assert request(root, 'reset', 4)['fault']
         assert request(root)['fault']
         assert not request(root, 'recover', 5)['fault']
-        assert not any(s['tracker_running'] for s in request(root)['states'])
+        assert not any(s['servo_ready'] for s in request(root)['states'])
         assert not request(root, 'reset', 6)['fault']
         assert not target(root, generation=6, arms=arms)['fault']
         child.terminate(); child.wait(timeout=5)
@@ -122,49 +124,31 @@ def test_real_tracker_lifecycle_and_explicit_recovery(arms):
                 pass
 
 
-def test_static_absolute_pose_correction_receipts_frames_bounds_and_stop():
+def test_absolute_target_receipts_frames_and_velocity_workspace_limits():
     import numpy as np
     from scipy.spatial.transform import Rotation
     from vla.control.franky.tcp_frame import TCPFrame
-    from vla.control.franky.ipc import WorkerState
-
     tool = [0, 0, .174, *Rotation.from_euler('z', -np.pi/4).as_quat()]
     frame = TCPFrame(tool)
-    bounds = [[-.005, -.005, -.005], [.005, .005, .005]]
+    bounds = [[-.005]*3, [.005]*3]
     with process_worker(tool_pose=tool, workspace_bounds=bounds) as (root, _, _):
-        (root/'capture-targets').touch()
-        request(root, 'compliance', -1, values={'tracking_integral_gain': .5})
-        assert request(root, 'reset', 1)['request_status'] == 'applied'
+        request(root, 'reset', 1)
         goal = frame.to_logical(np.array([.0048, 0, 0, 0, 0, 0, 1.]))
-        for seq in range(1, 40):
-            result = request(root, 'target', 1, sequence=seq, slot_id=seq,
-                             timestamp_ns=time.monotonic_ns(), arms={'left': {'pose': goal.tolist()}})
-            assert result['request_status'] == 'applied'
-            time.sleep(1/30)
-        state = WorkerState.from_dict(result['states'][0])
-        np.testing.assert_allclose(state.nominal_tcp_pose, goal, atol=1e-12)
-        assert .0048 < state.reference_tcp_pose[0] <= .005
-        assert state.tracking_status == 'workspace_limited'
-        np.testing.assert_allclose(state.tracking_offset[0], state.reference_tcp_pose[0]-goal[0], atol=1e-12)
-        np.testing.assert_allclose(result['references']['left'], state.reference_tcp_pose, atol=1e-12)
-        np.testing.assert_allclose(state.hardware_reference_tcp_pose,
-                                   frame.to_hardware(state.reference_tcp_pose), atol=1e-12)
-        captured = json.loads((root/'targets.jsonl').read_text().splitlines()[-1])
-        np.testing.assert_allclose(captured['translation'], state.hardware_reference_tcp_pose[:3])
-        # Queries/duplicates do not integrate or bypass the target clock.
-        for _ in range(3):
-            health = request(root)['states'][0]
-            assert health['tracking_offset'] == list(state.tracking_offset)
-        duplicate = request(root, 'target', 1, sequence=39, slot_id=39,
-                            timestamp_ns=time.monotonic_ns(), arms={'left': {'pose': goal.tolist()}})
-        assert duplicate['request_status'] == 'ignored'
-        assert duplicate['states'][0]['tracking_offset'] == list(state.tracking_offset)
+        result = request(root, 'target', 1, sequence=1, timestamp_ns=time.monotonic_ns(),
+                         arms={'left': {'pose': goal.tolist()}})
+        assert not result['fault']
+        state = result['states'][0]
+        np.testing.assert_allclose(state['nominal_tcp_pose'], goal)
+        np.testing.assert_allclose(state['reference_tcp_pose'], goal)
+        np.testing.assert_allclose(state['hardware_reference_tcp_pose'], frame.to_hardware(goal), atol=1e-12)
+        assert abs(state['commanded_twist'][0]) <= .005/.1
+        event = result['servo_events'][0]
+        assert event['sequence'] == 1 and event['slot_id'] == 1
+        assert event['applied_at_ns'] >= event['observed_at_ns']
+        remaining = request(root, audit_ack=event['audit_id'])['servo_events']
+        assert all(item['audit_id'] > event['audit_id'] for item in remaining)
         stopped = request(root, 'stop', 2)['states'][0]
-        assert stopped['tracking_offset'] == [0.]*6 and not stopped['tracker_running']
-        assert stopped['reference_tcp_pose'] == stopped['nominal_tcp_pose'] == []
-        stale = request(root, 'target', 1, sequence=40, slot_id=40,
-                        timestamp_ns=time.monotonic_ns(), arms={'left': {'pose': goal.tolist()}})
-        assert stale['request_status'] == 'ignored' and not stale['states'][0]['tracker_running']
+        assert not stopped['servo_ready'] and stopped['reference_tcp_pose'] == []
 
 
 def test_watchdog_expires_despite_health_and_duplicate_traffic():
@@ -194,7 +178,7 @@ def test_partial_packet_and_dual_arm_state_failure_stop_all(disconnect):
         target(root, generation=3, arms=('left', 'right'))
         (root/'fail-state-right').touch()
         wait_for(lambda: request(root)['fault'])
-        assert not any(s.get('tracker_running') for s in request(root)['states'])
+        assert not any(s.get('servo_ready') for s in request(root)['states'])
 
 
 def test_duplicate_worker_cannot_steal_socket_or_leases():
@@ -224,8 +208,8 @@ def test_client_fault_latches_until_recover_and_control_requires_reset():
             wait_for(client.states)
             client.reset('s', 1)
             wait_for(lambda: client.states()['left'].generation == 1)
-            client.target('s', 1, 1, {'left': POSE}, slot_id=0)
-            wait_for(lambda: client.states()['left'].tracker_running)
+            client.target('s', 1, 1, {'left': {'pose': POSE, 'context': CONTEXT}}, slot_id=0)
+            wait_for(lambda: client.states()['left'].servo_ready)
             wait_for(lambda: client.fault)
             request(root, 'recover', 2)  # Another channel's success cannot clear client's latch.
             time.sleep(.15)
@@ -233,7 +217,7 @@ def test_client_fault_latches_until_recover_and_control_requires_reset():
             response = client.request_now({'kind': 'recover', 'session_id': 's', 'generation': 3,
                                            'request_id': uuid.uuid4().hex})
             assert not client.fault and not response['fault']
-            assert not any(s.tracker_running for s in client.states().values())
+            assert not any(s.servo_ready for s in client.states().values())
         finally:
             client.close()
 
@@ -256,14 +240,14 @@ def test_idle_client_loss_and_stalled_measurement_are_faults():
         assert 'timestamp stalled' in result['fault']
 
 
-def test_dual_arm_compliance_failure_keeps_last_confirmed_values():
+def test_dual_arm_velocity_control_failure_keeps_last_confirmed_values():
     with process_worker(('left', 'right')) as (root, _, _):
         request(root, 'reset', 1); target(root, arms=('left', 'right'))
-        (root/'fail-tracker-right').touch()
-        # A structural rebuild calls _check_tracker on the rebuilt arm.
-        result = request(root, 'compliance', 1, values={'translational_clip': .01})
+        (root/'fail-join-right').touch()
+        # A second-arm stop failure must not commit new global parameters.
+        result = request(root, 'velocity_control', 1, values={'tracking_tau_s': .2})
         assert result['fault']
-        assert result['compliance']['translational_clip'] == .008
+        assert result['velocity_control']['tracking_tau_s'] == .15
 
 
 def test_open_failure_releases_first_arm():
@@ -283,10 +267,10 @@ def test_explicit_recovery_handles_join_error_after_controller_stopped():
         request(root, 'reset', 1); target(root)
         (root/'fail-join-left').touch()
         assert request(root, 'stop', 2)['fault']
-        assert not any(s.get('tracker_running') for s in request(root)['states'])
+        assert not any(s.get('servo_ready') for s in request(root)['states'])
         result = request(root, 'recover', 3)
         assert not result['fault'] and result['request_status'] == 'applied'
-        assert not any(s.get('tracker_running') for s in result['states'])
+        assert not any(s.get('servo_ready') for s in result['states'])
         request(root, 'reset', 4)
         assert not target(root, generation=4)['fault']
 
@@ -301,7 +285,7 @@ def test_dual_worker_30hz_with_production_watchdog_deadlines():
             time.sleep(max(0, deadline-time.monotonic()))
             result = target(root, sequence=sequence, arms=('left', 'right'))
             assert not result['fault']
-            assert all(s['sequence'] == sequence and s['tracker_running'] for s in result['states'])
+            assert all(s['sequence'] == sequence and s['servo_ready'] for s in result['states'])
         assert not request(root, 'stop', 2)['fault']
 
 
@@ -317,7 +301,7 @@ def test_idle_health_connection_tolerates_scheduler_delay_within_state_deadline(
                                       'generation': -1, 'request_id': 'delayed-health'}))
             result = decode_packet(sock)
         assert not result['fault']
-        assert not any(s['tracker_running'] for s in result['states'])
+        assert not any(s['servo_ready'] for s in result['states'])
 
 
 def test_waiting_for_health_frame_does_not_extend_target_watchdog():
@@ -332,7 +316,7 @@ def test_waiting_for_health_frame_does_not_extend_target_watchdog():
                                       'generation': 1, 'request_id': 'late-health'}))
             result = decode_packet(sock)
         assert 'target stream expired' in result['fault']
-        assert not any(s['tracker_running'] for s in result['states'])
+        assert not any(s['servo_ready'] for s in result['states'])
         assert target(root, sequence=2)['fault']  # No implicit resumption.
 
 

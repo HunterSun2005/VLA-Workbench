@@ -26,7 +26,7 @@ def compatible(saved, current):
             raise ValueError('TCP 工具定义已变化，请重新记录姿态')
 
 
-def reached(saved, current, position_tolerance=.003, orientation_tolerance_deg=2.):
+def reached(saved, current, position_tolerance=.0005, orientation_tolerance_deg=2.):
     distance = np.linalg.norm(np.asarray(saved['position'])-current['position'])
     rotation = np.asarray(saved['rotation']) @ np.asarray(current['rotation']).T
     angle = np.arccos(np.clip((np.trace(rotation)-1)/2, -1, 1))
@@ -88,7 +88,7 @@ class PoseActions:
                 self.driver.stop()
                 raise
             self.status = {'state':'moving', 'record_id':record['id'], 'note':record['note'], 'arm':self.target['arm']}
-            self.deadline = time.monotonic()+60
+            self.deadline = time.monotonic()+30
         return True
 
     def finish(self, state, reason):
@@ -184,25 +184,35 @@ class ROSPoseDriver:
 
     def advance(self, dt):
         """Called by the collector after reset ACK and only with a free target channel."""
-        from vla.control.pose_reference import PoseReference
         c = self.b.collector
         if c.coordinator.mode != 'active' or c.coordinator.owner != 'pose' or c.coordinator.generation != self.generation:
             raise RuntimeError('姿态恢复控制权已撤销')
         if self.plan is None:
-            # Capture once, after every tracker has explicitly acknowledged readiness.
             self.starts = {name:self.read(name) for name in self.arms}
-            start = self.starts[self.arm]
-            compatible(self.target, start)
-            compliance = c.compliance_status()['values']
-            self.plan = PoseReference(start['position'], start['rotation'], self.target['position'], self.target['rotation'],
-                linear_speed=min(.10, self.config.max_linear_velocity, compliance['max_step']*self.config.fps),
-                angular_speed=min(.45, self.config.max_angular_velocity, compliance['max_step_rad']*self.config.fps))
+            compatible(self.target, self.starts[self.arm])
+            self.plan = True
             self.grippers = {name:c.coordinator._measurements[name].gripper for name in self.arms}
-        position, rotation = self.plan.step(dt)
+        position, rotation = np.asarray(self.target['position']), np.asarray(self.target['rotation'])
         tcp = {name:(np.asarray(pose['position']), np.asarray(pose['rotation']), self.grippers[name])
                for name, pose in self.starts.items()}
         tcp[self.arm] = (position, rotation, self.grippers[self.arm])
         return c.coordinator.gamepad_target(tcp, dt)
+
+    def _measured_progress(self, target, current):
+        from scipy.spatial.transform import Rotation
+        if not self.plan:
+            return 0.
+        start = self.starts[self.arm]
+        ratios = []
+        distance = np.linalg.norm(np.asarray(target['position'])-start['position'])
+        remaining = np.linalg.norm(np.asarray(target['position'])-current['position'])
+        angle = Rotation.from_matrix(np.asarray(target['rotation']) @ np.asarray(start['rotation']).T).magnitude()
+        remaining_angle = Rotation.from_matrix(np.asarray(target['rotation']) @ np.asarray(current['rotation']).T).magnitude()
+        if distance > .0005:
+            ratios.append(remaining/distance)
+        if angle > np.deg2rad(2):
+            ratios.append(remaining_angle/angle)
+        return min(.999, max(0., 1-max(ratios, default=0.)))
 
     def tick(self, target):
         c = self.b.collector
@@ -214,18 +224,19 @@ class ROSPoseDriver:
         compatible(target, current)
         from scipy.spatial.transform import Rotation
         self.progress_status = {
-            'progress': self.plan.progress if self.plan else 0.,
+            'progress': self._measured_progress(target, current),
             'elapsed_s': time.monotonic()-getattr(self, 'begin', time.monotonic()),
             'position_error_m': float(np.linalg.norm(np.asarray(target['position'])-current['position'])),
             'orientation_error_deg': float(np.rad2deg(Rotation.from_matrix(
                 np.asarray(target['rotation']) @ np.asarray(current['rotation']).T).magnitude())),
-            'waiting_measured': bool(self.plan and self.plan.done),
+            'waiting_measured': bool(self.plan),
         }
         if hasattr(self, 'generation') and (c.coordinator.generation != self.generation
                 or (c.coordinator.mode != 'resetting' and c.coordinator.owner != 'pose')):
             return 'cancelled'
-        if self.plan and self.plan.done and reached(target, current):
+        if self.plan and reached(target, current):
             self.progress_status['waiting_measured'] = False
+            self.progress_status['progress'] = 1.
             return 'completed'
         if c.coordinator.mode != 'active':
             return

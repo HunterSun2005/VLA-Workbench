@@ -100,7 +100,7 @@ def create_app(root=None, *, demo=False):
                 'defaults':{'model_python':os.environ.get('VLA_PYTHON',__import__('sys').executable)},
                 'camera_roles':['base','left_wrist','right_wrist','side'],
                 'workspace_root':str(manager.root),'dataset_defaults':dataset_defaults(),
-                'compliance_defaults': {arms: SessionConfig(arms=arms).effective_compliance()
+                'velocity_control_defaults': {arms: SessionConfig(arms=arms).effective_velocity_control()
                                         for arms in ('single_left', 'dual')}}
 
     async def processing_call(fn, *args):

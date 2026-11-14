@@ -51,7 +51,7 @@ def test_gamepad_rows_record_submitted_goals_and_latched_hold(ros_transport, arm
     m = ros_transport
     arm = next(a for a in load_rollout_config(DEFAULT_CONFIG).arms if a.name == arm_name)
     c = object.__new__(m.RolloutCollector)
-    c.config = NS(gamepad_gripper_speed=.4, arms=(arm,))
+    c.config = NS(gamepad_gripper_speed=.4, arms=(arm,), fps=30)
     goals, faults = [], []
     c._gripper_action_clients = {arm_name: NS(send_goal_async=lambda goal: (goals.append(goal.command.position) or Future()))}
     c._gripper_goal_futures = set()
@@ -68,7 +68,10 @@ def test_gamepad_rows_record_submitted_goals_and_latched_hold(ros_transport, arm
     c._last_gripper_goal = {}
     c._publish_sequence = 0
     c._latch_fault = faults.append
-    target = NS(gripper=.5, gripper_direction=0)
+    target = NS(gripper=.5, gripper_direction=0, pose_return=None,
+                linear_active=np.zeros(3,dtype=bool), angular_active=np.zeros(3,dtype=bool),
+                hardware_to_logical_rotation=np.eye(3))
+    c._gamepad_targets = {arm_name:target}
     for motion, measured, expected, count in [(1., .2, 1., 1), (1., .4, 1., 1),
                                               (0., .37, .37, 2), (0., .41, .37, 2),
                                               (-1., .6, 0., 3)]:

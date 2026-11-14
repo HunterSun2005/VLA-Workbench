@@ -1,6 +1,6 @@
 # ROS 控制与动作契约
 
-本仓库的统一采集／部署路线使用独立 Franky worker 和 `CartesianImpedanceTracker`。ROS 2 Humble 继续负责 GELLO、Gamepad、夹爪、相机和采集器；worker 独占 Franka FCI 控制连接。旧 ROS 关节阻抗路线保留为隔离的 legacy backend，不能与 Franky 数据混采。
+本仓库的统一采集／部署路线使用独立 Franky worker 和官方 Franky 2.0.0 `CartesianVelocityMotion`。ROS 2 Humble 继续负责 GELLO、Gamepad、夹爪、相机和采集器；worker 独占 Franka FCI 控制连接。旧 ROS 关节阻抗路线保留为隔离的 legacy backend，不能与 Franky 数据混采。
 
 ## 数据与训练
 
@@ -23,33 +23,27 @@
 
 ## 控制与记录
 
-`lingbot-dev` 的外部串行部署使用明确标识的 external deployment v2，允许 LingBot 原生统计。服务必须声明物理单位、10D 字段顺序、基座/TCP、相机角色、50 步/30 Hz 采样及资产指纹；Workbench 校验这些字段并保留执行投影。此例外不生成训练来源，不放宽 PI05/SFT/RLT 的模型统计契约。记录仍为 schema 5，等待保持标为 `system_hold` 并排除监督，原观测时间与实际安装时间分别保存。详见 [LingBot 部署](LINGBOT_DEPLOYMENT.md)。
+`lingbot-dev` 的外部 RTC／串行部署使用明确标识的 external deployment v2，允许 LingBot 原生统计。服务必须声明物理单位、10D 字段顺序、基座/TCP、相机角色、50 步/30 Hz 采样及资产指纹；Workbench 校验这些字段并保留执行投影。此例外不生成训练来源，不放宽 PI05/SFT/RLT 的模型统计契约。记录仍为 schema 5，等待保持标为 `system_hold` 并排除监督，原观测时间与实际安装时间分别保存。详见 [LingBot 部署](LINGBOT_DEPLOYMENT.md)。
 
-Franky 路线只接受绝对逻辑 TCP 目标（`flange_aligned_tcp_v1`）。逻辑 TCP 原点仍为物理 TCP，轴向平行于法兰；XYZ 不因朝向换算移动。设实测安装旋转为 `R_F_E`，则 worker 提交 `R_base_hardware = R_base_logical · R_F_E`，反馈使用 `R_base_logical = R_base_hardware · R_F_Eᵀ`。安装 −45° 时逻辑竖直 yaw=0 对应硬件 yaw=+45°。action、observation、coordinator、GELLO FK、策略、姿态库和实际参考统一使用逻辑坐标；硬件 TCP／参考及原始安装变换单独保留在 worker 状态和审计中。worker implementation 6 显式声明该坐标约定，collector 拒绝不匹配的 worker；工具变换在会话内锁定，变化后故障停止。GELLO 通过 FK、Gamepad 和策略都更新同一个 TCP 参考位姿，worker 使用 `CartesianImpedanceTracker.set_target()` 持续跟踪；Gamepad 松杆仅将刚释放方向的参考收回到实测位姿一次，随后固定保持。新会话拒绝旧 ROS backend、关节动作空间和旧 tracking rate／IK 调参字段；CartesianServo 只供隔离的历史验证工具使用。
+Franky 路线只接受绝对逻辑 TCP 位姿（`flange_aligned_tcp_v1`）。逻辑与硬件 TCP 原点相同，安装旋转只换算朝向；Twist 使用 base 轴，SDK `ee_frame` 为 identity，禁止重复施加 45° 偏移。
 
-Franky 默认阻抗参数为平移刚度 1100 N/m、旋转刚度 65 Nm/rad、平移误差裁剪 0.008 m、旋转误差裁剪 0.04 rad、单次目标步长 0.03 m/0.10 rad。Web 支持启动前覆盖初值和运行中调参。参数草稿与 worker 确认值分离，仅实际变化的裁剪、力矩变化率和增益时间常数会停止并重建 tracker；刚度调用 `set_gains`，不变参数不重启控制。刚度上限为 1200 N/m、80 Nm/rad，裁剪下限为 0.005 m、0.02 rad。
+ROS 独占 30 Hz 接受、队列、提交和记录；官方 Franky 2.0.0/libfranka 0.21.2 worker 在固定 100 Hz 时隙将最新绝对目标和实测转换为速度。没有第二动作队列或外部速度/关节动作入口。首次 SDK 提交成功才 ACK；等待 ACK 冻结人工积分和记录，不补算。reset 只确认就绪，recover 后仍须手动启用。
 
-应用层只有一个 30 Hz 回调，输入更新、动作接受和提交共用时隙。独立 IPC 消费线程最多处理一条在途目标，没有待发目标积压队列。上一目标未确认时，当前时隙不积分人工输入、不接受动作、不产生记录；确认后使用当前输入，策略取当前真实时隙，不补发过期动作。worker 以独立 1000 Hz FCI 阻抗环跟踪参考。`max_step` / `max_step_rad` 仍是每次调用的参考变化上限。
+手柄每时隙从实测重锚并取消释放通道追赶；策略和 GELLO 持续跟踪目标。目标与速度平滑默认关闭、独立可选，仅用于策略/GELLO。保存点/快捷回位重复提交绝对最终目标，由 worker 反馈减速，以实测 0.5 mm/2° 判断到位。
 
-IPC v2 的目标包含 session、generation、sequence、request ID、slot ID 和单调时间戳；只有全部身份匹配的成功响应才确认执行。响应区分请求目标、实际提交给 tracker 的参考、实测 TCP，并提供应用时间。双臂先校验整个包，任一执行失败停止全部 tracker；审计保留已执行部分，不声称物理原子性。旧 worker 协议被拒绝。
+目标 stream 100 ms、状态 500 ms watchdog 不被 health 或内部伺服续期。故障、断连、队列耗尽、存储阻塞和迟到结果均不能自动恢复运动；代次撤销同时保护 RTC 前缀与安装后缀。serial 最终目标仍按提交 ACK 门控。
 
-tracker 在显式启用准备中从实测 TCP／关节初始化，所有臂准备确认后才允许目标。普通目标不能创建或恢复 tracker；停止／恢复保持待命。代际切换撤销旧请求，生命周期命令优先。默认目标请求及目标流期限 100 ms、通信／状态期限 500 ms，健康轮询不延长目标流。SDK 阻塞不能由排队命令抢占；通信失败时父进程有界关闭本会话 worker，故障锁存且不自动重建恢复。
+记录保持 schema 5，backend 改为 `franky_cartesian_velocity`。保留 `target_applied`、`hardware_target_applied`，新增 `velocity_servo` 审计关联实际观测、SDK 提交时间、派生 Twist、代次和 slot。有界审计缓冲满时停止，未提交事件保留重试；控制线程不写盘。原 `diagnostic.tracker` 列保留字段名，在新 backend 表示速度伺服就绪诊断。
 
-记录在提交时冻结观察、候选、接受目标和身份，匹配 ACK 后才入记录流程。相机偶发缺帧跳过整条图像／观察／动作记录，控制继续；连续过期超过 `sync_tolerance_ms`（默认 100 ms）故障，不再用额外 1.5 帧门限停控。未录制人工摆位不依赖单次相机曝光。IPC 等待、缺帧、漏时隙形成真实 slot 缺口和 segment 边界，SFT／RLT／Replay 不跨越；没有新终点图像时不得复制旧图构造终止帧。1.5 帧仅用于区间标签有效性，不是停控阈值。
+旧 `compliance`、Tracker 裁剪、静态积分补偿配置已移除；`velocity_control` 更新必须等待对应 request ID 的 worker 确认。更新取消旧目标，等待新的接受目标；迟到确认不能恢复旧代次。参数、原生库身份、算法版本和实际 SDK 滤波设置均参与控制指纹。
 
-`target_applied` 审计关联 generation、sequence、slot、worker 应用时间及实际参考；失败保留 `target_failure` 与部分应用事实。控制回调只提交有界内存任务，编码、文件写入和 fsync 留在后台。存储恢复不会恢复控制。新单循环实现标识、IPC v2、worker 版本、binding 二进制哈希与阻抗参数组成控制指纹，旧指纹数据和 checkpoint 不能混用。
+安装、参数、迁移与无硬件验收见 [Franky 环境](FRANKY_ENVIRONMENT.md)。
 
-观测帧只关联本时隙实际创建的待确认目标。策略超时或队列边界会撤销待提交目标并改变控制身份；身份变化本身不代表发生了新提交，不能把帧附加到已撤销的目标。该路径保留手动恢复状态，迟到推理结果或停止确认均不能自动恢复运动。
+IPC v2 的目标包含 session、generation、sequence、request ID、slot ID 和单调时间戳；只有身份全部匹配的成功响应才确认执行。响应区分接受目标、平滑参考与实测 TCP，返回首次 SDK 提交时间。双臂先校验整个包，任一执行失败停止全部臂；审计保留部分应用事实，不声称物理原子性。普通目标不能启用或恢复速度伺服，SDK 阻塞不能被排队命令抢占；父进程有界关闭本会话 worker。
 
-Gamepad 默认使用旧单臂已验证的 `raw_joy` 布局（`joy_node`），显式选择时才使用 SDL 标准布局，姿态增量为 `Exp(R_measured · ω_tool · dt) · R_target`，平移参考不随姿态旋转。输入布局、工具轴积分实现及 worker 实现版本绑定控制指纹。GELLO 驱动缓存含成功采样时间和序号；collector 以源采样时间作为有序消息身份，重复／倒序／过期消息不刷新新鲜度，关节和夹爪同帧传递。
+记录在提交时冻结观察、候选、接受目标和身份，匹配 ACK 后才入记录流程。相机偶发缺帧跳过整行记录，连续过期超过 `sync_tolerance_ms`（默认 100 ms）故障。IPC 等待、缺帧、漏时隙形成真实 slot 缺口和 segment 边界，SFT／RLT／Replay 不跨越；没有新终点图像时不得复制旧图构造终止帧。观测帧只关联本时隙实际创建的待确认目标，不能附加到已撤销的旧目标。
 
-调参等待期间停止积分、接受和发送新目标，清空旧待发送目标；当前 generation 的 request ID 确认后，等待新的接受目标再继续跟踪。暂停、停止或切换控制权撤销等待，迟到确认不恢复运动。回合起始 journal identity 保存有效参数；回合内已确认变化以 `compliance` 审计事件保存请求 ID、generation、worker sequence、时间和参数，不增加 schema 字段。
-
-Franky 可显式启用有界静态误差补偿（默认关闭）。动作、来源和承诺前缀仍是绝对
-逻辑 TCP 目标；worker `nominal_tcp_pose` 与补偿后的 `reference_tcp_pose` 分别保存，
-后者才是目标 ACK `references` 及硬件参考审计的实际参考。schema 5 的异步
-`tracking_correction` 事件保存两者、偏置与饱和／等待状态，补偿不写回训练动作。
-参数及 worker 实现版本 7 参与控制身份。具体边界见 [Franky 环境](FRANKY_ENVIRONMENT.md#绝对位姿的静态误差补偿)。
+Gamepad 默认使用旧单臂 `raw_joy` 布局（`joy_node`），显式选择时才用 SDL 布局。工具轴增量以实测朝向转换到 base，安装旋转与右摇杆校准分别处理。GELLO 缓存成功采样时间和序号；重复／倒序／过期消息不刷新新鲜度，关节和夹爪同帧传递。调参等待暂停积分、接受和发送；暂停、停止或切换控制权撤销等待。已确认参数变化保存 `velocity_control` 审计事件和请求身份。
 
 独立字段包括：
 
@@ -59,14 +53,14 @@ Franky 可显式启用有界静态误差补偿（默认关闭）。动作、来�
 | `observation.anchor` | 当前原始实测锚点 |
 | `command.joint` | Franky 路线记录的实测关节（旧 ROS 路线为提交关节）与夹爪 |
 | `command.fk_tcp` | 提交目标 TCP（旧 ROS 路线由关节目标 FK 得到）与夹爪 |
-| `command.target_tcp` | coordinator 接受的绝对 TCP 目标与夹爪（实际 tracker 参考见审计） |
+| `command.target_tcp` | coordinator 接受的绝对 TCP 目标与夹爪（实际速度伺服参考见审计） |
 | `command.identity` | 代际、命令 ID、接受时间、观测时间（纳秒） |
 | `command.source` | 示教／PI05／RLT 来源 |
 | `diagnostic.controller` | 每臂接收代际、命令 ID、诊断接收时间 |
 | `diagnostic.filtered_joint` | 控制器可用的滤波后关节目标 |
 | `diagnostic.actual_tcp` | worker 回传的实测逻辑 TCP 位姿（xyz + quaternion_xyzw） |
-| `diagnostic.target_joint` | Franky tracker 回传的目标关节（不可用时为零） |
-| `diagnostic.tracker` | tracker 运行标志、代际、序号及故障标志 |
+| `diagnostic.target_joint` | Franky 原生状态回传的目标关节（不可用时为零） |
+| `diagnostic.tracker` | 速度伺服就绪标志、代际、序号及故障标志 |
 
 诊断未返回时使用 `-1` 标识缺失身份；诊断不是到达确认，不能替换训练标签。元数据包含设备、TCP、运动学和控制参数指纹。
 
@@ -84,10 +78,11 @@ SFT 与 RLT 支持不同 chunk 长度和目标帧间隔；稀疏目标部署按�
 
 离线检查涵盖数学往返、模型适配器、命令入口、模拟采集、Web、CLI、wheel、ROS 构建与导入。没有运行真实大模型训练，没有连接机器人或开启相机。
 
-仍须在获授权的现场分别验收：30 Hz 接受／提交与 Franky 1000 Hz 底层时序、诊断延迟、单／双臂同步、原生标签实机重放、接触和跟踪表现、夹爪松手保持、Normal/Fast 与手柄手感、GELLO 跟随、姿态恢复、RTC 延迟与接管、在线训练中断恢复、模型效果。离线通过不能替代这些结果。
+仍须在获授权的现场分别验收：30 Hz 接受／提交与 worker 100 Hz 与原生 Franky FCI 底层时序、诊断延迟、单／双臂同步、原生标签实机重放、接触和跟踪表现、夹爪松手保持、Normal/Fast 与手柄手感、GELLO 跟随、姿态恢复、RTC 延迟与接管、在线训练中断恢复、模型效果。离线通过不能替代这些结果。
 
 ### 工作空间与恢复参考
 
-会话配置 `control.workspace_limits_enabled`（默认 true，Web 可显式覆盖后锁定）统一控制所有输入源、快捷键、姿态库及保存时的 TCP XYZ 范围校验／投影。关闭时仍保存有限边界，不改变有限数值、SO(3)、机器人自身限制、碰撞配置、worker 单步和故障保护。实际模式写入元数据及控制指纹，并由 `execution_projection.workspace_limits_enabled` 传递到 NumPy／Torch 动作投影；未声明开关按 true 解释，关节动作仍投影到关节限制。续采独立严格核对模式、范围和控制指纹，不重写旧契约。人工快捷键指纹版本为 8：View／Menu 固定为逻辑 TCP 在基座的 `diag(1,−1,−1)`，R3 仅绕基座 Z 恢复逻辑 yaw=0 并保留倾斜。硬件安装旋转在 worker 内部处理，不写入 action 的逻辑朝向。工具指纹包含逻辑定义与原始硬件安装变换，控制指纹包含坐标约定；旧坐标数据不能续写或静默转换。
+会话配置 `control.workspace_limits_enabled`（默认 true，Web 可显式覆盖后锁定）统一控制所有输入源、快捷键、姿态库及保存时的 TCP XYZ 范围校验／投影。关闭时仍保存有限边界，不改变有限数值、SO(3)、机器人自身限制、碰撞配置、worker 速度限幅和故障保护。实际模式写入元数据及控制指纹，并由 `execution_projection.workspace_limits_enabled` 传递到 NumPy／Torch 动作投影；未声明开关按 true 解释，关节动作仍投影到关节限制。续采独立严格核对模式、范围和控制指纹，不重写旧契约。人工快捷键指纹版本为 8：View／Menu 固定为逻辑 TCP 在基座的 `diag(1,−1,−1)`，R3 仅绕基座 Z 恢复逻辑 yaw=0 并保留倾斜。硬件安装旋转在 worker 内部处理，不写入 action 的逻辑朝向。工具指纹包含逻辑定义与原始硬件安装变换，控制指纹包含坐标约定；旧坐标数据不能续写或静默转换。
 
-姿态库在全部 tracker 准备确认后，从实测起点建立一次直线位置／最短旋转参考，共用五次进度 `s=10u³−15u⁴+6u⁵`。时长为 `max(0.3, 1.875×距离/v, 1.875×角度/ω)`，速度默认最多 0.10 m/s、0.45 rad/s，且受会话上限与 worker 单步×30 限制。进度只按可提交的 30 Hz 时隙推进，等待 ACK 时冻结；仍经 coordinator → IPC → tracker.set_target()，不新增控制线程或 SDK 模式。参考终点与实测 3 mm／2°共同决定完成，60 秒超时；取消和代际变化撤销计划。未选中臂保持起始参考，完整目标朝向和姿态库既有记录不改写。参考几何保证不等于实机轨迹连续性或恢复耗时已验收。
+
+姿态库在全部速度伺服准备确认后保存实测起点，沿同一 coordinator → IPC 入口反复提交最终绝对目标。worker 以旧 VLA 的反馈减速接近，平移上限 0.03 m/s、旋转上限 0.15 rad/s；不再用五次曲线进度表示到位。进度按实测残差计算，实测 0.5 mm／2° 内才完成，30 秒超时；等待 ACK 不推进提交，取消和代际变化撤销目标。未选中臂保持起始参考，不改写姿态库的目标朝向。离线反馈测试不保证实机精度或恢复耗时。

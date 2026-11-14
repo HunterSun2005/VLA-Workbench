@@ -1,5 +1,6 @@
 """Session settings and static preflight. Never opens a device."""
 from __future__ import annotations
+from vla.core.ros_workspace import ros_workspace
 from dataclasses import dataclass, asdict, fields, replace
 from pathlib import Path
 import json
@@ -35,7 +36,7 @@ class SessionConfig:
     camera_serials: dict | None = None
     workspace_bounds: dict | None = None
     workspace_limits_enabled: bool | None = None
-    compliance: dict | None = None
+    velocity_control: dict | None = None
     lingbot_execution_mode: str = 'rtc'
     lingbot_inference_slots: int = 14
     lingbot_guard_slots: int = 1
@@ -46,7 +47,7 @@ class SessionConfig:
     @classmethod
     def parse(cls, data):
         if not isinstance(data, dict) or set(data) - {f.name for f in fields(cls)}:
-            raise ValueError('unknown session settings')
+            raise ValueError('unknown session settings; Tracker compliance removed, use velocity_control')
         result = cls(**data)
         for name in ('workflow','arms','source','schema','action_space','config_path','dataset_root','task',
                      'policy_kind','policy_path','tokenizer_path','handover_path','mode','device',
@@ -80,7 +81,7 @@ class SessionConfig:
         result.validate_model_backend()
         result.validate_camera_serials()
         result.validate_workspace()
-        result.validate_compliance()
+        result.validate_velocity_control()
         return result
 
     def validate_model_backend(self):
@@ -101,23 +102,23 @@ class SessionConfig:
                     or self.mode != 'vla' or self.policy_kind != 'sft' or self.handover_path):
                 raise ValueError('LingBot requires single-left TCP SFT/VLA deployment, without handover')
 
-    def validate_compliance(self):
-        if self.compliance is not None:
-            if not isinstance(self.compliance, dict):
-                raise ValueError('compliance must be an object')
-            from vla.control.franky.worker import Compliance
-            Compliance.from_mapping(self.compliance)
+    def validate_velocity_control(self):
+        if self.velocity_control is not None:
+            if not isinstance(self.velocity_control, dict):
+                raise ValueError('velocity_control must be an object')
+            from vla.control.franky.worker import VelocityControl
+            VelocityControl.from_mapping(self.velocity_control)
 
-    def effective_compliance(self):
+    def effective_velocity_control(self):
         from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
         rollout = load_rollout_config(self.default_config())
-        return self.apply_rollout_compliance(rollout).franky_compliance
+        return self.apply_rollout_velocity_control(rollout).franky_velocity_control
 
-    def apply_rollout_compliance(self, rollout):
-        self.validate_compliance()
-        from vla.control.franky.worker import Compliance
-        value = Compliance.from_mapping(self.compliance, Compliance.from_mapping(rollout.franky_compliance))
-        return replace(rollout, franky_compliance=asdict(value))
+    def apply_rollout_velocity_control(self, rollout):
+        self.validate_velocity_control()
+        from vla.control.franky.worker import VelocityControl
+        value = VelocityControl.from_mapping(self.velocity_control, VelocityControl.from_mapping(rollout.franky_velocity_control))
+        return replace(rollout, franky_velocity_control=asdict(value))
 
     def validate_camera_serials(self):
         if self.camera_serials is None:
@@ -247,17 +248,17 @@ def preflight(config, *, demo=False, root=None):
     config.validate_model_backend()
     if config.action_space != 'tcp':
         errors.append('新会话仅支持 Franky TCP 动作空间')
-    effective_compliance = None
+    effective_velocity_control = None
     try:
-        effective_compliance = config.effective_compliance()
+        effective_velocity_control = config.effective_velocity_control()
     except (ValueError, TypeError, KeyError, OSError) as error:
-        errors.append(f'阻抗配置无效: {error}')
+        errors.append(f'速度控制配置无效: {error}')
     config.validate_workspace()
     config.validate_camera_serials()
     root = Path(root or os.environ.get('VLA_ROOT', Path.cwd())).expanduser().resolve()
     target = config.dataset_path(root)
     if demo:
-        return {'ok': not errors, 'checks': ['模拟模式：不访问硬件、不写数据集'], 'errors': errors, 'compliance': effective_compliance,
+        return {'ok': not errors, 'checks': ['模拟模式：不访问硬件、不写数据集'], 'errors': errors, 'velocity_control': effective_velocity_control,
                 'modes': config.modes(True), 'cameras': config.cameras, 'dataset_root': str(target), 'workspace_limits_enabled':workspace_enabled}
     try:
         from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
@@ -265,7 +266,7 @@ def preflight(config, *, demo=False, root=None):
         if rollout.backend == 'franky':
             from vla.core.franky_runtime import check_worker
             python, binding = check_worker(root, rollout.worker_python)
-            checks.append(f'Franky Python: {python}; libfranka {binding["libfranka"]}; tracker/Affine passed')
+            checks.append(f'Franky Python: {python}; libfranka {binding["libfranka"]}; velocity/Affine passed')
     except (RuntimeError, ValueError, OSError) as error:
         errors.append(f'Franky 环境检查失败: {error}')
     local_paths = [('配置', str(config.default_config()), False)]
@@ -315,9 +316,11 @@ def preflight(config, *, demo=False, root=None):
     if not config.resume and target.exists() and (not target.is_dir() or any(target.iterdir())):
         errors.append('输出目录非空；请选择续采或新目录')
     if config.ros:
-        ws = Path(config.ros_workspace or root / 'ros_ws').expanduser().resolve()
-        if ws != (root / 'ros_ws').resolve():
-            errors.append('面板仅使用 VLA_ROOT/ros_ws，避免继承外部 ROS overlay')
+        try:
+            ws = ros_workspace(root, config.ros_workspace)
+        except ValueError as error:
+            errors.append(str(error))
+            ws = root/'runtime/ros/current'
         if not (ws / 'install/local_setup.bash').is_file():
             errors.append(f'ROS 工作空间未构建: {ws}')
         if not Path('/opt/ros/humble/setup.bash').is_file():
@@ -402,7 +405,7 @@ def preflight(config, *, demo=False, root=None):
                 errors.append('模型相机字段与机械臂配置不匹配')
         except (OSError, ValueError, TypeError) as error:
             errors.append(f'无法校验模型配置: {error}')
-    return {'ok': not errors, 'checks': checks, 'errors': errors, 'compliance': effective_compliance,
+    return {'ok': not errors, 'checks': checks, 'errors': errors, 'velocity_control': effective_velocity_control,
             'modes': config.modes(), 'cameras': config.cameras, 'dataset_root': str(target),
             'existing_episodes': existing_episodes, 'workspace_limits_enabled':workspace_enabled}
 

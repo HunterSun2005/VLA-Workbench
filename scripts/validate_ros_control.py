@@ -209,6 +209,12 @@ class Session:
         self.command_pubs[arm].publish(joint_command(self.models[arm].joint_names, q, generation,
             command_id, self.sequence, self.node.get_clock().now().to_msg()))
         self.sent.setdefault((arm, generation, command_id), time.monotonic_ns())
+        if arm == 'right' and hasattr(self, 'velocity'):
+            self.velocity.submit(self.c.accepted)
+            if hasattr(self, 'serial_pending'):
+                record = self.serial_pending.pop((generation, command_id), None)
+                if record is not None:
+                    self.serial.acknowledge(record)
 
     def reset(self, generation):
         for arm, pub in self.reset_pubs.items():
@@ -360,6 +366,8 @@ class Session:
         return result
 
     def close(self):
+        if hasattr(self, 'velocity'):
+            self.velocity.close()
         for child in self.children.values():
             if child.poll() is None: os.killpg(child.pid, signal.SIGINT)
         for child in self.children.values():
@@ -377,6 +385,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--duration', type=float, default=600)
     parser.add_argument('--lingbot-rtc', action='store_true', help='Exercise LingBot RTC over TCP on fixed-state mocks')
+    parser.add_argument('--franky-velocity', action='store_true', help='Also exercise official velocity worker over Unix IPC with fixed-state fake Robot')
     parser.add_argument('--serial', action='store_true', help='Exercise serial single-left chunks; right mock arm holds')
     args = parser.parse_args()
     if args.serial and args.lingbot_rtc:
@@ -403,6 +412,9 @@ def main():
                                              {a: .45 for a in session.models})
             session.serial = SerialValidation(session.slot_clock.epoch_ns, measured[:10], rtc=args.lingbot_rtc)
             session.serial_pending = {}
+        if args.franky_velocity:
+            from franky_velocity_validation import VelocityValidation
+            session.velocity = VelocityValidation(ROOT, directory)
         session.sent.clear(); session.received.clear(); session.delays.clear()
         start = time.monotonic_ns(); report['start_ns'] = start
         report['resource_samples'] = [{'elapsed_s':0., **session.resources()}]
@@ -415,6 +427,8 @@ def main():
         end = time.monotonic_ns(); report['end_ns'] = end
         report['accept'] = intervals(session.accept_times)
         report['tracking'] = intervals(session.tick_times)
+        if args.franky_velocity:
+            report['franky_velocity'] = session.velocity.report()
         if args.serial or args.lingbot_rtc:
             key = 'lingbot_rtc' if args.lingbot_rtc else 'serial'
             report[key] = session.serial.report()
@@ -455,6 +469,11 @@ def main():
         if 'tracking' in report and all(a+'_controller' in report for a in ('left','right')):
             report['frequency_target_passed']=all(abs(report[key]['hz']/hz-1)<=.03 for key,hz in
                 [('accept',30),('tracking',30),('left_controller',1000),('right_controller',1000)])
+        if args.franky_velocity:
+            servo = report.get('franky_velocity', {}).get('servo', {})
+            report['frequency_target_passed'] = bool(report.get('frequency_target_passed', False)
+                and set(servo) == {'left', 'right'}
+                and all(abs(value['hz']/100-1)<=.03 for value in servo.values()))
         (directory/'report.json').write_text(json.dumps(report,indent=2))
         print('REPORT='+str(directory/'report.json'),flush=True)
     if not report.get('frequency_target_passed', False):

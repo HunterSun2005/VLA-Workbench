@@ -7,7 +7,7 @@ import importlib.metadata
 from pathlib import Path
 import re
 
-REQUIRED_LIBFRANKA_VERSION = "0.19.0"
+REQUIRED_LIBFRANKA_VERSION = "0.21.2"
 
 
 def _loaded_libfranka_paths() -> set[Path]:
@@ -44,13 +44,10 @@ def check_binding() -> dict[str, str]:
         native = importlib.import_module("franky._franky")
     except Exception as error:
         raise RuntimeError(f"Franky binding unavailable: {error}") from error
-    required = ("Robot", "RealtimeConfig", "CartesianImpedanceTracker", "Affine")
+    required = ("Robot", "RealtimeConfig", "CartesianVelocityMotion", "CartesianVelocityStopMotion", "Twist", "RobotVelocity", "Duration", "Affine")
     missing = [name for name in required if not hasattr(franky, name)]
     if missing:
         raise RuntimeError("Franky binding lacks required API: " + ", ".join(missing))
-    for method in ("set_target", "set_gains", "stop"):
-        if not callable(getattr(franky.CartesianImpedanceTracker, method, None)):
-            raise RuntimeError(f"Franky tracker lacks required API: {method}")
     try:
         libraries = _loaded_libfranka_paths()
     except (OSError, RuntimeError) as error:
@@ -78,14 +75,17 @@ def check_binding() -> dict[str, str]:
         version = importlib.metadata.version("franky-control")
     except importlib.metadata.PackageNotFoundError:
         version = str(getattr(franky, "__version__", "unknown"))
-    # Track the native extension and Python tracker separately: forks can
-    # expose different APIs under the same franky-control package version.
-    tracker = importlib.import_module(franky.CartesianImpedanceTracker.__module__)
-    files = {"binding": Path(native.__file__).resolve(strict=True),
-             "tracker": Path(tracker.__file__).resolve(strict=True),
-             "libfranka_library": library}
+    if version != "2.0.0+libfranka.0.21.2":
+        raise RuntimeError(f"Expected official Franky 2.0.0+libfranka.0.21.2; found {version}")
+    try:
+        velocity = franky.RobotVelocity(franky.Twist(np.zeros(3), np.zeros(3)))
+        franky.CartesianVelocityMotion(velocity, franky.Duration(100), .1)
+        franky.CartesianVelocityStopMotion()
+    except Exception as error:
+        raise RuntimeError(f"Franky velocity binding incompatible: {error}") from error
+    files = {"binding": Path(native.__file__).resolve(strict=True), "libfranka_library": library}
     result = {"franky": version, "libfranka": REQUIRED_LIBFRANKA_VERSION,
-              "numpy": np.__version__, "affine_check": "passed"}
+              "numpy": np.__version__, "affine_check": "passed", "velocity_check": "passed"}
     for key, path in files.items():
         result[key] = str(path)
         result[f"{key}_sha256"] = _sha256(path)

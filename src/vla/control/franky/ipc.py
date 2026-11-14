@@ -93,11 +93,10 @@ class WorkerState:
     hardware_tcp_pose: tuple[float, ...] = ()
     hardware_reference_tcp_pose: tuple[float, ...] = ()
     nominal_tcp_pose: tuple[float, ...] = ()
-    tracking_offset: tuple[float, ...] = ()
-    tracking_status: str = 'disabled'
+    commanded_twist: tuple[float, ...] = ()
     generation: int = -1
     sequence: int = -1
-    tracker_running: bool = False
+    servo_ready: bool = False
     state_valid: bool = True
     fault: str | None = None
 
@@ -116,7 +115,7 @@ class WorkerState:
         import math
         for key, width in (('joints', 7), ('joint_velocity', 7), ('joint_torque', 7),
                            ('external_joint_torque', 7), ('target_joints', 7), ('force', 3), ('torque', 3),
-                           ('tracking_offset', 6)):
+                           ('commanded_twist', 6)):
             values = value.get(key, ())
             if values and (len(values) != width or not all(math.isfinite(float(x)) for x in values)):
                 raise ValueError(f'invalid worker state {key}')
@@ -138,11 +137,10 @@ class WorkerState:
             hardware_tcp_pose=tuple(_validate_pose(value['hardware_tcp_pose'])) if value.get('hardware_tcp_pose') else (),
             hardware_reference_tcp_pose=tuple(_validate_pose(value['hardware_reference_tcp_pose'])) if value.get('hardware_reference_tcp_pose') else (),
             nominal_tcp_pose=tuple(_validate_pose(value['nominal_tcp_pose'])) if value.get('nominal_tcp_pose') else (),
-            tracking_offset=tuple(float(x) for x in value.get('tracking_offset', ())),
-            tracking_status=str(value.get('tracking_status', 'disabled')),
+            commanded_twist=tuple(float(x) for x in value.get('commanded_twist', ())),
             generation=int(value.get("generation", -1)),
             sequence=int(value.get("sequence", -1)),
-            tracker_running=bool(value.get("tracker_running", False)),
+            servo_ready=bool(value.get("servo_ready", False)),
             state_valid=bool(value.get("state_valid", not value.get("fault"))),
             fault=str(value["fault"]) if value.get("fault") else None,
         )
@@ -161,7 +159,9 @@ class FrankyWorkerClient:
         self._lock = self._condition
         self._request_lock = threading.Lock()
         self._states = {}
-        self._compliance = {}
+        self._velocity_control = {}
+        self._servo_events = {}
+        self._audit_ack = 0
         self._binding_fingerprint = {}
         self._results = {}
         self._fault = None
@@ -182,13 +182,24 @@ class FrankyWorkerClient:
         with self._lock:
             return dict(self._states)
 
-    def compliance_values(self):
+    def velocity_control_values(self):
         with self._lock:
-            return dict(self._compliance)
+            return dict(self._velocity_control)
 
     def binding_fingerprint(self):
         with self._lock:
             return dict(self._binding_fingerprint)
+
+    def servo_events(self):
+        with self._lock:
+            return list(self._servo_events.values())
+
+    def acknowledge_audit(self, audit_id):
+        with self._lock:
+            if audit_id not in self._servo_events:
+                raise ValueError('unknown velocity audit event')
+            self._audit_ack = max(self._audit_ack, audit_id)
+            self._servo_events = {key: value for key, value in self._servo_events.items() if key > self._audit_ack}
 
     def result(self, request_id):
         with self._lock:
@@ -219,7 +230,7 @@ class FrankyWorkerClient:
         with self._condition:
             if self._closed.is_set():
                 raise RuntimeError('worker client is closed')
-            lifecycle = message['kind'] in ('stop', 'reset', 'recover', 'compliance')
+            lifecycle = message['kind'] in ('stop', 'reset', 'recover', 'velocity_control')
             if lifecycle:
                 self._fence(message)
             if len(self._queue) >= self._queue_size:
@@ -233,7 +244,9 @@ class FrankyWorkerClient:
             return message['request_id']
 
     def target(self, session_id, generation, sequence, arms, timestamp_ns=None, *, slot_id):
-        targets = {str(name): {'pose': _validate_pose(value['pose'] if isinstance(value, Mapping) else value)}
+        from .velocity_control import validate_context
+        targets = {str(name): {'pose': _validate_pose(value['pose']),
+                                'context': validate_context(value['context'])}
                    for name, value in arms.items()}
         with self._condition:
             if not self.target_available:
@@ -255,13 +268,13 @@ class FrankyWorkerClient:
     def recover(self, session_id, generation):
         return self._enqueue(self._message('recover', session_id, generation))
 
-    def compliance(self, session_id, generation, request_id, values):
-        return self._enqueue(self._message('compliance', session_id, generation,
+    def velocity_control(self, session_id, generation, request_id, values):
+        return self._enqueue(self._message('velocity_control', session_id, generation,
                                     request_id=str(request_id), values=dict(values)))
 
     def _request(self, message):
         # Serialize before connecting: the peer should not wait for local work.
-        packet = encode_packet(message)
+        packet = encode_packet(dict(message, audit_ack=self._audit_ack))
         started = time.monotonic()
         deadline = (message["timestamp_ns"] / 1e9 + self.target_timeout_s
                     if message["kind"] == "target" else started + self.timeout_s)
@@ -317,7 +330,12 @@ class FrankyWorkerClient:
                 self._results[str(message['request_id'])] = {'request_status': 'cancelled'}
                 return result
             self._states = states
-            self._compliance = dict(result.get('compliance', {}))
+            self._velocity_control = dict(result.get('velocity_control', {}))
+            for event in result.get('servo_events', []):
+                if event['audit_id'] > self._audit_ack:
+                    self._servo_events[event['audit_id']] = event
+            if len(self._servo_events) > 4096:
+                raise RuntimeError('client velocity audit buffer full')
             self._binding_fingerprint = dict(result.get('binding_fingerprint', {}))
             self._results[str(message['request_id'])] = result
             while len(self._results) > 128:
@@ -333,7 +351,7 @@ class FrankyWorkerClient:
     def request_now(self, message):
         message = dict(message)
         with self._lock:
-            if message['kind'] in ('stop', 'reset', 'recover', 'compliance'):
+            if message['kind'] in ('stop', 'reset', 'recover', 'velocity_control'):
                 self._fence(message)
         try:
             with self._request_lock:

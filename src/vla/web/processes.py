@@ -1,5 +1,6 @@
 """Owned child processes and explicit, isolated interpreter selection."""
 from __future__ import annotations
+from vla.core.ros_workspace import ros_workspace
 import os
 from pathlib import Path
 import signal
@@ -60,7 +61,7 @@ def interpreter_command(python, args, *, ros=False, root=None, workspace=None):
               'export CMAKE_PREFIX_PATH="/opt/openrobots:${CMAKE_PREFIX_PATH:-}"; '
               'shift 3; exec /usr/bin/python3 "$@"')
     return ['/bin/bash','--noprofile','--norc','-ec',script,'vla-ros',
-            str(workspace or root/'ros_ws'),str(root),str(root/'src'),*args]
+            str(ros_workspace(root, workspace)),str(root),str(root/'src'),*args]
 
 
 class Children:

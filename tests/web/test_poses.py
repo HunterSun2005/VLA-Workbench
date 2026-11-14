@@ -124,7 +124,7 @@ def ros_backend(source, arm='left'):
     messages = []
     from vla.control.ros.coordinator import ControlCoordinator, ArmMeasurement
     node.config = rollout
-    node.compliance_status = lambda: {'values':rollout.franky_compliance}
+    node.velocity_control_status = lambda: {'values':rollout.franky_velocity_control}
     node._last_control_tick = time.monotonic()
     node._measured_joints = lambda a,m:np.array(m.position)
     node._faulted = False
@@ -228,16 +228,18 @@ def test_pose_plan_waits_for_ready_and_measured_completion_and_restarts():
     assert driver.tick(target) is None
     c = b.collector
     first = driver.advance(1/30)
-    assert driver.plan.start[0] == .4
+    assert driver.starts['left']['position'][0] == .4
+    np.testing.assert_array_equal(first[:3], target['position'])
     np.testing.assert_array_equal(first[10:13],[.4,0,.3])
-    while not driver.plan.done:
-        driver.advance(1/30)
+    assert driver.tick(target) is None
+    assert driver.progress_status['progress'] < 1
+    latest['left.robot_state'][1].o_t_ee.pose.position.x = .401
     assert driver.tick(target) == 'completed'
     driver.stop()
     driver.start({**target,'position':[.45,0,.3]})
     assert driver.plan is None
     driver.advance(1/30)
-    assert driver.plan.progress < .01
+    assert driver.progress_status['progress'] == 0
     c.coordinator.transition()
     assert driver.tick(target) == 'cancelled'
     driver.stop()

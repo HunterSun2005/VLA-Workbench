@@ -26,8 +26,8 @@ def descriptors(arms):
 class DemoBackend:
     def __init__(self, config, directory, root=None):
         self.config = config
-        self.compliance = config.effective_compliance()
-        self.compliance_request = None
+        self.velocity_control = config.effective_velocity_control()
+        self.velocity_control_request = None
         from pathlib import Path
         from .pose_control import PoseActions
         self._demo_poses = {}
@@ -74,11 +74,11 @@ class DemoBackend:
     def command(self, op, args):
         if self.poses.command(op, args):
             return
-        if op == 'compliance':
+        if op == 'velocity_control':
             from dataclasses import asdict
-            from vla.control.franky.worker import Compliance
-            self.compliance = asdict(Compliance.from_mapping(args['values'], Compliance.from_mapping(self.compliance)))
-            self.compliance_request = {'request_id': args.get('_request_id'), 'status': 'applied', 'values': self.compliance.copy()}
+            from vla.control.franky.worker import VelocityControl
+            self.velocity_control = asdict(VelocityControl.from_mapping(args['values'], VelocityControl.from_mapping(self.velocity_control)))
+            self.velocity_control_request = {'request_id': args.get('_request_id'), 'status': 'applied', 'values': self.velocity_control.copy()}
         elif op == 'enable':
             if self.fault:
                 raise RuntimeError('recover first')
@@ -167,8 +167,8 @@ class DemoBackend:
                             'speed': 'normal' if self.config.source == 'gamepad' else 'fixed',
                             'speed_scale': 1. if self.config.source == 'gamepad' else None} for a in self.arms},
                 'signals': self.signals, 'values': values, 'sample_time': now,
-                'compliance': {'backend': 'franky', 'pending': False, 'values': self.compliance, 'request': self.compliance_request},
-                'available_commands': ['compliance','enable','pause','record','save','discard','recover','stop'] +
+                'velocity_control': {'backend': 'franky', 'pending': False, 'values': self.velocity_control, 'request': self.velocity_control_request},
+                'available_commands': ['velocity_control','enable','pause','record','save','discard','recover','stop'] +
                     (['critical'] if self.config.workflow=='collect' and self.config.source=='gamepad' else []) +
                     (['mode','intervention'] if self.config.workflow == 'deploy' else []),
                 'modes': ['human', *self.config.modes(True)] if self.config.workflow == 'deploy' else [], 'outcomes':['success','failure'] if self.config.workflow == 'deploy' or (self.config.arms == 'single_left' and self.config.source == 'gamepad') else ['success'], 'demo': True}

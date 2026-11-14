@@ -57,12 +57,17 @@ class Robot:
 
     @property
     def is_in_control(self):
-        return self.active and not (root/f'fail-tracker-{self.ip}').exists()
+        return self.active
 
-    def move(self, motion, asynchronous):
-        assert isinstance(motion, franky.CartesianImpedanceTrackingMotion) and asynchronous
-        self.active = True
-        self.event('move')
+    def move(self, motion, asynchronous, limit_rate=False, cutoff_frequency=100.):
+        assert asynchronous and not limit_rate and cutoff_frequency == 100.
+        assert isinstance(motion, (franky.CartesianVelocityMotion, franky.CartesianVelocityStopMotion))
+        if isinstance(motion, franky.CartesianVelocityStopMotion):
+            self.active = False
+            self.event('stop')
+        else:
+            self.active = True
+            self.event('move')
 
     def event(self, value):
         with (root/'robot-events.jsonl').open('a') as f:
@@ -72,7 +77,7 @@ class Robot:
         self.active = False
         self.event('stop')
 
-    def join_motion(self):
+    def join_motion(self, timeout=None):
         if (root/f'fail-join-{self.ip}').exists():
             raise RuntimeError('injected stopped motion error')
     def poll_motion(self):
@@ -83,17 +88,18 @@ class Robot:
         (root/f'fail-join-{self.ip}').unlink(missing_ok=True)
     def set_collision_behavior(self, *args): pass
 
-# Opt-in capture for input-to-tracker acceptance; the real tracker still runs.
-real_set_target = franky.CartesianImpedanceTracker.set_target
-def capture_target(self, pose, *args, **kwargs):
-    real_set_target(self, pose, *args, **kwargs)
-    if (root/'follow-targets').exists():
-        self._robot.pose = pose
-    if (root/'capture-targets').exists():
+# Exercise real 2.0.0 motion constructors with a fixed-state Robot boundary.
+real_servo = worker.FrankyArm.servo_once
+def capture_target(self):
+    result = real_servo(self)
+    if result and (root/'follow-targets').exists():
+        self.robot.pose = worker._pose_to_affine(franky, self._frame().to_hardware(self.target_pose))
+    if result and (root/'capture-targets').exists():
+        pose = self._frame().to_hardware(self.target_pose)
         with (root/'targets.jsonl').open('a') as stream:
-            stream.write(json.dumps({'translation': np.asarray(pose.translation).tolist(),
-                                     'quaternion': np.asarray(pose.quaternion).tolist()})+'\n')
-franky.CartesianImpedanceTracker.set_target = capture_target
+            stream.write(json.dumps({'translation': pose[:3].tolist(), 'quaternion': pose[3:].tolist()})+'\n')
+    return result
+worker.FrankyArm.servo_once = capture_target
 franky.Robot = Robot
 worker.HardwareLease = functools.partial(HardwareLease, directory=root/'leases')
 instance = worker.FrankyWorker(config['arms'], session_id=config['session_id'],

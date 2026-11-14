@@ -56,7 +56,7 @@ def tick_collector():
     node._lock = threading.RLock()
     node._slot_clock = SimpleNamespace(poll=lambda _: 14)
     node._last_control_tick = time.monotonic()-1/30
-    node._pending_storage_error = node._pending_submission = node._pending_compliance = None
+    node._pending_storage_error = node._pending_submission = node._pending_velocity_control = None
     node._faulted = node._saving = node._storage_blocked = node._teleop_enabled = False
     node._recording = True
     node._intervention = node._waiting_resume = False

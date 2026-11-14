@@ -8,23 +8,10 @@ from typing import Any
 import yaml
 
 
-FRANKY_COMPLIANCE_DEFAULTS = {
-    "translational_stiffness": 1100.0,
-    "rotational_stiffness": 65.0,
-    "nullspace_stiffness": 20.0,
-    "translational_clip": 0.008,
-    "rotational_clip": 0.04,
-    "max_step": 0.03,
-    "max_step_rad": 0.10,
-    "max_delta_tau": 0.2,
-    "gains_time_constant": 0.1,
-    "tracking_integral_gain": 0.,
-    "tracking_max_offset_m": .01,
-    "tracking_max_offset_rad": .20,
-    "tracking_max_linear_rate": .002,
-    "tracking_max_angular_rate": .03,
-}
+from vla.control.franky.velocity_control import VelocityControl
+from dataclasses import asdict
 
+FRANKY_VELOCITY_CONTROL_DEFAULTS = asdict(VelocityControl())
 
 @dataclass(frozen=True)
 class GamepadConfig:
@@ -102,7 +89,7 @@ class RolloutConfig:
     backend: str
     worker_socket_path: Path
     worker_python: Path | None
-    franky_compliance: dict[str, float]
+    franky_velocity_control: dict[str, float]
     dataset_root: Path
     task: str
     fps: int
@@ -292,39 +279,16 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
             or len(set(subtasks)) != len(subtasks)):
         raise ValueError("dataset.subtasks must be a list of unique nonempty stage labels")
     if backend == "franky" and str(raw.get("action_space", "tcp")) != "tcp":
-        raise ValueError("Franky Cartesian impedance requires action_space: tcp")
+        raise ValueError("Franky Cartesian velocity requires action_space: tcp")
     transport = _mapping(raw.get("transport"), "transport")
     control = _mapping(raw.get("control"), "control")
     workspace_limits_enabled = control.get('workspace_limits_enabled', True)
     if type(workspace_limits_enabled) is not bool:
         raise ValueError('control.workspace_limits_enabled must be boolean')
-    compliance_raw = _mapping(control.get("compliance", {}), "control.compliance")
-    compliance_keys = {
-        "translational_stiffness", "rotational_stiffness", "nullspace_stiffness",
-        "translational_clip", "rotational_clip", "max_step", "max_step_rad",
-        "max_delta_tau", "gains_time_constant", "tracking_integral_gain",
-        "tracking_max_offset_m", "tracking_max_offset_rad",
-        "tracking_max_linear_rate", "tracking_max_angular_rate",
-    }
-    unknown_compliance = set(compliance_raw) - compliance_keys
-    if unknown_compliance:
-        raise ValueError("unknown Franky compliance parameters: " + ", ".join(sorted(unknown_compliance)))
-    from vla.control.franky.worker import Compliance
-    Compliance.from_mapping(compliance_raw)  # Same finite/type/range checks as Web and worker.
-    franky_compliance = {**FRANKY_COMPLIANCE_DEFAULTS,
-                         **{key: float(value) for key, value in compliance_raw.items()}}
-    if not (0 < franky_compliance['translational_stiffness'] <= 1200):
-        raise ValueError('control.compliance.translational_stiffness must be in (0, 1200]')
-    if not (0 < franky_compliance['rotational_stiffness'] <= 80):
-        raise ValueError('control.compliance.rotational_stiffness must be in (0, 80]')
-    if franky_compliance['nullspace_stiffness'] < 0:
-        raise ValueError('control.compliance.nullspace_stiffness must be non-negative')
-    if franky_compliance['translational_clip'] < .005:
-        raise ValueError('control.compliance.translational_clip must be at least 0.005')
-    if franky_compliance['rotational_clip'] < .02:
-        raise ValueError('control.compliance.rotational_clip must be at least 0.02')
-    if any(franky_compliance[key] <= 0 for key in ('max_step', 'max_step_rad', 'max_delta_tau', 'gains_time_constant')):
-        raise ValueError('control.compliance step and tracker parameters must be positive')
+    if 'compliance' in control or any(key.startswith('tracking_') for key in control):
+        raise ValueError('Tracker compliance/tracking_* removed; migrate to control.velocity_control')
+    velocity_control_raw = _mapping(control.get("velocity_control", {}), "control.velocity_control")
+    franky_velocity_control = asdict(VelocityControl.from_mapping(velocity_control_raw))
     gamepad_profile = control.get("gamepad_profile")
     if gamepad_profile not in (None, "sft_record"):
         raise ValueError("gamepad_profile must be sft_record or omitted")
@@ -452,7 +416,7 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         worker_socket_path=Path(str(transport.get("worker_socket_path", "/tmp/vla_franky_worker.sock"))).expanduser().resolve(),
         worker_python=(Path(str(transport["worker_python"])).expanduser().absolute()
                        if transport.get("worker_python") else None),
-        franky_compliance=franky_compliance,
+        franky_velocity_control=franky_velocity_control,
         workspace_limits_enabled=workspace_limits_enabled,
         action_space=str(raw.get("action_space", "tcp")),
         input_source=str(raw.get("input_source", "gamepad")),

@@ -1,5 +1,6 @@
 """Terminal front end for the same ROS session used by the Web runner."""
 from __future__ import annotations
+from vla.core.ros_workspace import ros_workspace
 import argparse
 from dataclasses import replace
 import json
@@ -54,6 +55,8 @@ def main(argv=None):
     parser.add_argument('--lingbot-inference-slots', type=int, default=14)
     parser.add_argument('--lingbot-guard-slots', type=int, default=1)
     parser.add_argument('--policy-endpoint', default='tcp://127.0.0.1:8007')
+    parser.add_argument('--target-smoothing', action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument('--velocity-smoothing', action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument('--policy-timeout-s', type=float, default=5.0)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--execute', action='store_true')
@@ -67,10 +70,13 @@ def main(argv=None):
         action_space=args.action_space or 'tcp', config_path=str(args.config or ''),
         dataset_root=str(args.dataset_root or ''), task=args.task or "", resume=args.resume, side_camera_serial=args.side_camera_serial,
         policy_path=args.policy_path, handover_path=args.handover_path, policy_kind=args.policy_kind, mode=args.mode, tokenizer_path=args.tokenizer_path,
-        model_python=args.model_python, ros_workspace=str(root/'ros_ws'), ros_config=str(args.hardware_config or ''),
+        model_python=args.model_python, ros_workspace=str(ros_workspace(root)), ros_config=str(args.hardware_config or ''),
         model_backend=args.model_backend, policy_endpoint=args.policy_endpoint, policy_timeout_s=args.policy_timeout_s,
         lingbot_execution_mode=args.lingbot_execution_mode, lingbot_inference_slots=args.lingbot_inference_slots,
-        lingbot_guard_slots=args.lingbot_guard_slots)
+        lingbot_guard_slots=args.lingbot_guard_slots,
+        velocity_control={key: value for key, value in {
+            'target_smoothing_enabled': args.target_smoothing,
+            'velocity_smoothing_enabled': args.velocity_smoothing}.items() if value is not None})
     rollout = load_rollout_config(config.default_config())
     arms = 'dual' if len(rollout.arms) == 2 else 'single_left'
     tasks = tuple(dict.fromkeys(args.tasks or rollout.tasks))
@@ -109,7 +115,7 @@ def main(argv=None):
         if rollout.backend == 'franky':
             from vla.core.franky_runtime import check_worker
             python, binding = check_worker(root, rollout.worker_python)
-            print(f'Franky Python: {python}; libfranka {binding["libfranka"]}; tracker/Affine passed')
+            print(f'Franky Python: {python}; libfranka {binding["libfranka"]}; velocity/Affine passed')
         print(f'ROS2 configuration valid: {arms}, {config.source}, {config.action_space}, '
               f'{50*len(rollout.arms)}D measured state, absolute storage; hardware not started')
         return
@@ -119,7 +125,7 @@ def main(argv=None):
         from vla.web.processes import interpreter_command, clean_environment
         command = interpreter_command('/usr/bin/python3', ['-m', 'vla.cli.ros_session',
             *(sys.argv[1:] if argv is None else argv), '--model-python', args.model_python],
-            ros=True, root=root, workspace=root/'ros_ws')
+            ros=True, root=root, workspace=ros_workspace(root))
         raise SystemExit(subprocess.call(command, env=clean_environment(root, '/usr/bin/python3', ros=True)))
     directory = root/'runtime/terminal'/f'ros-{time.time_ns()}'
     directory.mkdir(parents=True)

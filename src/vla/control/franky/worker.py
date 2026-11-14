@@ -1,4 +1,4 @@
-"""Franky Cartesian impedance worker.
+"""Franky Cartesian velocity worker.
 
 The module is importable without Franky installed.  The binding is imported
 only when a real arm is opened, which lets ROS and protocol tests run in the
@@ -24,60 +24,7 @@ from vla.core.hardware_lease import HardwareLease
 from .ipc import decode_packet, encode_packet
 from .binding import check_binding
 from .tcp_frame import TCPFrame, TCP_FRAME
-from .pose_correction import PoseErrorCompensator
-
-
-@dataclass
-class Compliance:
-    translational_stiffness: float = 1100.0
-    rotational_stiffness: float = 65.0
-    nullspace_stiffness: float = 20.0
-    translational_clip: float = .008
-    rotational_clip: float = .04
-    max_step: float = .03
-    max_step_rad: float = .10
-    max_delta_tau: float = .2
-    gains_time_constant: float = .1
-    tracking_integral_gain: float = 0.
-    tracking_max_offset_m: float = .01
-    tracking_max_offset_rad: float = .20
-    tracking_max_linear_rate: float = .002
-    tracking_max_angular_rate: float = .03
-
-    def validate(self) -> "Compliance":
-        values = asdict(self)
-        if any(not math.isfinite(float(value)) for value in values.values()):
-            raise ValueError("Franky compliance parameters must be finite")
-        if not (0 < self.translational_stiffness <= 1200):
-            raise ValueError("translational_stiffness must be in (0, 1200]")
-        if not (0 < self.rotational_stiffness <= 80):
-            raise ValueError("rotational_stiffness must be in (0, 80]")
-        if self.nullspace_stiffness < 0 or self.translational_clip < .005:
-            raise ValueError("nullspace stiffness or translational clip is unsafe")
-        if self.rotational_clip < .02 or self.max_step <= 0 or self.max_step_rad <= 0:
-            raise ValueError("rotational clip and target steps must be positive")
-        if self.max_delta_tau <= 0 or self.gains_time_constant <= 0:
-            raise ValueError("tracker dynamics must be positive")
-        for key, lower, upper in (
-                ('tracking_integral_gain', 0., 1.),
-                ('tracking_max_offset_m', 0., .02), ('tracking_max_offset_rad', 0., .35),
-                ('tracking_max_linear_rate', 0., .01), ('tracking_max_angular_rate', 0., .10)):
-            value = getattr(self, key)
-            if not lower <= value <= upper or (key != 'tracking_integral_gain' and value == 0):
-                raise ValueError(f'{key} outside allowed range ({lower}, {upper})')
-        return self
-
-    @classmethod
-    def from_mapping(cls, values: Mapping[str, Any] | None,
-                     current: "Compliance | None" = None) -> "Compliance":
-        result = cls(**(asdict(current) if current else {}))
-        for key, value in (values or {}).items():
-            if key not in asdict(result):
-                raise ValueError(f"unknown Franky compliance parameter: {key}")
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(f"{key} must be a number")
-            setattr(result, key, float(value))
-        return result.validate()
+from .velocity_control import VelocityControl, tracking_twist, smooth_pose, validate_context
 
 
 def _pose_to_affine(franky: Any, pose: np.ndarray) -> Any:
@@ -102,14 +49,14 @@ def _affine_pose(value: Any) -> np.ndarray:
 
 
 class FrankyArm:
-    """One exclusive CartesianImpedanceTracker session."""
+    """One exclusive official CartesianVelocityMotion session."""
 
     def __init__(self, name: str, robot_ip: str, *, gripper_port: str | None = None,
-                 compliance: Compliance | None = None, realtime_config: str = "ignore",
-                 workspace_bounds=None):
+                 velocity_control: VelocityControl | None = None, realtime_config: str = "ignore",
+                 workspace_bounds=None, realtime_cpu=None):
         self.name = name
         self.robot_ip = robot_ip
-        self.compliance = (compliance or Compliance()).validate()
+        self.velocity_control = (velocity_control or VelocityControl()).validate()
         self.realtime_config = realtime_config
         self.workspace_bounds = None
         if workspace_bounds is not None:
@@ -123,11 +70,15 @@ class FrankyArm:
         self._gripper_port = gripper_port
         self.franky = None
         self.robot = None
-        self.tracker = None
+        self.servo_ready = False
         self.target_pose: np.ndarray | None = None
         self.nominal_pose: np.ndarray | None = None
-        self.correction = PoseErrorCompensator()
-        self._target_time = None
+        self.context = None
+        self.last_twist = np.zeros(6)
+        self.last_servo_ns = None
+        if realtime_cpu is not None and (type(realtime_cpu) is not int or realtime_cpu < 0):
+            raise ValueError("realtime_cpu must be a nonnegative CPU number")
+        self.realtime_cpu = realtime_cpu
         self._tcp_frame: TCPFrame | None = None
         self.target_generation = -1
         self.target_sequence = -1
@@ -148,8 +99,14 @@ class FrankyArm:
         self.franky = franky
         self._lease = HardwareLease(self.robot_ip, self._gripper_port)
         mode = getattr(franky.RealtimeConfig, "Enforce" if self.realtime_config == "enforce" else "Ignore")
-        self.robot = franky.Robot(self.robot_ip, realtime_config=mode)
-        self.robot.relative_dynamics_factor = .2
+        affinity = os.sched_getaffinity(0)
+        policy, parameter = os.sched_getscheduler(0), os.sched_getparam(0)
+        try:
+            self.robot = franky.Robot(self.robot_ip, realtime_config=mode)
+        finally:
+            os.sched_setscheduler(0, policy, parameter)
+            os.sched_setaffinity(0, affinity)
+        self.robot.relative_dynamics_factor = .1
         self.robot.set_collision_behavior(
             [80.0] * 4 + [11.0] * 3,
             [100.0] * 3 + [25.0] * 3,
@@ -170,11 +127,11 @@ class FrankyArm:
     def _state(self) -> dict[str, Any]:
         if self.robot is None:
             raise RuntimeError("Franky arm is not open")
-        # Surface a tracker thread that stopped between target packets. The
+        # Surface a native motion thread that stopped between target packets. The
         # collector polls health independently of command traffic, so an
         # asynchronous Franky exception cannot remain hidden until the next
         # user action.
-        self._check_tracker()
+        self._check_motion()
         raw = self.robot.state
         self._check_state_time(raw)
         frame = self._frame(raw)
@@ -202,16 +159,15 @@ class FrankyArm:
                 "desired_tcp_pose": desired_pose.tolist() if desired_pose is not None else [],
                 "reference_tcp_pose": self.target_pose.tolist() if self.target_pose is not None else [],
                 "nominal_tcp_pose": self.nominal_pose.tolist() if self.nominal_pose is not None else [],
-                "tracking_offset": self.correction.offset.tolist(),
-                "tracking_status": self.correction.status,
+                "commanded_twist": self.last_twist.tolist(),
                 "force": force[:3].tolist(), "torque": force[3:].tolist(),
                 "generation": self.target_generation, "sequence": self.target_sequence,
-                "tracker_running": bool(self.tracker is not None and self._tracker_running()),
+                "servo_ready": self.servo_ready,
                 "state_valid": True,
                 "fault": self.fault}
 
     def _check_state_time(self, raw):
-        if self.tracker is not None and hasattr(raw, 'time'):
+        if hasattr(raw, 'time'):
             stamp = float(raw.time.to_sec())
             if not math.isfinite(stamp) or (self._robot_stamp is not None and stamp < self._robot_stamp):
                 raise RuntimeError('invalid or regressing Franky measured state timestamp')
@@ -220,176 +176,133 @@ class FrankyArm:
             elif time.monotonic() - self._robot_stamp_at > self.state_timeout_s:
                 raise RuntimeError('Franky measured state timestamp stalled')
 
-    def _tracker_running(self) -> bool:
-        if self.tracker is None:
-            return False
-        value = getattr(self.tracker, "is_running", False)
-        try:
-            return bool(value() if callable(value) else value)
-        except Exception as error:
-            self.fault = f"Cartesian tracker state unavailable: {error}"
-            return False
-
-    def _check_tracker(self) -> None:
+    def _check_motion(self):
         if self.fault:
             raise RuntimeError(self.fault)
-        if self.tracker is not None and not self._tracker_running():
-            try:
-                self.robot.poll_motion()
-            except Exception as error:
-                self.fault = f"Cartesian tracker stopped: {error}"
-            else:
-                self.fault = "Cartesian tracker stopped unexpectedly"
+        if self.target_pose is not None:
+            self.robot.poll_motion()
+            if not self.robot.is_in_control:
+                raise RuntimeError('Cartesian velocity motion stopped unexpectedly')
+
+    def set_target(self, pose, generation, sequence, context):
+        if not self.servo_ready or self.fault:
+            raise RuntimeError('velocity servo is not armed; explicit reset required')
+        from .ipc import _validate_pose
+        target = np.asarray(_validate_pose(pose), dtype=float)
+        target[3:] /= np.linalg.norm(target[3:])
+        context = validate_context(context)
+        if self.workspace_bounds is not None and np.any((target[:3] < self.workspace_bounds[0]-1e-9) | (target[:3] > self.workspace_bounds[1]+1e-9)):
+            raise ValueError('absolute target outside workspace')
+        previous = self.target_pose
+        if (previous is not None and context['source'] in ('policy', 'gello')
+                and self.velocity_control.target_smoothing_enabled):
+            target = smooth_pose(previous, target, self.velocity_control.target_smoothing_alpha)
+        self.nominal_pose = np.asarray(pose, dtype=float).copy()
+        self.target_pose = target
+        self.context = context
+        self.target_generation, self.target_sequence = generation, sequence
+        self.first_receipt = None
+        return None
+
+    def _move(self, motion):
+        # Native control threads inherit this thread's scheduling and affinity.
+        # Restore both even if native startup fails; never leak RT policy to IPC.
+        affinity = os.sched_getaffinity(0)
+        policy, parameter = os.sched_getscheduler(0), os.sched_getparam(0)
+        try:
+            if self.realtime_cpu is not None:
+                if self.realtime_cpu not in affinity:
+                    raise RuntimeError('configured realtime CPU is unavailable')
+                os.sched_setaffinity(0, {self.realtime_cpu})
+            if self.realtime_config == 'enforce':
+                os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(20))
+            self.robot.move(motion, asynchronous=True, limit_rate=False, cutoff_frequency=100.)
+        finally:
+            os.sched_setscheduler(0, policy, parameter)
+            os.sched_setaffinity(0, affinity)
+
+    def servo_once(self):
+        if not self.servo_ready or self.target_pose is None:
+            return None
+        if self.fault:
             raise RuntimeError(self.fault)
-
-    def _start_tracker(self) -> None:
-        self._check_tracker()
-        if self.tracker is not None:
-            return
-        # Only explicit recover may clear robot errors.
-        self.robot.join_motion()
-        raw = self.robot.state
-        self._frame(raw)  # Reject unknown/changed tools before starting control.
-        nullspace = np.asarray(raw.q, dtype=np.float64).copy()
-        c = self.compliance
-        self.tracker = self.franky.CartesianImpedanceTracker(
-            self.robot,
-            translational_stiffness=c.translational_stiffness,
-            rotational_stiffness=c.rotational_stiffness,
-            nullspace_target=nullspace,
-            nullspace_stiffness=c.nullspace_stiffness,
-            translational_error_clip=np.full(3, c.translational_clip),
-            rotational_error_clip=np.full(3, c.rotational_clip),
-            max_delta_tau=c.max_delta_tau,
-            gains_time_constant=c.gains_time_constant,
-        )
-        # Seed the target accumulator from the measured TCP. The first client
-        # packet is therefore limited by max_step instead of causing a pose
-        # discontinuity.
-        raw = self.robot.state
-        self.target_pose = self._frame(raw).to_logical(_affine_pose(raw.O_T_EE))
-        self.nominal_pose = self.target_pose.copy()
-        self.correction.reset()
-        self._target_time = None
-
-    def set_target(self, pose: list[float], generation: int, sequence: int) -> None:
-        self._check_tracker()
-        if self.tracker is None:
-            raise RuntimeError("tracker is not armed; explicit reset required")
-        pose_array = np.array(pose, dtype=np.float64, copy=True)
-        pose_array[3:] /= np.linalg.norm(pose_array[3:])
-        pose_array = self._limit_target(pose_array, self.nominal_pose)
-        nominal = pose_array.copy()
-        now = time.monotonic()
-        dt = min(1/30, max(0., now-self._target_time)) if self._target_time is not None else 0.
+        self.robot.poll_motion()
         raw = self.robot.state
         self._check_state_time(raw)
         frame = self._frame(raw)
         measured = frame.to_logical(_affine_pose(raw.O_T_EE))
-        pose_array = self.correction.update(pose_array, measured, dt, self.compliance)
+        observed = time.monotonic_ns()
+        twist = tracking_twist(measured, self.target_pose, self.context, self.velocity_control)
+        if self.context['source'] in ('policy', 'gello') and self.velocity_control.velocity_smoothing_enabled:
+            dt = (observed-self.last_servo_ns)/1e9 if self.last_servo_ns is not None else 1/30
+            alpha = self.velocity_control.velocity_smoothing_alpha ** (30*min(.1, max(0., dt)))
+            twist = alpha*self.last_twist + (1-alpha)*twist
         if self.workspace_bounds is not None:
-            projected = np.clip(pose_array[:3], *self.workspace_bounds)
-            if np.linalg.norm(projected-pose_array[:3]) > 1e-12:
-                pose_array[:3] = projected
-                self.correction.offset[:3] = projected-nominal[:3]
-                self.correction.status = 'workspace_limited'
-        limited = self._limit_target(pose_array, self.target_pose)
-        if (np.linalg.norm(limited[:3]-pose_array[:3]) > 1e-12
-                or (Rotation.from_quat(limited[3:]) * Rotation.from_quat(pose_array[3:]).inv()).magnitude() > 1e-12):
-            # The last step limiter also participates in anti-windup.
-            self.correction.offset[:3] = limited[:3]-nominal[:3]
-            self.correction.offset[3:] = (Rotation.from_quat(limited[3:]) * Rotation.from_quat(nominal[3:]).inv()).as_rotvec()
-            self.correction.status = 'step_limited'
-        self.tracker.set_target(_pose_to_affine(self.franky, frame.to_hardware(limited)))
-        self.target_pose, self.nominal_pose = limited, nominal
-        self._target_time = now
-        self.target_generation = generation
-        self.target_sequence = sequence
-        self._check_tracker()
+            # The 100 ms native motion must not carry a command across a bound.
+            projected = np.clip(measured[:3]+twist[:3]*.1, *self.workspace_bounds)
+            twist[:3] = (projected-measured[:3])/.1
+            if np.any(measured[:3] < self.workspace_bounds[0]-1e-6) or np.any(measured[:3] > self.workspace_bounds[1]+1e-6):
+                raise RuntimeError('measured TCP outside workspace')
+        if not np.isfinite(twist).all():
+            raise RuntimeError('non-finite derived Cartesian velocity')
+        motion = self.franky.CartesianVelocityMotion(
+            self.franky.RobotVelocity(self.franky.Twist(twist[:3], twist[3:])),
+            self.franky.Duration(100), self.velocity_control.dynamics_factor)
+        self._move(motion)
+        applied = time.monotonic_ns()
+        self.last_twist, self.last_servo_ns = twist, observed
+        event = {'arm': self.name, 'generation': self.target_generation,
+                'sequence': self.target_sequence, 'observed_at_ns': observed,
+                'applied_at_ns': applied, 'measured_tcp': measured.tolist(),
+                'absolute_target': self.nominal_pose.tolist(), 'reference_tcp': self.target_pose.tolist(),
+                'twist': twist.tolist()}
+        if self.first_receipt is None:
+            self.first_receipt = event
+        return event
 
-    def _limit_target(self, pose_array, previous_pose):
-        pose_array = pose_array.copy()
-        if previous_pose is not None:
-            delta = pose_array[:3] - previous_pose[:3]
-            distance = float(np.linalg.norm(delta))
-            if distance > self.compliance.max_step:
-                pose_array[:3] = previous_pose[:3] + delta * self.compliance.max_step / distance
-            previous = Rotation.from_quat(previous_pose[3:])
-            current = Rotation.from_quat(pose_array[3:])
-            delta_r = current * previous.inv()
-            vector = delta_r.as_rotvec()
-            angle = float(np.linalg.norm(vector))
-            if angle > self.compliance.max_step_rad:
-                pose_array[3:] = (Rotation.from_rotvec(vector * self.compliance.max_step_rad / angle) * previous).as_quat()
-        return pose_array
-
-    def reset(self, generation: int) -> None:
-        self.stop(recover=False)
+    def reset(self, generation):
+        self.stop()
         if self.fault:
             raise RuntimeError(self.fault)
-        self.target_generation = generation
-        self.target_sequence = -1
-        self._start_tracker()
+        raw = self.robot.state
+        self._check_state_time(raw)
+        self._frame(raw)
+        self.target_generation, self.target_sequence = generation, -1
+        self.servo_ready = True
 
-    def stop(self, *, recover: bool = False) -> None:
+    def stop(self, *, recover=False):
+        self.servo_ready = False
         try:
-            if self.tracker is not None:
+            if self.robot is not None and self.robot.is_in_control:
                 try:
-                    self.tracker.stop()
-                finally:
-                    self.tracker = None
-            if self.robot is not None:
-                self.robot.join_motion()
+                    self._move(self.franky.CartesianVelocityStopMotion())
+                    if self.robot.join_motion(1.) is False:
+                        raise TimeoutError('velocity stop timed out')
+                except Exception:
+                    self.robot.stop()
+                    if self.robot.join_motion(1.) is False:
+                        raise TimeoutError('native velocity thread did not stop')
+                    raise
         finally:
-            self.target_pose = None
-            self.nominal_pose = None
-            self.correction.reset()
-            self._target_time = None
+            self.target_pose = self.nominal_pose = self.context = None
+            self.last_twist = np.zeros(6)
+            self.last_servo_ns = None
         if recover and self.robot is not None:
             self.robot.recover_from_errors()
 
-    def recover(self) -> None:
-        if self.robot is None:
-            raise RuntimeError("Franky arm is not open")
-        if self.tracker is not None:
-            try:
-                self.tracker.stop()
-            finally:
-                self.tracker = None
+    def recover(self):
+        self.stop()
         self.robot.recover_from_errors()
         self.fault = None
-        self.target_pose = None
-        self.nominal_pose = None
-        self.correction.reset()
-        self._target_time = None
         self._robot_stamp = None
 
-    def update_compliance(self, values: Mapping[str, Any]) -> Compliance:
-        next_value = Compliance.from_mapping(values, self.compliance)
-        changed = {key for key, value in asdict(next_value).items()
-                   if value != getattr(self.compliance, key)}
-        if not changed:
-            return self.compliance
-        if self.tracker is not None and changed.intersection({
-                "translational_clip", "rotational_clip", "max_delta_tau", "gains_time_constant",
-                "tracking_integral_gain", "tracking_max_offset_m", "tracking_max_offset_rad",
-                "tracking_max_linear_rate", "tracking_max_angular_rate"}):
-            pose = self.nominal_pose.copy() if self.nominal_pose is not None else None
-            self.stop()
-            self.compliance = next_value
-            if pose is not None:
-                self._start_tracker()
-                self.set_target(pose.tolist(), self.target_generation, self.target_sequence)
-        else:
-            self.compliance = next_value
-            if self.tracker is not None and changed.intersection({
-                    "translational_stiffness", "rotational_stiffness", "nullspace_stiffness"}):
-                self.tracker.set_gains(
-                    translational_stiffness=next_value.translational_stiffness,
-                    rotational_stiffness=next_value.rotational_stiffness,
-                    nullspace_stiffness=next_value.nullspace_stiffness,
-                )
-        return self.compliance
+    def update_velocity_control(self, values):
+        config = VelocityControl.from_mapping(values, self.velocity_control)
+        # No retained target may resume because a parameter update succeeded.
+        self.stop()
+        self.velocity_control = config
+        self.servo_ready = True
+        return config
 
     def close(self) -> None:
         try:
@@ -405,19 +318,22 @@ class FrankyArm:
 
 class FrankyWorker:
     """One generation-fenced owner, with a watchdog independent of client traffic."""
-    IMPLEMENTATION_VERSION = 7
+    IMPLEMENTATION_VERSION = 8
 
-    def __init__(self, arms, *, session_id, compliance=None, target_timeout_s=.1,
+    def __init__(self, arms, *, session_id, velocity_control=None, target_timeout_s=.1,
                  state_timeout_s=.5):
         if not session_id or not arms:
             raise ValueError('worker requires a session and at least one arm')
         self.session_id = str(session_id)
-        base = Compliance.from_mapping(compliance)
+        base = VelocityControl.from_mapping(velocity_control)
         self.arms = {name: FrankyArm(name, str(value['robot_ip']),
-                                    compliance=Compliance.from_mapping({}, base),
-                                    workspace_bounds=value.get('workspace_bounds'))
+                                    velocity_control=VelocityControl.from_mapping({}, base),
+                                    workspace_bounds=value.get('workspace_bounds'),
+                                    realtime_cpu=value.get('realtime_cpu'),
+                                    realtime_config=value.get('realtime_config', 'ignore'))
                      for name, value in arms.items()}
         self._lock = threading.RLock()
+        self._condition = threading.Condition(self._lock)
         self.generation = self.sequence = self.timestamp_ns = self.slot_id = -1
         self.fault = None
         self.binding_fingerprint = {}
@@ -430,9 +346,11 @@ class FrankyWorker:
         self._connected = False
         self._last_target = self._last_contact = time.monotonic()
         self._requests = {}
+        self._audit = []
+        self._audit_sequence = 0
         self._closed = threading.Event()
         self._watchdog = None
-        self._compliance = asdict(base)
+        self._velocity_control = asdict(base)
 
     def open(self):
         try:
@@ -464,12 +382,16 @@ class FrankyWorker:
                 self._stop_all()
             except Exception as error:
                 self.fault += f'; stop failed: {error}'
+            self._condition.notify_all()
             if first_fault:
                 print(f'Franky worker fault session={self.session_id} generation={self.generation} '
                       f'sequence={self.sequence}: {self.fault}', file=sys.stderr, flush=True)
 
     def _watch(self):
-        while not self._closed.wait(.01):
+        deadline = time.monotonic() + .01
+        while not self._closed.wait(max(0., deadline-time.monotonic())):
+            now = time.monotonic()
+            deadline += max(1, int((now-deadline)/.01)+1)*.01
             with self._lock:
                 if self.fault:
                     continue
@@ -479,12 +401,31 @@ class FrankyWorker:
                 elif self._streaming and now - self._last_target > self.target_timeout_s:
                     self.latch_fault('Franky target stream expired')
                 elif self._streaming:
-                    self.snapshot()  # Poll asynchronous tracker failures even without requests.
+                    try:
+                        if len(self._audit) + len(self.arms) > 4096:
+                            raise RuntimeError('velocity audit buffer full; manual recovery required')
+                        for arm in self.arms.values():
+                            self._record_servo(arm.servo_once())
+                        self._condition.notify_all()
+                    except Exception as error:
+                        self.latch_fault(f'velocity servo: {error}')
+
+    def _record_servo(self, event):
+        if event is None:
+            return
+        if len(self._audit) >= 4096:
+            raise RuntimeError('velocity audit buffer full; manual recovery required')
+        self._audit_sequence += 1
+        self._audit.append(dict(event, audit_id=self._audit_sequence, slot_id=self.slot_id))
 
     def request(self, message):
         with self._lock:
             if message.get('session_id') != self.session_id:
                 raise ValueError('wrong Franky worker session')
+            ack = message.get('audit_ack', 0)
+            if type(ack) is not int or not 0 <= ack <= self._audit_sequence:
+                raise ValueError('invalid velocity audit acknowledgement')
+            self._audit = [event for event in self._audit if event['audit_id'] > ack]
             kind = message.get('kind')
             request_id = message.get('request_id')
             generation = message.get('generation')
@@ -493,7 +434,7 @@ class FrankyWorker:
                     or type(generation) is not int or generation < -1):
                 raise ValueError('invalid worker request id or generation')
             key = str(request_id)
-            signature = json.dumps(message, sort_keys=True)
+            signature = json.dumps({key:value for key,value in message.items() if key != 'audit_ack'}, sort_keys=True)
             if key in self._requests:
                 old_signature, response = self._requests[key]
                 if old_signature != signature:
@@ -510,7 +451,7 @@ class FrankyWorker:
             try:
                 if kind == 'health':
                     pass
-                elif kind not in ('target', 'reset', 'stop', 'recover', 'compliance'):
+                elif kind not in ('target', 'reset', 'stop', 'recover', 'velocity_control'):
                     raise ValueError(f'unknown Franky worker request: {kind}')
                 elif generation < self.generation:
                     status = 'ignored'
@@ -530,7 +471,7 @@ class FrankyWorker:
                             raise
                     for arm in self.arms.values():
                         arm.recover()
-                        arm.update_compliance(self._compliance)
+                        arm.velocity_control = VelocityControl.from_mapping(self._velocity_control)
                     self.fault = None
                     self.generation = generation
                     self.sequence = self.timestamp_ns = self.slot_id = -1
@@ -545,10 +486,10 @@ class FrankyWorker:
                             arm.reset(generation)
                         self.generation = generation
                         self.sequence = self.timestamp_ns = self.slot_id = -1
-                        self._armed = self._streaming = True
+                        self._armed, self._streaming = True, False
                         self._last_target = time.monotonic()
                 elif generation != self.generation:
-                    raise ValueError('target/compliance generation has not been reset')
+                    raise ValueError('target/velocity_control generation has not been reset')
                 elif kind == 'target':
                     slot = message.get('slot_id')
                     if type(slot) is not int or slot < 0:
@@ -573,23 +514,33 @@ class FrankyWorker:
                             raise ValueError('target must contain every configured Franky arm')
                         from .ipc import _validate_pose
                         poses = {name: _validate_pose(value['pose']) for name, value in targets.items()}
-                        receipt['partial_application'] = {}
+                        contexts = {name: validate_context(targets[name].get('context')) for name in poses}
+                        if len(self._audit) + len(self.arms) > 4096:
+                            raise RuntimeError('velocity audit buffer full; manual recovery required')
+                        self.slot_id = slot
                         for name, pose in poses.items():
-                            self.arms[name].set_target(pose, generation, sequence)
-                            receipt['partial_application'][name] = {
-                                'reference': self.arms[name].target_pose.tolist(),
-                                'applied_at_ns': time.monotonic_ns()}
+                            self.arms[name].set_target(pose, generation, sequence, contexts[name])
                         self.sequence, self.timestamp_ns, self.slot_id = sequence, stamp, slot
                         self._last_target = time.monotonic()
                         self._streaming = True
-                        receipt.update({'slot_id': slot, 'applied_at_ns': time.monotonic_ns(),
-                                   'references': {n: a.target_pose.tolist() for n, a in self.arms.items()}})
-                elif kind == 'compliance':
+                        deadline = stamp/1e9 + self.target_timeout_s
+                        while not self.fault and any(arm.first_receipt is None for arm in self.arms.values()):
+                            remaining = deadline-time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError('first velocity submission acknowledgement expired')
+                            self._condition.wait(remaining)
+                        if self.fault:
+                            raise RuntimeError(self.fault)
+                        receipt.update({'slot_id': slot,
+                            'applied_at_ns': max(arm.first_receipt['applied_at_ns'] for arm in self.arms.values()),
+                            'references': {n: arm.target_pose.tolist() for n, arm in self.arms.items()},
+                            'partial_application': {n: arm.first_receipt for n, arm in self.arms.items()}})
+                elif kind == 'velocity_control':
                     values = message.get('values', {})
-                    next_value = Compliance.from_mapping(values, Compliance.from_mapping(self._compliance))
+                    next_value = VelocityControl.from_mapping(values, VelocityControl.from_mapping(self._velocity_control))
                     for arm in self.arms.values():
-                        arm.update_compliance(values)
-                    self._compliance = asdict(next_value)  # Commit only after all arms succeed.
+                        arm.update_velocity_control(values)
+                    self._velocity_control = asdict(next_value)  # Commit only after all arms succeed.
                     self._last_target = time.monotonic()  # One bounded interval for target resumption.
             except Exception as exc:
                 error = str(exc)
@@ -627,7 +578,7 @@ class FrankyWorker:
                     'states': states, 'fault': self.fault,
                     'implementation_version': self.IMPLEMENTATION_VERSION,
                     'binding_fingerprint': dict(self.binding_fingerprint),
-                    'compliance': dict(self._compliance)}
+                    'velocity_control': dict(self._velocity_control), 'servo_events': self._audit[:128]}
 
     def close(self):
         self._closed.set()

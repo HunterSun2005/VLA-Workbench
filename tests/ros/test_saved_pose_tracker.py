@@ -19,7 +19,7 @@ def test_saved_pose_synchronized_reference_through_real_tracker(monkeypatch):
     c._faulted=False
     c._neutral_gamepads=lambda:True
     c._observe_control=lambda:None
-    c.compliance_status=lambda:{'values':c.config.franky_compliance}
+    c.velocity_control_status=lambda:{'values':c.config.franky_velocity_control}
     poses={name:pose_value(name,name,'base/EE',np.zeros(3),np.eye(3),np.zeros(3),np.eye(3))
            for name in ('left','right')}
     with process_worker(('left','right')) as (root,_,_):
@@ -54,9 +54,10 @@ def test_saved_pose_synchronized_reference_through_real_tracker(monkeypatch):
             assert reply['request_status']=='applied'
             np.testing.assert_allclose(reply['references']['left'][:3],action[:3],atol=1e-12)
             np.testing.assert_allclose(reply['references']['right'],[0,0,0,0,0,0,1],atol=1e-12)
-            expected=Rotation.from_matrix(np.asarray(goal['rotation'])).as_rotvec()*driver.plan.progress
+            expected=Rotation.from_matrix(np.asarray(goal['rotation'])).as_rotvec()
             np.testing.assert_allclose(Rotation.from_quat(reply['references']['left'][3:]).as_rotvec(),expected,atol=1e-12)
-        assert driver.plan.done
+        assert driver.plan
+        assert driver._measured_progress(goal, poses['left']) == 0.
         c._last_control_tick=time.monotonic()
         assert driver.tick(goal) is None  # Fixed-state fake Robot has not physically arrived.
         assert driver.progress_status['waiting_measured']

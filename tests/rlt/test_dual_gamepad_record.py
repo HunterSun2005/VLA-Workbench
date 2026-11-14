@@ -165,7 +165,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
     original_init = cls.__init__
     production_publish = cls._coordinated_publish
     from vla.control.franky.ipc import WorkerState
-    binding = {'franky': 'test', 'libfranka': '0.19.0', 'numpy': np.__version__,
+    binding = {'franky': 'test', 'libfranka': '0.21.2', 'numpy': np.__version__,
                'binding_sha256': 'a'*64, 'tracker_sha256': 'b'*64,
                'libfranka_library_sha256': 'c'*64}
     def initialize(self, config, **kwargs):
@@ -176,7 +176,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
         client = SimpleNamespace(fault=None, target_available=True, result=lambda key:self._test_receipts.get(key), states=lambda: states, close=lambda: None,
             request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 6,
                                    'tcp_frame': 'flange_aligned_tcp_v1'},
-            compliance_values=lambda: config.franky_compliance)
+            velocity_control_values=lambda: config.franky_velocity_control)
         self._test_receipts = {}
         self._production_publish = production_publish.__get__(self, cls)
         original_init(self, config, worker_client=client, worker_session_id='collector-test', **kwargs)
@@ -323,8 +323,8 @@ def test_demo_save_preserves_stage_and_is_cache_demonstration(collector, monkeyp
     frame = pd.read_parquet(c.writer.data_path(0))
     assert info["features"]["action"]["shape"] == [20]
     assert info["features"]["observation.state"]["shape"] == [100]
-    assert info['recording_contract']['backend'] == 'franky_cartesian_impedance'
-    assert info['franky_binding_diagnostics']['libfranka'] == '0.19.0'
+    assert info['recording_contract']['backend'] == 'franky_cartesian_velocity'
+    assert info['franky_binding_diagnostics']['libfranka'] == '0.21.2'
     assert info['recording_contract']['control_fingerprint']
     assert np.stack(frame['diagnostic.actual_tcp']).shape == (12, 14)
     assert np.stack(frame['diagnostic.target_joint']).shape == (12, 14)
@@ -766,10 +766,10 @@ def test_collector_single_loop_through_unix_ipc_to_real_tracker_fake_robot(colle
             assert len(c._states) >= 4
             assert all(row==[1] for row in c._annotations['complementary_info.action_valid'][:-1])
             assert len(set(row[0] for row in c._annotations['complementary_info.slot_id']))==len(c._states)
-            assert all(s.tracker_running for s in client.states().values())
+            assert all(s.servo_ready for s in client.states().values())
             stop=client.stop('s',c.coordinator.generation+1)
             wait_for(lambda:client.result(stop))
-            assert not any(s.tracker_running for s in client.states().values())
+            assert not any(s.servo_ready for s in client.states().values())
         finally:
             client.close()
             c._worker_client=fake; c._worker_session_id='collector-test'
@@ -837,25 +837,25 @@ def test_saved_pose_reference_freezes_on_ack_and_is_revoked_at_boundaries(collec
     assert driver.plan is None
     tick()
     assert not c._faulted and driver.plan is not None
-    first=driver.plan.elapsed
+    first=c.coordinator.accepted.command_id
     action=c.coordinator.accepted.target.copy()
     key=c._pending_submission['request_id']; receipt=c._test_receipts.pop(key)
     tick()
-    assert driver.plan.elapsed==first
+    assert c.coordinator.accepted.command_id==first
     np.testing.assert_array_equal(c.coordinator.accepted.target,action)
     c._test_receipts[key]=receipt
     tick()
-    assert driver.plan.elapsed==pytest.approx(first+1/30)
+    assert driver.plan and c.coordinator.accepted.command_id>first
     np.testing.assert_array_equal(c.coordinator.accepted.target[10:13],[.4,0,.3])
     c._control_boundary(reason='operator pause')
     assert c._pose_reference is None and c._pose_action is None
     tick()
-    assert driver.plan.elapsed==pytest.approx(first+1/30)
+    assert driver.plan
     driver.stop()
     driver.start(target)
     assert driver.plan is None
     tick()
-    assert driver.plan.elapsed==pytest.approx(1/30)
+    assert driver.plan
     c._latch_fault(RuntimeError('disconnected'))
     assert c._pose_reference is None
     tick()

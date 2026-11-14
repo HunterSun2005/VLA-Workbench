@@ -125,10 +125,10 @@ def session_browser(tmp_path, short_session_root, monkeypatch, request):
         return {'active': record, 'session_id': record['session_id'], 'config': record['config'],
                 'now': now, 'samples': [], 'commands': scenario.get('command_results', []), 'revision': 0,
                 'status': {'state': scenario['state'], 'final': scenario['final'], 'updated_at': now,
-                           'compliance': scenario.get('compliance'),
+                           'velocity_control': scenario.get('velocity_control'),
                            'episode': 3, 'frames': 123, 'elapsed_s': 4.1, 'events': ['mock final event'],
                            'error': 'mock fault' if scenario['state'] == 'fault' else '',
-                           'available_commands': ['enable', 'pause', 'stop', 'compliance']}}
+                           'available_commands': ['enable', 'pause', 'stop', 'velocity_control']}}
 
     def create(data):
         scenario['posts'].append(data)

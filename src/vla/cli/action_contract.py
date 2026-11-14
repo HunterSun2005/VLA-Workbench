@@ -22,7 +22,7 @@ def main():
     info = load_info(args.dataset)
     source = info.get('recording_contract') or info.get('processing', {}).get('source_contract', {}).get('recording_contract')
     if not source or source.get('version') != 2 or source.get('backend') not in {
-            'ros2_joint_impedance', 'franky_cartesian_impedance'}:
+            'ros2_joint_impedance', 'franky_cartesian_impedance', 'franky_cartesian_velocity'}:
         raise ValueError('missing supported action contract; only schema-5 source recordings are supported')
     spec = replace(ActionSpec.from_dict(info['action_spec']), representation=args.representation)
     sampling = SamplingSpec(args.chunk_length, args.frame_stride)

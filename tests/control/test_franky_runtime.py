@@ -46,7 +46,7 @@ def test_persistent_wheel_preflight():
     if not (ROOT/'runtime/franky/current/bin/python').is_file():
         pytest.skip('persistent Franky environment not installed')
     python, value = check_worker(ROOT)
-    assert value['libfranka'] == '0.19.0' and value['numpy'] == '1.26.4'
+    assert value['libfranka'] == '0.21.2' and value['numpy'] == '1.26.4'
     assert '/runtime/franky/' in value['binding'] and '/tmp/' not in value['binding']
     moved = dict(value, binding='/another/path', tracker='/another/tracker', libfranka_library='/other/lib')
     assert semantic_binding(value) == semantic_binding(moved)

@@ -339,8 +339,8 @@ class RolloutCollector(Node):
             arm.name: ForwardKinematics(self._load_kinematic_model(arm))
             for arm in config.arms
         }
-        self._pending_compliance = None
-        self._compliance_result = None
+        self._pending_velocity_control = None
+        self._velocity_control_result = None
         self._input_diagnostics = {}
         self._input_stamps = {}
         self._pending_worker_targets = {}
@@ -379,12 +379,14 @@ class RolloutCollector(Node):
             fingerprint(tool), fingerprint(self._kinematics_identity),
             fingerprint({k: str(v) for k, v in asdict(config).items()
                          if k not in ('dataset_root', 'task', 'tasks', 'socket_path', 'joy_socket_path')}),
-            backend='franky_cartesian_impedance').to_dict()
+            backend='franky_cartesian_velocity').to_dict()
         metadata['tool_definition'] = tool
-        controller_parameters = {'backend': 'franky_cartesian_impedance',
+        controller_parameters = {'backend': 'franky_cartesian_velocity',
                                   'ipc_version': 2,
                                   'tcp_frame': TCP_FRAME,
-                                  'compliance': dict(config.franky_compliance)}
+                                  'velocity_control': dict(config.franky_velocity_control),
+                                  'servo_hz': 100, 'motion_duration_ms': 100,
+                                  'sdk_limit_rate': False, 'sdk_cutoff_frequency': 100.}
         control_parameters = {k: asdict(config)[k] for k in (
             'fps', 'control_discontinuity_timeout_s', 'joint_limit_margin',
             'max_linear_velocity', 'max_angular_velocity', 'gamepad_max_angular_speed',
@@ -392,11 +394,11 @@ class RolloutCollector(Node):
             'policy_gripper_speed', 'workspace_limits_enabled')}
         metadata['recording_contract']['control_fingerprint'] = fingerprint({
             'python': control_parameters, 'cpp': controller_parameters,
-            'cartesian_tracking': 'franky_single_30hz_ack_v1',
+            'cartesian_tracking': 'absolute_30hz_velocity_100hz_ack_v2',
             'human_input': {'version': 8, 'shortcut_orientation': 'logical_yaw_zero_downward_z', 'gamepads': {a.name: asdict(a.gamepad) for a in config.arms},
                             'fast_translation_multiplier': 5.,
                             'rotation_inputs': 'calibrated_hardware_tool_in_logical_tcp',
-                            'release': 'measured_channel_once_then_hold',
+                            'release': 'measured_anchor_each_slot_zero_released_channels',
                             'hold_timeout_s': config.gamepad_hold_timeout_s,
                             'joy_timeout_s': config.gamepad_joy_timeout_s,
                             'gello_sample_timeout_s': config.gello_sample_timeout_s},
@@ -799,53 +801,53 @@ class RolloutCollector(Node):
         for servo in self.servos.values():
             servo.reset_tracking()
 
-    def update_compliance(self, values, *, request_id=None):
+    def update_velocity_control(self, values, *, request_id=None):
         with self._lock:
             if self._worker_client is None:
                 raise RuntimeError('Franky worker is not active')
-            if (self._pending_compliance is not None or self._worker_client.fault
+            if (self._pending_velocity_control is not None or self._worker_client.fault
                     or self._faulted or self.coordinator.mode in ('resetting', 'fault')):
-                raise RuntimeError('compliance update is pending or control is unavailable')
-            from vla.control.franky.worker import Compliance
-            current = self._worker_client.compliance_values() or self.config.franky_compliance
-            Compliance.from_mapping(values, Compliance.from_mapping(current))
+                raise RuntimeError('velocity_control update is pending or control is unavailable')
+            from vla.control.franky.worker import VelocityControl
+            current = self._worker_client.velocity_control_values() or self.config.franky_velocity_control
+            VelocityControl.from_mapping(values, VelocityControl.from_mapping(current))
             import uuid
             request_id = request_id or uuid.uuid4().hex
-            self._pending_compliance = {
+            self._pending_velocity_control = {
                 'request_id': request_id, 'started': time.monotonic(),
                 'generation': self.coordinator.generation, 'values': dict(values)}
-            self._compliance_result = {'request_id': request_id, 'status': 'pending',
+            self._velocity_control_result = {'request_id': request_id, 'status': 'pending',
                                        'generation': self.coordinator.generation}
-            history = getattr(self, '_compliance_requests', {})
-            history[request_id] = self._compliance_result
+            history = getattr(self, '_velocity_control_requests', {})
+            history[request_id] = self._velocity_control_result
             while len(history) > 16:
                 history.pop(next(iter(history)))
-            self._compliance_requests = history
+            self._velocity_control_requests = history
             self._pending_submission = None
             self._last_target_applied_ns = None
             if self._recording:
-                self._record_gap('compliance update')
+                self._record_gap('velocity_control update')
             self._pending_worker_targets.clear()
             self._input_action = None
             try:
-                self._worker_client.compliance(self._worker_session_id, self.coordinator.generation, request_id, values)
+                self._worker_client.velocity_control(self._worker_session_id, self.coordinator.generation, request_id, values)
             except Exception as error:
-                self._compliance_result.update(status='failed', error=str(error))
-                self._pending_compliance = None
+                self._velocity_control_result.update(status='failed', error=str(error))
+                self._pending_velocity_control = None
                 self._latch_fault(error)
                 raise
             return request_id
 
-    def compliance_status(self):
+    def velocity_control_status(self):
         with self._lock:
             return {
                 'backend': self.config.backend,
-                'pending': self._pending_compliance is not None,
-                'values': (self._worker_client.compliance_values()
-                           if self._worker_client and self._worker_client.compliance_values()
-                           else dict(getattr(self.config, 'franky_compliance', {}))),
-                'request': dict(self._compliance_result) if getattr(self, '_compliance_result', None) else None,
-                'requests': [dict(value) for value in getattr(self, '_compliance_requests', {}).values()],
+                'pending': self._pending_velocity_control is not None,
+                'values': (self._worker_client.velocity_control_values()
+                           if self._worker_client and self._worker_client.velocity_control_values()
+                           else dict(getattr(self.config, 'franky_velocity_control', {}))),
+                'request': dict(self._velocity_control_result) if getattr(self, '_velocity_control_result', None) else None,
+                'requests': [dict(value) for value in getattr(self, '_velocity_control_requests', {}).values()],
                 'fault': self._worker_client.fault if self._worker_client else None,
             }
 
@@ -913,9 +915,8 @@ class RolloutCollector(Node):
                         data['hardware_tcp'] = list(worker.hardware_tcp_pose)
                         data['hardware_reference_tcp'] = list(worker.hardware_reference_tcp_pose)
                         data['nominal_tcp'] = list(worker.nominal_tcp_pose)
-                        data['tracker_reference_tcp'] = list(worker.reference_tcp_pose)
-                        data['tracking_offset'] = list(worker.tracking_offset)
-                        data['tracking_status'] = worker.tracking_status
+                        data['servo_reference_tcp'] = list(worker.reference_tcp_pose)
+                        data['commanded_twist'] = list(worker.commanded_twist)
                 except (ValueError, KeyError, IndexError) as error:
                     data['error'] = str(error)
         return result
@@ -1016,11 +1017,22 @@ class RolloutCollector(Node):
     def _coordinated_publish(self, name, target, gripper, generation, command_id):
         arm = next(a for a in self.config.arms if a.name == name)
         # ControlCoordinator calls this once per arm. Franky IPC targets
-        # are one multi-arm packet so both trackers receive the
+        # are one multi-arm packet so both arms receive the
         # same command sequence. Keep the per-arm gripper path below.
         key = (int(generation), int(command_id))
         bucket = self._pending_worker_targets.setdefault(key, {})
-        bucket[name] = {'pose': np.asarray(target, dtype=float).tolist()}
+        source = self.coordinator.owner
+        context = {'source': source, 'dt': 1/self.config.fps}
+        if source == 'gamepad':
+            from .gamepad import gamepad_rotation_basis
+            manual = self._gamepad_targets[name]
+            if manual.pose_return is not None:
+                context['source'] = 'pose'
+            else:
+                context.update(linear_active=[bool(x) for x in manual.linear_active],
+                               angular_active=[bool(x) for x in manual.angular_active],
+                               rotation_basis=(manual.hardware_to_logical_rotation @ gamepad_rotation_basis(arm.gamepad)).tolist())
+        bucket[name] = {'pose': np.asarray(target, dtype=float).tolist(), 'context': context}
         expected = {configured.name for configured in self.config.arms}
         if set(bucket) == expected:
             self._publish_sequence += 1
@@ -1053,9 +1065,9 @@ class RolloutCollector(Node):
             if target.pose_return is not None:
                 target.pose_return = None
                 target.shortcut_status = 'cancelled: control boundary'
-        if self._pending_compliance is not None:
-            self._compliance_result.update(status='cancelled', error=reason)
-            self._pending_compliance = None
+        if self._pending_velocity_control is not None:
+            self._velocity_control_result.update(status='cancelled', error=reason)
+            self._pending_velocity_control = None
         if self._execution is not None:
             from vla.control.execution import ExecutionState
             if owner == 'policy' and not fault:
@@ -1111,11 +1123,7 @@ class RolloutCollector(Node):
             events = [('target_applied', *identity, result['references']),
                       ('hardware_target_applied', *identity,
                        {s['arm']: s['hardware_reference_tcp_pose'] for s in result.get('states', [])
-                        if s.get('hardware_reference_tcp_pose')}),
-                      ('tracking_correction', *identity,
-                       {s['arm']: {key: s[key] for key in (
-                                     'nominal_tcp_pose', 'reference_tcp_pose', 'tracking_offset', 'tracking_status')
-                                  if key in s} for s in result.get('states', [])})]
+                        if s.get('hardware_reference_tcp_pose')})]
             for index, event in enumerate(events):
                 try:
                     self._journal_event(event)
@@ -1136,7 +1144,7 @@ class RolloutCollector(Node):
         self._skip_reasons[reason] += 1
 
     def _track_control(self, dt):
-        if self._pending_compliance is not None:
+        if self._pending_velocity_control is not None:
             return
         command = self.coordinator.tick(dt)
         if command is None:
@@ -1235,7 +1243,7 @@ class RolloutCollector(Node):
                 state.target_joints if state and len(state.target_joints) == 7 else np.zeros(7),
                 dtype=np.float64))
             tracker_parts.append(np.asarray([
-                int(bool(state and state.tracker_running)),
+                int(bool(state and state.servo_ready)),
                 int(state.generation if state else -1),
                 int(state.sequence if state else -1),
                 int(bool(state and state.fault)),
@@ -1407,32 +1415,41 @@ class RolloutCollector(Node):
     def _poll_worker_states(self):
         if self._worker_client is None:
             return
-        if self._pending_compliance is not None:
-            pending = self._pending_compliance
+        for event in self._worker_client.servo_events():
+            try:
+                if self._journal is not None:
+                    self._journal_event(('velocity_servo', event))
+            except RuntimeError:
+                # _journal_event retained the failed event before revoking motion.
+                self._worker_client.acknowledge_audit(event['audit_id'])
+                raise
+            self._worker_client.acknowledge_audit(event['audit_id'])
+        if self._pending_velocity_control is not None:
+            pending = self._pending_velocity_control
             result = self._worker_client.result(pending['request_id'])
             error = None
             if pending['generation'] != self.coordinator.generation:
-                self._pending_compliance = None
-                self._compliance_result.update(status='cancelled', error='control generation changed')
+                self._pending_velocity_control = None
+                self._velocity_control_result.update(status='cancelled', error='control generation changed')
             elif result is not None:
-                self._pending_compliance = None
+                self._pending_velocity_control = None
                 if (result.get('session_id') != self._worker_session_id
                         or result.get('request_id') != pending['request_id']
                         or result.get('generation') != pending['generation']
                         or result.get('request_status') != 'applied' or result.get('error') or result.get('fault')):
-                    error = result.get('error') or result.get('fault') or 'compliance acknowledgement rejected'
+                    error = result.get('error') or result.get('fault') or 'velocity_control acknowledgement rejected'
                 else:
-                    self._compliance_result.update(status='applied', values=result.get('compliance', {}))
+                    self._velocity_control_result.update(status='applied', values=result.get('velocity_control', {}))
                     self._last_control_tick = time.monotonic()
                     if self._journal is not None:
-                        self._journal_event(('compliance', pending['request_id'], pending['generation'],
+                        self._journal_event(('velocity_control', pending['request_id'], pending['generation'],
                                              result.get('sequence'), time.monotonic_ns(),
-                                             dict(result.get('compliance', {}))))
+                                             dict(result.get('velocity_control', {}))))
             elif time.monotonic() - pending['started'] > self.config.gamepad_state_timeout_s:
-                self._pending_compliance = None
-                error = 'compliance acknowledgement timed out'
+                self._pending_velocity_control = None
+                error = 'velocity_control acknowledgement timed out'
             if error:
-                self._compliance_result.update(status='failed', error=str(error))
+                self._velocity_control_result.update(status='failed', error=str(error))
                 self._latch_fault(RuntimeError(error))
                 return
         fault = self._worker_client.fault
@@ -1456,7 +1473,7 @@ class RolloutCollector(Node):
             self._store_latest(f'{arm}.robot_state', message, state.observed_at_ns)
             self._store_latest(f'{arm}.measured_joint', joint, state.observed_at_ns)
             if (lifecycle_ready and state.generation == self.coordinator.generation and not state.fault
-                    and (self.coordinator._pending_owner is None or state.tracker_running)):
+                    and (self.coordinator._pending_owner is None or state.servo_ready)):
                 try:
                     self._observe_control()
                     self.coordinator.acknowledge(
@@ -1569,7 +1586,7 @@ class RolloutCollector(Node):
             if target is None:
                 return False
             gamepad_message = values[f"{arm.name}.gamepad"]
-            from .gamepad import decode_cartesian_gamepad_values, gamepad_rotation_basis, release_rotation_reference
+            from .gamepad import decode_cartesian_gamepad_values, gamepad_rotation_basis
             decoded = decode_cartesian_gamepad_values(gamepad_message.axes, gamepad_message.buttons, arm.gamepad, self.config)
             measured_position, measured_rotation = schema.pose_from_stamped(values[f"{arm.name}.robot_state"].o_t_ee)
             now_ns = time.monotonic_ns()
@@ -1606,11 +1623,7 @@ class RolloutCollector(Node):
                 basis = target.hardware_to_logical_rotation @ gamepad_rotation_basis(arm.gamepad)
                 linear_active = np.abs(velocity) > 1e-9
                 angular_active = np.abs(basis.T @ angular) > 1e-9
-                released = np.asarray(target.linear_active) & ~linear_active
-                target.position[released] = measured_position[released]
-                target.rotation = release_rotation_reference(
-                    measured_rotation, target.rotation, basis,
-                    np.asarray(target.angular_active) & ~angular_active)
+                target.position, target.rotation = measured_position.copy(), measured_rotation.copy()
                 target.linear_active, target.angular_active = tuple(linear_active), tuple(angular_active)
                 target.position = target.position + velocity*dt
                 if self.config.workspace_limits_enabled:
@@ -1824,7 +1837,7 @@ class RolloutCollector(Node):
                 if self.coordinator.mode == 'resetting':
                     self.coordinator.tick(dt)
                     return
-                if self._faulted or self._saving or self._storage_blocked or self._pending_compliance is not None:
+                if self._faulted or self._saving or self._storage_blocked or self._pending_velocity_control is not None:
                     return
                 if self._pending_submission is not None or not self._worker_client.target_available:
                     if self.coordinator.mode == 'active':
@@ -2058,7 +2071,7 @@ class RolloutCollector(Node):
             self._journal = EpisodeJournal(staging/self._journal_id,
                 identity={**self._episode_identity, 'journal_id': self._journal_id, 'episode_index': episode_index,
                           'task': self.config.tasks[self._episode_task_index],
-                          'compliance': self.compliance_status() if self._worker_client else None,
+                          'velocity_control': self.velocity_control_status() if self._worker_client else None,
                           'execution_contract': self._execution.contract.to_dict() if self._execution else None}, fps=self.config.fps)
             self._states = []
             self._actions = []

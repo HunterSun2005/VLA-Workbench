@@ -78,7 +78,7 @@ def test_backend_ready_identity_lease_and_shutdown_order(monkeypatch, arms, sour
                 assert demonstration == (workflow == 'collect')
                 assert worker_session_id == directory.name
                 assert set(worker_client.states()) == {a.name for a in config.arms}
-                assert worker_client.binding_fingerprint()['libfranka'] == '0.19.0'
+                assert worker_client.binding_fingerprint()['libfranka'] == '0.21.2'
                 if failure == 'collector':
                     raise RuntimeError('injected collector initialization failure')
                 events.append('collector-ready')

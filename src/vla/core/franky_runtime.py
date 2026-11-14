@@ -35,9 +35,9 @@ def check_worker(root, configured=None, *, timeout=120.):
         raise RuntimeError(f'Franky preflight failed ({result.returncode}): {python}\n{result.stderr[-3000:]}')
     try:
         value = json.loads(result.stdout)
-        if value['libfranka'] != '0.19.0' or value['affine_check'] != 'passed':
+        if value['libfranka'] != '0.21.2' or value['affine_check'] != 'passed' or value.get('velocity_check') != 'passed' or value.get('franky') != '2.0.0+libfranka.0.21.2':
             raise ValueError('wrong library or failed Affine check')
-        for key in ('binding_sha256', 'tracker_sha256', 'libfranka_library_sha256'):
+        for key in ('binding_sha256', 'libfranka_library_sha256'):
             if len(value[key]) != 64:
                 raise ValueError('missing binary fingerprint')
     except (ValueError, KeyError, TypeError) as error:
@@ -48,4 +48,4 @@ def check_worker(root, configured=None, *, timeout=120.):
 def semantic_binding(value):
     """Installation paths are diagnostics, never part of a recording identity."""
     return {key: value[key] for key in ('franky', 'libfranka', 'numpy', 'binding_sha256',
-                                      'tracker_sha256', 'libfranka_library_sha256')}
+                                      'libfranka_library_sha256')}

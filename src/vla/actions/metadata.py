@@ -24,7 +24,7 @@ class RecordingContract:
             raise ValueError('recording requires device, TCP tool, kinematics and control identities')
         if self.derived_from not in (None, 'joint_command_fk', 'tcp_submitted_joints'):
             raise ValueError('unsupported action derivation')
-        if self.backend not in ('ros2_joint_impedance', 'franky_cartesian_impedance'):
+        if self.backend not in ('ros2_joint_impedance', 'franky_cartesian_impedance', 'franky_cartesian_velocity'):
             raise ValueError('unsupported recording backend')
 
     def to_dict(self):

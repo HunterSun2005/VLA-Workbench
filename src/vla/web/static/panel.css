@@ -162,8 +162,8 @@ body:has(#configDrawer[open]){overflow:hidden}
  #livePanel *,#configDrawer{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
 
-.compliance-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
-.compliance-fields label{display:flex;flex-direction:column;gap:5px;color:var(--label);font-size:12px}
-.compliance-fields input{width:100%;min-width:0}
-.compliance-fields small{color:var(--muted);font-size:11px}
+.velocity_control-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.velocity_control-fields label{display:flex;flex-direction:column;gap:5px;color:var(--label);font-size:12px}
+.velocity_control-fields input{width:100%;min-width:0}
+.velocity_control-fields small{color:var(--muted);font-size:11px}
 #inputDiagnostics{white-space:pre-wrap;overflow-wrap:anywhere}

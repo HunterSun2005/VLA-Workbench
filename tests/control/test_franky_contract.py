@@ -7,7 +7,7 @@ from vla.control.ros import ControlCoordinator
 
 def test_worker_contract_cannot_mix_with_legacy_ros_contract():
     current = RecordingContract(ActionSpec('tcp', ('left',)), 'device', 'tool', 'fk', 'control',
-                                backend='franky_cartesian_impedance').to_dict()
+                                backend='franky_cartesian_velocity').to_dict()
     legacy = dict(current, backend='ros2_joint_impedance')
     with pytest.raises(ValueError, match='do not mix control chains'):
         validate_mixture([current, legacy])

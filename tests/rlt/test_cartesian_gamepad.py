@@ -122,21 +122,21 @@ def test_rotation_uses_measured_tool_axes_and_one_exponential():
     assert np.linalg.det(rotation) == pytest.approx(1)
 
 
-def test_shipped_compliance_defaults_match_worker_and_preserve_other_limits():
+def test_shipped_velocity_control_defaults_match_worker_and_preserve_other_limits():
     from dataclasses import asdict
-    from vla.control.franky import Compliance
-    from vla.datacollection.franka_robotiq_rollout.config import FRANKY_COMPLIANCE_DEFAULTS
-    expected = asdict(Compliance())
-    assert expected == FRANKY_COMPLIANCE_DEFAULTS
+    from vla.control.franky import VelocityControl
+    from vla.datacollection.franka_robotiq_rollout.config import FRANKY_VELOCITY_CONTROL_DEFAULTS
+    expected = asdict(VelocityControl())
+    assert expected == FRANKY_VELOCITY_CONTROL_DEFAULTS
     root = CONFIG.parents[5]
     paths = list(CONFIG.parent.glob('*.yaml')) + list((root/'src/vla/configs/deployment').glob('franka_*.yaml'))
     assert len(paths) == 6
     for path in paths:
         config = load_rollout_config(path)
-        assert config.franky_compliance == expected, path
-        assert config.franky_compliance['translational_stiffness'] == 1100
-        assert config.franky_compliance['rotational_stiffness'] == 65
-        assert config.franky_compliance['translational_clip'] == .008
-        assert config.franky_compliance['rotational_clip'] == .04
-        assert config.franky_compliance['max_step'] == .03
-        assert config.franky_compliance['max_step_rad'] == .1
+        assert config.franky_velocity_control == expected, path
+        assert config.franky_velocity_control['max_linear_speed'] == 0.05
+        assert config.franky_velocity_control['max_angular_speed'] == 0.2
+        assert config.franky_velocity_control['tracking_tau_s'] == .15
+        assert config.franky_velocity_control['target_smoothing_alpha'] == .25
+        assert not config.franky_velocity_control['target_smoothing_enabled']
+        assert not config.franky_velocity_control['velocity_smoothing_enabled']

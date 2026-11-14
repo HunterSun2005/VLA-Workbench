@@ -33,17 +33,17 @@ class DelayedClient(FrankyWorkerClient):
 def test_single_outstanding_request_has_no_target_backlog(tmp_path):
     client = DelayedClient(tmp_path/'unused')
     try:
-        first = client.target('s', 1, 1, {'left':POSE}, slot_id=10)
+        first = client.target('s', 1, 1, {'left':{'pose':POSE,'context':{'source':'policy','dt':1/30}}}, slot_id=10)
         assert client.entered.wait(1)
         assert not client.target_available
         for seq in range(2, 8):
             with pytest.raises(RuntimeError, match='busy'):
-                client.target('s', 1, seq, {'left':POSE}, slot_id=seq+10)
+                client.target('s', 1, seq, {'left':{'pose':POSE,'context':{'source':'policy','dt':1/30}}}, slot_id=seq+10)
         assert not client._queue
         client.release.set()
         wait_for(lambda: client.result(first))
         wait_for(lambda: client.target_available)
-        second = client.target('s', 1, 8, {'left':POSE}, slot_id=20)
+        second = client.target('s', 1, 8, {'left':{'pose':POSE,'context':{'source':'policy','dt':1/30}}}, slot_id=20)
         wait_for(lambda: client.result(second))
         assert [m['slot_id'] for m in client.sent] == [10, 20]
     finally:
@@ -56,13 +56,13 @@ def test_single_outstanding_request_has_no_target_backlog(tmp_path):
 def test_wrong_ack_latches_fault_and_does_not_reopen_target_channel(tmp_path,field,value):
     client = DelayedClient(tmp_path/'unused', lambda r:{**r,field:value})
     try:
-        key = client.target('s',1,1,{'left':POSE},slot_id=0)
+        key = client.target('s',1,1,{'left':{'pose':POSE,'context':{'source':'policy','dt':1/30}}},slot_id=0)
         assert client.entered.wait(1)
         client.release.set()
         wait_for(lambda:client.fault)
         assert client.result(key) and not client.target_available
         with pytest.raises(RuntimeError):
-            client.target('s',1,2,{'left':POSE},slot_id=1)
+            client.target('s',1,2,{'left':{'pose':POSE,'context':{'source':'policy','dt':1/30}}},slot_id=1)
         assert len(client.sent) == 1  # Unknown outcomes are never retransmitted.
     finally:
         client.release.set(); client.close()
@@ -71,7 +71,7 @@ def test_wrong_ack_latches_fault_and_does_not_reopen_target_channel(tmp_path,fie
 def test_stop_revokes_already_in_sdk_target_and_late_ack_is_cancelled(tmp_path):
     client = DelayedClient(tmp_path/'unused')
     try:
-        key = client.target('s',1,1,{'left':POSE},slot_id=0)
+        key = client.target('s',1,1,{'left':{'pose':POSE,'context':{'source':'policy','dt':1/30}}},slot_id=0)
         assert client.entered.wait(1)
         stop = client.stop('s',2)
         assert [m['kind'] for m in client.sent] == ['target']
@@ -102,7 +102,7 @@ def test_real_socket_target_response_deadline_is_100ms(tmp_path):
     client=FrankyWorkerClient(path,timeout_s=.5,target_timeout_s=.1)
     try:
         started=time.monotonic()
-        key=client.target('s',1,1,{'left':POSE},slot_id=0)
+        key=client.target('s',1,1,{'left':{'pose':POSE,'context':{'source':'policy','dt':1/30}}},slot_id=0)
         assert entered.wait(1)
         wait_for(lambda:client.fault)
         assert time.monotonic()-started < .18

@@ -87,7 +87,7 @@ class Runtime:
                 raise ValueError('unknown command')
             accepted = [v for v in self.results.values() if v['status'] == 'accepted']
             tuning_interrupt = (message['operation'] in ('pause', 'stop', 'mode', 'intervention')
-                                and all(v['operation'] == 'compliance' for v in accepted))
+                                and all(v['operation'] == 'velocity_control' for v in accepted))
             if accepted and not tuning_interrupt:
                 raise RuntimeError('another command is pending')
             if self.backend is None and message['operation'] == 'stop':
@@ -132,17 +132,17 @@ class Runtime:
         try:
             args = message.get('args', {})
             allowed = {'pose_capture': {'arm', 'note'}, 'pose_restore': {'pose_id'},
-                       'compliance': {'values'}}.get(op, {'mode', 'outcome'})
-            if set(args) - allowed or (op != 'compliance' and
+                       'velocity_control': {'values'}}.get(op, {'mode', 'outcome'})
+            if set(args) - allowed or (op != 'velocity_control' and
                                        args.get('outcome', 'success') not in ('success', 'failure')):
                 raise ValueError('invalid operation arguments')
             if op == 'save':
                 with self.lock:
                     self.status = {**self.status, 'state':'saving', 'saving':True, 'updated_at':time.monotonic()}
-            if op == 'compliance':
+            if op == 'velocity_control':
                 args = {**args, '_request_id': cid}
             completion = self.backend.command(op, args)
-            if callable(completion) and op == 'compliance':
+            if callable(completion) and op == 'velocity_control':
                 self.pending_updates[cid] = completion
                 return
             if callable(completion):

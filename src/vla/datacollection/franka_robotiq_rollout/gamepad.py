@@ -143,29 +143,10 @@ class GamepadPoseReturn:
         from scipy.spatial.transform import Rotation
         if now > self.deadline:
             raise RuntimeError(f'Gamepad {self.label} return timed out')
-        delta = self.position - position
-        distance = float(np.linalg.norm(delta))
-        # Match the old return's approach profile, applied to the absolute
-        # reference. This is not an extra control clock or pose-to-velocity SDK.
-        approach = min(.005, max_linear_speed)
-        if distance <= .01:
-            speed = approach * distance / .01
-        else:
-            speed = approach + min(1., (distance-.01)/.07) * (max_linear_speed-approach)
-        linear_step = min(distance, speed*dt)
-        next_position = position + delta * (linear_step/distance) if distance > 0 else position.copy()
-        vector = Rotation.from_matrix(self.rotation @ rotation.T).as_rotvec()
-        angle = float(np.linalg.norm(vector))
-        angular_step = min(angle, min(max_angular_speed, 3.*angle)*dt)
-        next_rotation = (Rotation.from_rotvec(vector*(angular_step/angle)).as_matrix() @ rotation
-                         if angle > 1e-12 else rotation.copy())
         position_error = float(np.linalg.norm(self.position-measured_position))
         rotation_error = Rotation.from_matrix(self.rotation @ measured_rotation.T).magnitude()
-        reached = (position_error <= .0005 and rotation_error <= math.radians(2.)
-                   and distance <= .0005 and angle <= math.radians(2.))
-        # Keep the final bounded reference on completion, avoiding a tolerance-
-        # sized final jump. It remains fixed until explicit new manual input.
-        return next_position, next_rotation, reached
+        reached = position_error <= .0005 and rotation_error <= math.radians(2.)
+        return self.position.copy(), self.rotation.copy(), reached
 
 
 def _trigger(raw_value: float, input_layout: str = 'raw_joy') -> float:
