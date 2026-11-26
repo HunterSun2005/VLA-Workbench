@@ -24,7 +24,7 @@ Unix socket 使用 NumPy 数组协议 v2，magic 为 `VLARLT02`。旧 magic、�
 | PlanResponse | 原样回显 PlanRequest、完整 absolute actions、逐动作 sources/phases、实际 vla_reference、state_vec 等上下文 |
 | ExecutionRecord | slot_id、generation、plan_version、action_index、candidate、accepted、source、phase、accepted_at_ns、submitted_at_ns、outcome、diagnostics |
 
-`FixedDeadline` 以单调时钟计算整数截止时间：一个 30 Hz 回调顺序完成状态读取、人工候选更新、目标接受、提交和记录，不再通过第二个 100 Hz 时钟重复提交目标。错过时隙只处理当前时隙，不补发历史动作；协调器要求唯一 slot_id，同一时隙幂等，倒序拒绝。Franky C++ / libfranka 独立执行 1 kHz 笛卡尔阻抗闭环。worker 的目标步长仍是每次提交的上限，不随频率降低而自动放大；输入、状态、目标流超时仍锁存故障。
+`FixedDeadline` 用单调时钟计算 30 Hz 时隙的整数截止时间。ROS 定时器每 10 ms 检查一次，每个时隙最多执行一次状态读取、人工候选更新、目标接受、提交和记录。错过时隙后只处理当前时隙，串行策略按漏槽流程撤销队列并等待手动恢复。协调器要求唯一 slot_id，同一时隙幂等，倒序拒绝。Franky worker 独立以 100 Hz 进行绝对位姿反馈。worker 的目标步长仍是每次提交的上限，输入、状态和目标流超时仍锁存故障。
 
 默认 `inference_slots=4`、`installation_guard_slots=1`。模型间隔 r 下，最短冻结长度为 `ceil(5/r)`；替换边界对齐动作网格，并受 Actor 已锁定块末限制。d 由实际边界决定，响应提前到达不缩短它。启动时每种策略都必须满足 H ≥ 2d；自动模式发起请求时也按可能返回的最短 horizon 校验。不会自动扩大模型 horizon。
 

@@ -502,9 +502,9 @@ class RolloutCollector(Node):
             self._slot_clock = self._execution.control_clock
         self._start_cameras()
 
-        # One deadline and callback own input, acceptance, submission and recording.
-        # Franky's native impedance loop continues independently between targets.
-        self.create_timer(1.0 / config.fps, self._tick)
+        # Poll faster than the slot rate so small wakeup jitter cannot straddle
+        # an entire slot. FixedDeadline allows work once per 30 Hz slot.
+        self.create_timer(0.01, self._tick)
         print(f"Franky TCP control: single {config.fps} Hz loop; "
               f"xy={config.gamepad_xy_speed:.3f}m/s, z={config.gamepad_z_speed:.3f}m/s", flush=True)
         print(f"Rollout collector ready; dataset={config.dataset_root}", flush=True)
