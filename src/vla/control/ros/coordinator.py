@@ -36,7 +36,8 @@ class ControlCoordinator:
     """
     def __init__(self, spec, servos, bounds, publish, reset, *, state_timeout_s=.5,
                  command_timeout_s=.5, reset_timeout_s=1., clock=time.monotonic_ns,
-                 backend='ros2', workspace_limits_enabled=True):
+                 backend='ros2', workspace_limits_enabled=True, step_limits=None, jump_guards=None,
+                 control_hz=30):
         if spec.representation != 'absolute':
             raise ValueError('execution accepts only absolute targets')
         if backend == 'franky' and spec.space != 'tcp':
@@ -45,6 +46,19 @@ class ControlCoordinator:
         if type(workspace_limits_enabled) is not bool:
             raise ValueError('workspace_limits_enabled must be boolean')
         self.workspace_limits_enabled = workspace_limits_enabled
+        # {source: (linear m/s, angular rad/s)}. step_limits clip the accepted TCP
+        # reference toward the previous one; jump_guards reject (fault) instead, for
+        # sources whose targets must stay identical to their recorded/planned values.
+        self.step_limits, self.jump_guards = dict(step_limits or {}), dict(jump_guards or {})
+        for value in (*self.step_limits.values(), *self.jump_guards.values()):
+            if len(value) != 2 or not all(np.isfinite(v) and v > 0 for v in value):
+                raise ValueError('step limits must be positive (linear, angular) speeds')
+        if self.spec.space != 'tcp' and (self.step_limits or self.jump_guards):
+            raise ValueError('per-source step limits require TCP actions')
+        self.control_hz = control_hz
+        self.limited_steps = 0
+        self.last_step_limited = False
+        self._last_change_slot = None
         self.backend = backend
         self.publish, self.request_reset, self.clock = publish, reset, clock
         self.state_timeout_ns = int(state_timeout_s * 1e9)
@@ -91,6 +105,7 @@ class ControlCoordinator:
             self.submitted = {}
             self._last_accept = None
             self._last_slot = -1
+            self._last_change_slot = None
             self._acknowledged.clear()
             self.owner = None
             self._pending_owner = None if fault else owner
@@ -143,11 +158,49 @@ class ControlCoordinator:
             command_id = slot_id + 1
             self.candidate = immutable_array(validate_array(target, self.spec))
             target = self.project(target)
+            previous = self.accepted.target if self.accepted is not None else None
+            if previous is not None and self._last_change_slot is not None:
+                target = self._limit_step(target, previous, source, slot_id - self._last_change_slot)
+            if previous is None or not np.array_equal(target, previous):
+                self._last_change_slot = slot_id
             self.accepted = AcceptedCommand(self.spec, target, source, command_id, generation,
                                             min(m.observed_at_ns for m in self._measurements.values()), now)
             self.command_id, self._last_accept = command_id, now
             self._last_slot = slot_id
             return self.accepted
+
+    def _limit_step(self, target, previous, source, slots):
+        """Bound the reference change since the last accepted change (same generation)."""
+        limit, guard = self.step_limits.get(source), self.jump_guards.get(source)
+        self.last_step_limited = False
+        if limit is None and guard is None:
+            return target
+        seconds = max(1, int(slots)) / self.control_hz
+        target = target.copy()
+        for i, arm in enumerate(self.spec.arms):
+            off = i * self.spec.width
+            delta = target[off:off+3] - previous[off:off+3]
+            distance = float(np.linalg.norm(delta))
+            current = rot6d_to_matrix(target[off+3:off+9])
+            before = rot6d_to_matrix(previous[off+3:off+9])
+            rotvec = Rotation.from_matrix(current @ before.T).as_rotvec()
+            angle = float(np.linalg.norm(rotvec))
+            if guard is not None and (distance > guard[0]*seconds*(1+1e-9)
+                                      or angle > guard[1]*seconds*(1+1e-9)):
+                raise RuntimeError(f'{source} target jump on {arm}: {distance*1000:.1f} mm / '
+                                   f'{np.degrees(angle):.1f} deg in {seconds*1000:.0f} ms exceeds '
+                                   f'{guard[0]:.2f} m/s / {guard[1]:.2f} rad/s')
+            if limit is None:
+                continue
+            if distance > limit[0]*seconds:
+                target[off:off+3] = previous[off:off+3] + delta*(limit[0]*seconds/distance)
+                self.last_step_limited = True
+            if angle > limit[1]*seconds:
+                rotation = Rotation.from_rotvec(rotvec*(limit[1]*seconds/angle)).as_matrix() @ before
+                target[off+3:off+9] = matrix_to_rot6d(rotation)
+                self.last_step_limited = True
+        self.limited_steps += int(self.last_step_limited)
+        return target
 
     def project(self, target):
         target = validate_array(target, self.spec).copy()

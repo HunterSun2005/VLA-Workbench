@@ -92,7 +92,8 @@ class BaseBackend:
         expected = ('left','right') if self.config.arms == 'dual' else ('left',)
         if tuple(a.name for a in c.arms) != expected:
             raise ValueError('arm configuration mismatch')
-        c = self.config.apply_rollout_compliance(self.config.apply_rollout_workspace(c))
+        c = self.config.apply_rollout_scheduling(
+            self.config.apply_rollout_compliance(self.config.apply_rollout_workspace(c)))
         space = self.config.action_space
         if self.config.workflow == 'deploy' and self.config.policy_path:
             from vla.actions.metadata import checkpoint_contract
@@ -116,7 +117,8 @@ class BaseBackend:
                 c.enable_teleop()
                 self.enabled = bool(c._teleop_enabled if hasattr(c,'_teleop_enabled') else c._setup_teleop.mode == 'active')
                 if not self.enabled:
-                    raise RuntimeError('enable rejected; release controls and check device health')
+                    raise RuntimeError(getattr(c, '_engage_rejection', None)
+                                       or 'enable rejected; release controls and check device health')
             else:
                 problems = c._preflight_problems()
                 if problems:
@@ -173,7 +175,7 @@ class BaseBackend:
             before = c._intervention
             c.toggle_intervention()
             if c._intervention == before:
-                raise RuntimeError('intervention transition rejected')
+                raise RuntimeError(getattr(c, '_engage_rejection', None) or 'intervention transition rejected')
         elif op == 'mode':
             mode = args.get('mode')
             if self.config.workflow != 'deploy' or mode not in ['human', *self.config.modes()]:
@@ -267,6 +269,8 @@ class BaseBackend:
             status['compliance'] = c.compliance_status()
         if hasattr(c, 'input_diagnostics'):
             status['input_diagnostics'] = c.input_diagnostics()
+        if hasattr(c, 'timing_status'):
+            status['timing'] = c.timing_status()
         return status
 
     def close(self):
@@ -370,6 +374,7 @@ class ROSBackend(BaseBackend):
             'compliance': rollout.franky_compliance,
             'target_timeout_s': rollout.control_discontinuity_timeout_s,
             'state_timeout_s': rollout.gamepad_state_timeout_s,
+            'realtime_config': rollout.franky_realtime,
         }, indent=2) + '\n')
         from vla.core.franky_runtime import worker_environment
         env = worker_environment(self.root, worker_python)

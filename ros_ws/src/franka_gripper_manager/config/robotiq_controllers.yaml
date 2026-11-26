@@ -19,6 +19,10 @@
       joint: robotiq_85_left_knuckle_joint
       use_effort_interface: true
       use_speed_interface: true
+      # Grasping an object stalls the fingers short of the commanded position. Report
+      # that as success (result.stalled=true) instead of ABORTED: the collector treats
+      # status 6 as a control fault, which must stay reserved for real failures.
+      allow_stalling: true
 
   robotiq_activation_controller:
     ros__parameters:

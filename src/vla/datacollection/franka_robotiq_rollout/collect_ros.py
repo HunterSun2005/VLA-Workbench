@@ -19,7 +19,7 @@ import sys
 import threading
 import time
 import traceback
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
@@ -48,7 +48,7 @@ from vla.datacollection.start_teleop.franka_kinematics import (
     build_kinematic_model,
     joint7_step,
 )
-from .config import ArmConfig, RolloutConfig
+from .config import ArmConfig, RolloutConfig, DEPLOYMENT_SCHEDULING_FIELDS, resolve_inference_slots
 from .gamepad import decode_gamepad_values, gripper_direction_transition
 from .gamepad import gamepad_is_neutral, gamepad_has_motion, GamepadPoseReturn
 from .policy_client import AsyncPolicyClient, PolicyResult
@@ -252,6 +252,13 @@ class RolloutCollector(Node):
         self._annotations = {key: [] for key in self._extra_features}
         self._frame_times: list[int] = []
         self._skip_reasons = Counter()
+        # Control-loop timing (item: GIL/executor jitter is the main risk to the 100 ms target stream).
+        self._tick_lateness_ms = deque(maxlen=900)
+        self._tick_missed_slots = 0
+        self._tick_max_lateness_ms = 0.
+        self._tick_previous_slot = None
+        self._plan_rejections = Counter()
+        self._plan_installs = 0
         self._last_pose: dict[str, tuple[np.ndarray, np.ndarray, int]] = {}
         self._last_command_snapshot: CommandSnapshot | None = None
         self._latest_policy_result: PolicyResult | None = None
@@ -350,6 +357,10 @@ class RolloutCollector(Node):
                                                 'generation': -1, 'request_id': uuid.uuid4().hex})
         if ready.get('tcp_frame') != TCP_FRAME:
             raise RuntimeError('Franky worker TCP frame mismatch; restart with the current worker')
+        from vla.control.franky.ipc import WORKER_IMPLEMENTATION_VERSION
+        if ready.get('implementation_version') != WORKER_IMPLEMENTATION_VERSION:
+            raise RuntimeError(f"Franky worker implementation {ready.get('implementation_version')} != "
+                               f"{WORKER_IMPLEMENTATION_VERSION}; restart with the current worker")
         from vla.core.franky_runtime import semantic_binding
         binding_identity = semantic_binding(ready['binding_fingerprint'])
         if (set(self._worker_client.states()) != {a.name for a in config.arms}
@@ -362,8 +373,12 @@ class RolloutCollector(Node):
             self._coordinated_publish, self._request_controller_reset,
             state_timeout_s=config.gamepad_state_timeout_s,
             command_timeout_s=config.control_discontinuity_timeout_s,
-            backend=config.backend, workspace_limits_enabled=config.workspace_limits_enabled)
+            backend=config.backend, workspace_limits_enabled=config.workspace_limits_enabled,
+            step_limits={'gello': (config.gello_max_linear_velocity, config.gello_max_angular_velocity)},
+            jump_guards={'policy': (config.policy_max_target_speed, config.policy_max_target_angular_speed)},
+            control_hz=config.fps)
         self._last_gripper_goal = {}
+        self._last_gripper_goal_ns = {}
         self._publish_sequence = 0
         from vla.actions.metadata import RecordingContract
         tool = self._tool_definition()
@@ -372,18 +387,24 @@ class RolloutCollector(Node):
             fingerprint({a.name: os.environ.get(f'{a.name.upper()}_ROBOT_IP', a.robot_state_publisher) for a in config.arms}),
             fingerprint(tool), fingerprint(self._kinematics_identity),
             fingerprint({k: str(v) for k, v in asdict(config).items()
-                         if k not in ('dataset_root', 'task', 'tasks', 'socket_path', 'joy_socket_path')}),
+                         if k not in ('dataset_root', 'task', 'tasks', 'socket_path', 'joy_socket_path',
+                                      *DEPLOYMENT_SCHEDULING_FIELDS)}),
             backend='franky_cartesian_impedance').to_dict()
         metadata['tool_definition'] = tool
         controller_parameters = {'backend': 'franky_cartesian_impedance',
                                   'ipc_version': 2,
                                   'tcp_frame': TCP_FRAME,
+                                  'realtime': config.franky_realtime,
                                   'compliance': dict(config.franky_compliance)}
         control_parameters = {k: asdict(config)[k] for k in (
             'fps', 'control_discontinuity_timeout_s', 'joint_limit_margin',
             'max_linear_velocity', 'max_angular_velocity', 'gamepad_max_angular_speed',
             'gamepad_xy_speed', 'gamepad_z_speed', 'gamepad_joint7_speed', 'gamepad_gripper_speed',
-            'policy_gripper_speed', 'workspace_limits_enabled')}
+            'policy_gripper_speed', 'workspace_limits_enabled',
+            'gello_engage_max_position_error_m', 'gello_engage_max_rotation_error_deg',
+            'gello_max_linear_velocity', 'gello_max_angular_velocity',
+            'policy_max_target_speed', 'policy_max_target_angular_speed',
+            'gripper_goal_deadband', 'gripper_goal_refresh_s')}
         metadata['recording_contract']['control_fingerprint'] = fingerprint({
             'python': control_parameters, 'cpp': controller_parameters,
             'cartesian_tracking': 'franky_single_30hz_ack_v1',
@@ -394,13 +415,15 @@ class RolloutCollector(Node):
                             'hold_timeout_s': config.gamepad_hold_timeout_s,
                             'joy_timeout_s': config.gamepad_joy_timeout_s,
                             'gello_sample_timeout_s': config.gello_sample_timeout_s},
-            'execution': {'version': 2, 'loop': 'single_30hz', 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots},
+            # Inference/guard budgets are per-session scheduling; the execution manifest records them.
+            'execution': {'version': 3, 'loop': 'single_30hz'},
             'franky': controller_parameters,
             'binding': binding_identity if self._worker_client else None,
             'franky_implementation': ready['implementation_version'] if self._worker_client else None})
         metadata['effective_controller_parameters'] = controller_parameters
         if self._worker_client is not None:
             metadata['franky_binding_diagnostics'] = ready['binding_fingerprint']
+            metadata['franky_realtime'] = ready.get('realtime')
         metadata['workspace_limits_enabled'] = config.workspace_limits_enabled
         metadata['execution_projection'] = {
             'workspace_limits_enabled': config.workspace_limits_enabled,
@@ -439,14 +462,21 @@ class RolloutCollector(Node):
         self._execution = None
         self._execution_record = None
         self._waiting_resume = False
+        self._inference_slots = None
         if self.policy_client is not None:
             model = self.policy_client.contract
             horizons = {**model['plan_horizons'], 'auto': max(model['plan_horizons'].values())}
+            self._inference_slots = resolve_inference_slots(
+                config.inference_slots, horizons, model['frame_stride'],
+                config.installation_guard_slots, config.inference_slots_auto_max)
             execution = ExecutionContract(config.action_spec, horizons,
                 metadata['recording_contract']['control_fingerprint'],
                 metadata['recording_contract']['kinematics_fingerprint'],
                 metadata['recording_contract']['tool_fingerprint'], frame_stride=model['frame_stride'],
-                inference_slots=config.inference_slots, guard_slots=config.installation_guard_slots)
+                inference_slots=self._inference_slots, guard_slots=config.installation_guard_slots)
+            print(f"RTC inference budget: {self._inference_slots} control slots "
+                  f"({'auto' if config.inference_slots == 'auto' else 'fixed'}; "
+                  f"{self._inference_slots * 1000 / config.fps:.0f} ms)", flush=True)
             self._execution = Executor(execution, session_id=uuid.uuid4().hex,
                                      model_version=model.get('model_version', model['checkpoint_fingerprint']), epoch_ns=epoch,
                                      project=self.coordinator.project)
@@ -843,6 +873,11 @@ class RolloutCollector(Node):
                                     angular_velocity_hardware_tool=decoded.angular_velocity_tool.tolist(),
                                     angular_velocity_tool=((target.hardware_to_logical_rotation @ decoded.angular_velocity_tool)
                                                            if target is not None else decoded.angular_velocity_tool).tolist())
+                    if self.config.input_source == 'gello' and not self._intervention:
+                        alignment = self._gello_alignment().get(name)
+                        if alignment is not None:
+                            data['engage_position_error_m'], data['engage_rotation_error_deg'] = alignment
+                            data['engage_allowed'] = self._gello_within_engage_limits(alignment)
                     if target is not None and self.config.input_source == 'gamepad':
                         data['shortcut_status'] = target.shortcut_status
                         data['shortcut'] = target.pose_return.label if target.pose_return else None
@@ -893,6 +928,7 @@ class RolloutCollector(Node):
     def enable_teleop(self) -> None:
         """Explicitly enable unrecorded human positioning on either workflow."""
         with self._lock:
+            self._engage_rejection = None
             if (self._recording or self._faulted or self._teleop_enabled or self._saving
                     or self._processing or self._storage_blocked or self._waiting_resume
                     or self.coordinator.mode in ('fault', 'resetting')):
@@ -988,12 +1024,30 @@ class RolloutCollector(Node):
             for stale in tuple(self._pending_worker_targets):
                 if stale[0] != generation or stale[1] < command_id:
                     self._pending_worker_targets.pop(stale, None)
-        if self.coordinator.owner != 'pose' and self._last_gripper_goal.get(name) != gripper:
+        if self.coordinator.owner != 'pose' and self._gripper_goal_due(name, gripper):
             self._send_gripper_goal(arm, gripper)
             self._last_gripper_goal[name] = gripper
+            self.__dict__.setdefault('_last_gripper_goal_ns', {})[name] = time.monotonic_ns()
         goal = Float32()
         goal.data = gripper
         self._gripper_publishers[name].publish(goal)
+
+    def _gripper_goal_due(self, name, gripper):
+        """Resend a gripper action goal only for a real change.
+
+        Each goal preempts the previous one in the Robotiq action server and its
+        callbacks run on the control executor, so continuous GELLO/policy values must
+        not produce a goal every 30 Hz slot. A drift smaller than the deadband is
+        still delivered after gripper_goal_refresh_s, so the final value converges.
+        """
+        previous = self._last_gripper_goal.get(name)
+        if previous is None:
+            return True
+        change = abs(float(gripper) - float(previous))
+        if change >= getattr(self.config, 'gripper_goal_deadband', 0.01):
+            return True
+        elapsed = (time.monotonic_ns() - getattr(self, '_last_gripper_goal_ns', {}).get(name, 0)) / 1e9
+        return change > 0 and elapsed >= getattr(self.config, 'gripper_goal_refresh_s', 0.2)
 
     def _control_boundary(self, owner=None, *, fault=False, reason='control boundary', execution_state=None):
         self._pending_submission = None
@@ -1234,7 +1288,8 @@ class RolloutCollector(Node):
                     else:
                         self.enable_teleop()
                     if not self._intervention:
-                        raise RuntimeError('human control rejected; release inputs and check device health')
+                        raise RuntimeError(getattr(self, '_engage_rejection', None)
+                                           or 'human control rejected; release inputs and check device health')
                 self._manual_requested = True
             else:
                 self.set_control_mode(mode)
@@ -1250,9 +1305,16 @@ class RolloutCollector(Node):
         if self.policy_client is None:
             return
         result = self.policy_client.poll_latest()
-        if result is not None and self._execution.install(result, time.monotonic_ns()):
-            self._web_switch_pending = False
-            self._plan_latency_ms = (time.monotonic_ns()-result.request.observed_at_ns)/1e6
+        if result is None:
+            return
+        if not self._execution.install(result, time.monotonic_ns()):
+            events = getattr(self._execution, 'events', None)
+            rejected = next((e for e in reversed(events) if e[0] == 'reject'), None) if isinstance(events, list) else None
+            self.__dict__.setdefault('_plan_rejections', Counter())[rejected[2] if rejected else 'unknown'] += 1
+            return
+        self._plan_installs = getattr(self, '_plan_installs', 0) + 1
+        self._web_switch_pending = False
+        self._plan_latency_ms = (time.monotonic_ns()-result.request.observed_at_ns)/1e6
 
     def _publish_policy(self, values, dt):
         if self.coordinator.mode != 'active':
@@ -1332,9 +1394,16 @@ class RolloutCollector(Node):
             hardware_f_t_ee=self._worker_pose(state.hardware_flange_to_tcp_pose or state.flange_to_tcp_pose),
             o_f_ext_hat_k=SimpleNamespace(wrench=wrench),
             measured_joint_state=joints, tau_ext_hat_filtered=external,
-            current_errors=SimpleNamespace(), robot_mode=1,
+            # Real libfranka health from the worker feeds the existing FrankaHealthMonitor.
+            current_errors=SimpleNamespace(**{name: True for name in state.current_errors}),
+            # A binding without robot_mode (None) cannot be judged; any reported mode
+            # other than Idle/Move (Reflex, UserStopped, ...) faults the session.
+            robot_mode=1 if state.robot_mode is None else {'Idle': 1, 'Move': 2}.get(state.robot_mode, 0),
+            robot_mode_name=state.robot_mode,
             ROBOT_MODE_IDLE=1, ROBOT_MODE_MOVE=2,
-            control_command_success_rate=1.0,
+            # Not yet meaningful (idle or tracker just started): never counts as low.
+            control_command_success_rate=(1.0 if state.control_command_success_rate is None
+                                          else state.control_command_success_rate),
         )
 
     def _poll_worker_states(self):
@@ -1738,6 +1807,7 @@ class RolloutCollector(Node):
             if slot is None:
                 return
             self._slot_id = slot
+            self._record_tick_timing(slot, now_ns)
             dt = min(max(now_ns / 1e9 - self._last_control_tick, .001), 1/self.config.fps)
             self._last_control_tick = now_ns / 1e9
             try:
@@ -1866,6 +1936,33 @@ class RolloutCollector(Node):
                 else:
                     self._skip_reasons[f"control error: {error}"] += 1
                     self._latch_fault(error)
+            except Exception as error:
+                # Any other defect still stops motion, but keeps the session alive so the
+                # operator can save or discard the episode instead of losing the runner.
+                self._skip_reasons[f"unexpected control error: {type(error).__name__}"] += 1
+                self._latch_fault(error)
+
+    def _record_tick_timing(self, slot, now_ns):
+        lateness = max(0., (now_ns - self._slot_clock.deadline(slot)) / 1e6)
+        self._tick_lateness_ms.append(lateness)
+        self._tick_max_lateness_ms = max(self._tick_max_lateness_ms, lateness)
+        if self._tick_previous_slot is not None:
+            self._tick_missed_slots += max(0, slot - self._tick_previous_slot - 1)
+        self._tick_previous_slot = slot
+
+    def timing_status(self):
+        values = np.asarray(self._tick_lateness_ms, dtype=float)
+        if not values.size:
+            return None
+        return {'lateness_p50_ms': float(np.percentile(values, 50)),
+                'lateness_p99_ms': float(np.percentile(values, 99)),
+                'lateness_max_ms': float(self._tick_max_lateness_ms),
+                'missed_slots': int(self._tick_missed_slots),
+                'window_s': len(values) / self.config.fps,
+                'inference_slots': self._inference_slots,
+                'plan_installs': self._plan_installs,
+                'plan_rejections': dict(self._plan_rejections),
+                'limited_steps': int(getattr(self.coordinator, 'limited_steps', 0))}
 
     def _complete_interval(self, now_ns, *, observation_valid=True):
         if self._pending_frame is None:
@@ -2201,6 +2298,46 @@ class RolloutCollector(Node):
         self._annotations = {key: [] for key in self._extra_features}
 
 
+    def _gello_alignment(self):
+        """Per-arm (position m, rotation deg) between GELLO FK and the measured logical TCP."""
+        result = {}
+        for arm in self.config.arms:
+            sample, robot = self._latest.get(f'{arm.name}.gello_joint'), self._latest.get(f'{arm.name}.robot_state')
+            if sample is None or robot is None:
+                continue
+            tool_position, tool_rotation = schema.pose_from_stamped(robot[1].f_t_ee)
+            position, rotation = self.servos[arm.name].forward_tcp(
+                self._measured_joints(arm, sample[1]), tool_position, tool_rotation)
+            measured_position, measured_rotation = schema.pose_from_stamped(robot[1].o_t_ee)
+            result[arm.name] = (float(np.linalg.norm(np.asarray(position) - measured_position)),
+                                float(np.degrees(Rotation.from_matrix(np.asarray(rotation) @ measured_rotation.T).magnitude())))
+        return result
+
+    def _gello_within_engage_limits(self, alignment):
+        position, rotation = alignment
+        return (position <= self.config.gello_engage_max_position_error_m
+                and rotation <= self.config.gello_engage_max_rotation_error_deg)
+
+    def _gello_engage_problem(self):
+        """Refuse GELLO ownership while the leader is far from the follower.
+
+        Otherwise the first FK target pulls the arm toward the leader at the worker's
+        per-step limit; this matters most when taking over from a running policy.
+        """
+        alignment = self._gello_alignment()
+        problems = []
+        for arm in self.config.arms:
+            value = alignment.get(arm.name)
+            if value is None:
+                problems.append(f'{arm.name}: GELLO 或机械臂状态缺失')
+            elif not self._gello_within_engage_limits(value):
+                problems.append(f'{arm.name}: 位置差 {value[0]*100:.1f} cm（上限 '
+                                f'{self.config.gello_engage_max_position_error_m*100:.1f}）、姿态差 '
+                                f'{value[1]:.1f}°（上限 {self.config.gello_engage_max_rotation_error_deg:.1f}°）')
+        if problems:
+            return 'GELLO 与机械臂未对齐，请先把 GELLO 摆到机械臂当前姿态附近：' + '；'.join(problems)
+        return None
+
     def toggle_intervention(self) -> None:
         with self._lock:
             if (self._faulted or self._storage_blocked or self._waiting_resume
@@ -2215,12 +2352,19 @@ class RolloutCollector(Node):
                 self._manual_requested = False
                 return
             if not self._intervention:
+                self._engage_rejection = None
                 if not (self._recording or self._teleop_enabled):
                     print("Ignoring gamepad intervention outside an active episode")
                     return
                 if not self._neutral_gamepads():
                     print("Release BOTH gamepads before takeover", flush=True)
                     return
+                if self.config.input_source == 'gello':
+                    problem = self._gello_engage_problem()
+                    if problem:
+                        self._engage_rejection = problem
+                        print(f'Cannot take over: {problem}', flush=True)
+                        return
                 now_ns = time.monotonic_ns()
                 targets: dict[str, GamepadTarget] = {}
                 for arm in self.config.arms:

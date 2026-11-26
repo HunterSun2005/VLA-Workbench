@@ -169,12 +169,13 @@ def collector(ros_module, monkeypatch, tmp_path, request):
                'binding_sha256': 'a'*64, 'tracker_sha256': 'b'*64,
                'libfranka_library_sha256': 'c'*64}
     def initialize(self, config, **kwargs):
+        from vla.control.franky.ipc import WORKER_IMPLEMENTATION_VERSION
         states = {a.name: WorkerState(a.name, time.monotonic_ns(), (0., 0., 0., 0., 0., 0., 1.),
                                     (0.,)*7, (0.,)*7,
                                     hardware_flange_to_tcp_pose=(0., 0., 0., 0., 0., 0., 1.),
                                     hardware_tcp_pose=(0., 0., 0., 0., 0., 0., 1.)) for a in config.arms}
         client = SimpleNamespace(fault=None, target_available=True, result=lambda key:self._test_receipts.get(key), states=lambda: states, close=lambda: None,
-            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 6,
+            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': WORKER_IMPLEMENTATION_VERSION,
                                    'tcp_frame': 'flange_aligned_tcp_v1'},
             compliance_values=lambda: config.franky_compliance)
         self._test_receipts = {}

@@ -94,7 +94,8 @@ class FrankaHealthMonitor:
             int(robot_state.ROBOT_MODE_MOVE),
         }
         if mode not in allowed_modes:
-            raise RuntimeError(f"{arm_name} Franka robot_mode={mode} is not IDLE/MOVE")
+            label = getattr(robot_state, "robot_mode_name", None) or mode
+            raise RuntimeError(f"{arm_name} Franka robot_mode={label} is not IDLE/MOVE")
 
         success_rate = float(robot_state.control_command_success_rate)
         if not np.isfinite(success_rate):

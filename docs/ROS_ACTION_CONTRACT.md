@@ -23,15 +23,15 @@
 
 ## 控制与记录
 
-Franky 路线只接受绝对逻辑 TCP 目标（`flange_aligned_tcp_v1`）。逻辑 TCP 原点仍为物理 TCP，轴向平行于法兰；XYZ 不因朝向换算移动。设实测安装旋转为 `R_F_E`，则 worker 提交 `R_base_hardware = R_base_logical · R_F_E`，反馈使用 `R_base_logical = R_base_hardware · R_F_Eᵀ`。安装 −45° 时逻辑竖直 yaw=0 对应硬件 yaw=+45°。action、observation、coordinator、GELLO FK、策略、姿态库和实际参考统一使用逻辑坐标；硬件 TCP／参考及原始安装变换单独保留在 worker 状态和审计中。worker implementation 6 显式声明该坐标约定，collector 拒绝不匹配的 worker；工具变换在会话内锁定，变化后故障停止。GELLO 通过 FK、Gamepad 和策略都更新同一个 TCP 参考位姿，worker 使用 `CartesianImpedanceTracker.set_target()` 持续跟踪；Gamepad 松杆仅将刚释放方向的参考收回到实测位姿一次，随后固定保持。新会话拒绝旧 ROS backend、关节动作空间和旧 tracking rate／IK 调参字段；CartesianServo 只供隔离的历史验证工具使用。
+Franky 路线只接受绝对逻辑 TCP 目标（`flange_aligned_tcp_v1`）。逻辑 TCP 原点仍为物理 TCP，轴向平行于法兰；XYZ 不因朝向换算移动。设实测安装旋转为 `R_F_E`，则 worker 提交 `R_base_hardware = R_base_logical · R_F_E`，反馈使用 `R_base_logical = R_base_hardware · R_F_Eᵀ`。安装 −45° 时逻辑竖直 yaw=0 对应硬件 yaw=+45°。action、observation、coordinator、GELLO FK、策略、姿态库和实际参考统一使用逻辑坐标；硬件 TCP／参考及原始安装变换单独保留在 worker 状态和审计中。worker implementation 7 显式声明该坐标约定，collector 拒绝实现版本或坐标约定不匹配的 worker；工具变换在会话内锁定，变化后故障停止。GELLO 通过 FK、Gamepad 和策略都更新同一个 TCP 参考位姿，worker 使用 `CartesianImpedanceTracker.set_target()` 持续跟踪；Gamepad 松杆仅将刚释放方向的参考收回到实测位姿一次，随后固定保持。新会话拒绝旧 ROS backend、关节动作空间和旧 tracking rate／IK 调参字段；CartesianServo 只供隔离的历史验证工具使用。
 
 Franky 默认阻抗参数为平移刚度 1100 N/m、旋转刚度 65 Nm/rad、平移误差裁剪 0.008 m、旋转误差裁剪 0.04 rad、单次目标步长 0.03 m/0.10 rad。Web 支持启动前覆盖初值和运行中调参。参数草稿与 worker 确认值分离，仅实际变化的裁剪、力矩变化率和增益时间常数会停止并重建 tracker；刚度调用 `set_gains`，不变参数不重启控制。刚度上限为 1200 N/m、80 Nm/rad，裁剪下限为 0.005 m、0.02 rad。
 
-应用层只有一个 30 Hz 回调，输入更新、动作接受和提交共用时隙。独立 IPC 消费线程最多处理一条在途目标，没有待发目标积压队列。上一目标未确认时，当前时隙不积分人工输入、不接受动作、不产生记录；确认后使用当前输入，策略取当前真实时隙，不补发过期动作。worker 以独立 1000 Hz FCI 阻抗环跟踪参考。`max_step` / `max_step_rad` 仍是每次调用的参考变化上限。
+应用层只有一个 30 Hz 回调，输入更新、动作接受和提交共用时隙。回调记录相对时隙起点的延迟（近 30 秒 p50／p99、最大值）和漏掉的时隙数，Web 遥测区显示；p99 超过 20 ms 或最大值超过 60 ms 时标黄，用于判断 100 ms 目标流期限的余量。回调内未预期的异常也锁存故障并保留会话，而不是结束整个 runner。协调器按来源限制参考步长：GELLO 逐时隙限速（见 Web 面板说明）；策略使用跳变保护 `policy_max_target_speed=0.5` m/s、`policy_max_target_angular_speed=2.5` rad/s，按距上次目标变化的时隙数换算，超限锁存故障而不裁剪，保证 RTC 前缀、Replay 中的执行动作与记录一致。夹爪动作目标仅在变化不小于 `gripper_goal_deadband=0.01` 时立即重发，更小的漂移在 `gripper_goal_refresh_s=0.2` 秒后补发；Robotiq `GripperActionController` 设置 `allow_stalling: true`，夹持物体导致的停滞返回成功，ABORTED 仍锁存故障。独立 IPC 消费线程最多处理一条在途目标，没有待发目标积压队列。上一目标未确认时，当前时隙不积分人工输入、不接受动作、不产生记录；确认后使用当前输入，策略取当前真实时隙，不补发过期动作。worker 以独立 1000 Hz FCI 阻抗环跟踪参考。`max_step` / `max_step_rad` 仍是每次调用的参考变化上限。
 
 IPC v2 的目标包含 session、generation、sequence、request ID、slot ID 和单调时间戳；只有全部身份匹配的成功响应才确认执行。响应区分请求目标、实际提交给 tracker 的参考、实测 TCP，并提供应用时间。双臂先校验整个包，任一执行失败停止全部 tracker；审计保留已执行部分，不声称物理原子性。旧 worker 协议被拒绝。
 
-tracker 在显式启用准备中从实测 TCP／关节初始化，所有臂准备确认后才允许目标。普通目标不能创建或恢复 tracker；停止／恢复保持待命。代际切换撤销旧请求，生命周期命令优先。默认目标请求及目标流期限 100 ms、通信／状态期限 500 ms，健康轮询不延长目标流。SDK 阻塞不能由排队命令抢占；通信失败时父进程有界关闭本会话 worker，故障锁存且不自动重建恢复。
+tracker 在显式启用准备中从实测 TCP／关节初始化，所有臂准备确认后才允许目标。普通目标不能创建或恢复 tracker；停止／恢复保持待命。若全部 tracker 正在运行且无故障，reset 只在原 tracker 上推进代次、把参考重设为实测 TCP 并清空序号（响应带 `rearmed`），不停止 1 kHz 环；否则完整停止并重建。worker 状态额外导出 libfranka `robot_mode`、`current_errors` 和 `control_command_success_rate`（tracker 运行满 0.3 秒后才报告），collector 的 `FrankaHealthMonitor` 据此在非 Idle/Move 模式、存在当前错误或成功率持续低于 `min_control_command_success_rate` 时锁存故障。`franky_realtime`（`ignore`／`enforce`，默认 ignore）传给 libfranka；worker 检测内核是否为 PREEMPT_RT，`enforce` 在非实时内核上拒绝打开 FCI，`ignore` 时打印警告，检测结果写入 `franky_realtime` 元数据，配置值进入控制指纹。代际切换撤销旧请求，生命周期命令优先。默认目标请求及目标流期限 100 ms、通信／状态期限 500 ms，健康轮询不延长目标流。SDK 阻塞不能由排队命令抢占；通信失败时父进程有界关闭本会话 worker，故障锁存且不自动重建恢复。
 
 记录在提交时冻结观察、候选、接受目标和身份，匹配 ACK 后才入记录流程。相机偶发缺帧跳过整条图像／观察／动作记录，控制继续；连续过期超过 `sync_tolerance_ms`（默认 100 ms）故障，不再用额外 1.5 帧门限停控。未录制人工摆位不依赖单次相机曝光。IPC 等待、缺帧、漏时隙形成真实 slot 缺口和 segment 边界，SFT／RLT／Replay 不跨越；没有新终点图像时不得复制旧图构造终止帧。1.5 帧仅用于区间标签有效性，不是停控阈值。
 

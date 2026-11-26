@@ -133,9 +133,25 @@ class RolloutConfig:
     gamepad_profile: str | None = None
     subtasks: tuple[str, ...] = ()
     tasks: tuple[str, ...] = ()
-    inference_slots: int = 4
+    # Deployment scheduling only: excluded from the recording-source fingerprint and
+    # recorded per episode in the execution contract. 'auto' picks the largest
+    # feasible budget <= inference_slots_auto_max for the loaded model horizons.
+    inference_slots: int | str = 'auto'
+    inference_slots_auto_max: int = 6
     installation_guard_slots: int = 1
     workspace_limits_enabled: bool = True
+    # GELLO may engage only when its FK pose is close to the measured TCP.
+    gello_engage_max_position_error_m: float = 0.03
+    gello_engage_max_rotation_error_deg: float = 10.0
+    # Per-step reference limits for GELLO, and a jump guard (fault, never clip) for policy.
+    gello_max_linear_velocity: float = 0.6
+    gello_max_angular_velocity: float = 2.0
+    policy_max_target_speed: float = 0.5
+    policy_max_target_angular_speed: float = 2.5
+    # Gripper action goals: resend on >= deadband change, or after refresh for smaller drifts.
+    gripper_goal_deadband: float = 0.01
+    gripper_goal_refresh_s: float = 0.2
+    franky_realtime: str = 'ignore'
 
     @property
     def policy_state_dim(self) -> int:
@@ -429,14 +445,36 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         ):
             if value not in {-1.0, 1.0}:
                 raise ValueError(f"{arm.name}.gamepad.{label} must be -1.0 or 1.0")
-    inference_slots = control.get('inference_slots', 4)
+    inference_slots = control.get('inference_slots', 'auto')
+    auto_max = control.get('inference_slots_auto_max', 6)
     guard_slots = control.get('installation_guard_slots', 1)
-    if any(type(v) is not int or v < 1 for v in (inference_slots, guard_slots)):
+    if inference_slots != 'auto' and (type(inference_slots) is not int or inference_slots < 1):
+        raise ValueError("inference_slots must be 'auto' or a positive control-slot count")
+    if any(type(v) is not int or v < 1 for v in (auto_max, guard_slots)):
         raise ValueError('inference and installation budgets must be positive control-slot counts')
+    safety = {
+        'gello_engage_max_position_error_m': float(control.get('gello_engage_max_position_error_m', 0.03)),
+        'gello_engage_max_rotation_error_deg': float(control.get('gello_engage_max_rotation_error_deg', 10.0)),
+        'gello_max_linear_velocity': float(control.get('gello_max_linear_velocity', 0.6)),
+        'gello_max_angular_velocity': float(control.get('gello_max_angular_velocity', 2.0)),
+        'policy_max_target_speed': float(control.get('policy_max_target_speed', 0.5)),
+        'policy_max_target_angular_speed': float(control.get('policy_max_target_angular_speed', 2.5)),
+        'gripper_goal_deadband': float(control.get('gripper_goal_deadband', 0.01)),
+        'gripper_goal_refresh_s': float(control.get('gripper_goal_refresh_s', 0.2)),
+    }
+    invalid = [name for name, value in safety.items() if not math.isfinite(value) or value <= 0]
+    if invalid:
+        raise ValueError("configuration values must be positive: " + ", ".join(invalid))
+    if safety['gripper_goal_deadband'] >= 1.0:
+        raise ValueError('gripper_goal_deadband must be below 1.0')
+    franky_realtime = str(control.get('franky_realtime', 'ignore'))
+    if franky_realtime not in ('ignore', 'enforce'):
+        raise ValueError("franky_realtime must be 'ignore' or 'enforce'")
     if fps != 30:
         raise ValueError('execution contract requires one 30 Hz action/control loop')
     return RolloutConfig(
-        inference_slots=inference_slots, installation_guard_slots=guard_slots,
+        inference_slots=inference_slots, inference_slots_auto_max=auto_max,
+        installation_guard_slots=guard_slots, franky_realtime=franky_realtime, **safety,
         backend=backend,
         worker_socket_path=Path(str(transport.get("worker_socket_path", "/tmp/vla_franky_worker.sock"))).expanduser().resolve(),
         worker_python=(Path(str(transport["worker_python"])).expanduser().absolute()
@@ -463,3 +501,31 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         low_success_rate_samples=low_success_rate_samples,
         **{name: float(value) for name, value in positive.items() if name != "fps"},
     )
+
+
+# Scheduling parameters that never describe how a recorded action was produced.
+DEPLOYMENT_SCHEDULING_FIELDS = ('inference_slots', 'inference_slots_auto_max', 'installation_guard_slots')
+
+
+def resolve_inference_slots(requested, horizons, frame_stride, guard_slots, auto_max=6):
+    """Return the inference budget for these plan horizons, enforcing H >= 2d.
+
+    d = ceil((inference + guard) / frame_stride). 'auto' picks the largest budget
+    <= auto_max that every horizon admits; an explicit budget must itself fit.
+    """
+    if not horizons or type(frame_stride) is not int or frame_stride < 1:
+        raise ValueError('plan horizons and a positive frame stride are required')
+    shortest = min(int(h) for h in horizons.values())
+    feasible = [s for s in range(1, max(auto_max, 1) + 1)
+                if shortest >= 2 * math.ceil((s + guard_slots) / frame_stride)]
+    limit = max((s for s in range(1, 256) if shortest >= 2 * math.ceil((s + guard_slots) / frame_stride)), default=0)
+    if requested == 'auto':
+        if not feasible:
+            raise ValueError(f'shortest policy horizon {shortest} (frame stride {frame_stride}) admits no '
+                             f'inference budget with {guard_slots} guard slot(s)')
+        return max(feasible)
+    if requested > limit:
+        raise ValueError(f'inference budget {requested} control slots needs every policy horizon >= '
+                         f'{2 * math.ceil((requested + guard_slots) / frame_stride)}; shortest is {shortest} '
+                         f'(frame stride {frame_stride}). Use at most {limit} or auto.')
+    return requested

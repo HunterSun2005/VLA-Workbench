@@ -36,6 +36,8 @@ class SessionConfig:
     workspace_bounds: dict | None = None
     workspace_limits_enabled: bool | None = None
     compliance: dict | None = None
+    # RTC inference budget in 30 Hz control slots: 'auto' (largest feasible <= 6) or 1..15.
+    inference_slots: int | str = 'auto'
 
     @classmethod
     def parse(cls, data):
@@ -71,6 +73,9 @@ class SessionConfig:
             raise ValueError('task is required')
         if result.workflow == 'deploy' and result.policy_kind == 'sft' and result.mode != 'vla':
             raise ValueError('SFT supports VLA only')
+        if result.inference_slots != 'auto' and (type(result.inference_slots) is not int
+                                                 or not 1 <= result.inference_slots <= 15):
+            raise ValueError("inference_slots must be 'auto' or an integer from 1 to 15")
         result.validate_camera_serials()
         result.validate_workspace()
         result.validate_compliance()
@@ -93,6 +98,9 @@ class SessionConfig:
         from vla.control.franky.worker import Compliance
         value = Compliance.from_mapping(self.compliance, Compliance.from_mapping(rollout.franky_compliance))
         return replace(rollout, franky_compliance=asdict(value))
+
+    def apply_rollout_scheduling(self, rollout):
+        return replace(rollout, inference_slots=self.inference_slots)
 
     def validate_camera_serials(self):
         if self.camera_serials is None:

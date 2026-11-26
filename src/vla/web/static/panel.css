@@ -291,3 +291,5 @@ details.config-group>summary,#advancedSetup>summary{font-weight:600}
 .log-row[data-level="pending"] .log-text{color:var(--warn)}
 .log-empty{margin:0;padding:24px 12px;text-align:center;color:var(--muted);font-family:system-ui,sans-serif}
 @media(max-width:720px){.log-row{grid-template-columns:56px minmax(0,1fr)}.log-kind{display:none}}
+#loopTiming{font-size:12px;border:1px solid var(--line);border-radius:6px;padding:6px 10px;color:var(--summary);background:var(--plot);font-variant-numeric:tabular-nums}
+#loopTiming[data-level="warn"]{color:var(--warn);border-color:var(--warn-line);background:var(--warn-bg)}

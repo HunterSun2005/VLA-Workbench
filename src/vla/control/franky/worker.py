@@ -21,7 +21,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from vla.core.hardware_lease import HardwareLease
-from .ipc import decode_packet, encode_packet
+from .ipc import decode_packet, encode_packet, WORKER_IMPLEMENTATION_VERSION
 from .binding import check_binding
 from .tcp_frame import TCPFrame, TCP_FRAME
 
@@ -65,6 +65,30 @@ class Compliance:
                 raise ValueError(f"{key} must be a number")
             setattr(result, key, float(value))
         return result.validate()
+
+
+def kernel_realtime() -> dict[str, Any]:
+    """Report whether this kernel is PREEMPT_RT; libfranka's 1 kHz loop depends on it."""
+    try:
+        flag = Path('/sys/kernel/realtime').read_text().strip() == '1'
+    except OSError:
+        flag = False
+    version = os.uname().version
+    return {'preempt_rt': bool(flag or 'PREEMPT_RT' in version), 'kernel': f'{os.uname().release} {version}'}
+
+
+def _robot_mode_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(getattr(value, 'name', value)).split('.')[-1]
+
+
+def _active_errors(errors: Any) -> list[str]:
+    """Names of the boolean flags set in a libfranka Errors object."""
+    if errors is None:
+        return []
+    return sorted(name for name in dir(errors)
+                  if not name.startswith('_') and getattr(errors, name, None) is True)
 
 
 def _pose_to_affine(franky: Any, pose: np.ndarray) -> Any:
@@ -112,6 +136,7 @@ class FrankyArm:
         self.binding_fingerprint: dict[str, str] = {}
         self._robot_stamp = None
         self._robot_stamp_at = time.monotonic()
+        self._tracker_started_at = None
         self.state_timeout_s = .5
 
     def open(self) -> None:
@@ -123,6 +148,12 @@ class FrankyArm:
                 self._lease.close()
             raise RuntimeError(f"Franky binding unavailable: {error}") from error
         self.franky = franky
+        realtime = kernel_realtime()
+        if self.realtime_config == 'enforce' and not realtime['preempt_rt']:
+            raise RuntimeError(f"franky_realtime=enforce requires a PREEMPT_RT kernel; running {realtime['kernel']}")
+        if not realtime['preempt_rt']:
+            print(f'Franky {self.name}: kernel is not PREEMPT_RT ({realtime["kernel"]}); the 1 kHz loop runs '
+                  'without realtime guarantees, watch control_command_success_rate', file=sys.stderr, flush=True)
         self._lease = HardwareLease(self.robot_ip, self._gripper_port)
         mode = getattr(franky.RealtimeConfig, "Enforce" if self.realtime_config == "enforce" else "Ignore")
         self.robot = franky.Robot(self.robot_ip, realtime_config=mode)
@@ -172,6 +203,12 @@ class FrankyArm:
         force = np.asarray(getattr(raw, "K_F_ext_hat_K", np.zeros(6)), dtype=float)
         if any(not np.isfinite(value).all() for value in (pose, q, dq, qd, tau, tau_ext, force)):
             raise RuntimeError("non-finite Franky measured state")
+        # The success rate counts the last 100 commands of a running control loop; it is
+        # meaningless while idle and ramps up after start, so report it only once settled.
+        rate = getattr(raw, "control_command_success_rate", None)
+        settled = (self._tracker_started_at is not None and self._tracker_running()
+                   and time.monotonic() - self._tracker_started_at >= .3)
+        rate = float(rate) if settled and rate is not None and math.isfinite(float(rate)) else None
         return {"arm": self.name, "observed_at_ns": time.monotonic_ns(),
                 "tcp_pose": pose.tolist(), "joints": q.tolist(),
                 "joint_velocity": dq.tolist(), "joint_torque": tau.tolist(),
@@ -187,6 +224,9 @@ class FrankyArm:
                 "generation": self.target_generation, "sequence": self.target_sequence,
                 "tracker_running": bool(self.tracker is not None and self._tracker_running()),
                 "state_valid": True,
+                "robot_mode": _robot_mode_name(getattr(raw, "robot_mode", None)),
+                "control_command_success_rate": rate,
+                "current_errors": _active_errors(getattr(raw, "current_errors", None)),
                 "fault": self.fault}
 
     def _tracker_running(self) -> bool:
@@ -237,6 +277,29 @@ class FrankyArm:
         # discontinuity.
         raw = self.robot.state
         self.target_pose = self._frame(raw).to_logical(_affine_pose(raw.O_T_EE))
+        self._tracker_started_at = time.monotonic()
+
+    def rearm(self, generation: int) -> None:
+        """Fence a new generation on the running tracker without stopping the 1 kHz loop.
+
+        Restarting the tracker leaves the arm briefly without the impedance controller,
+        which matters mid-task (contact, a held object). The reference is reseeded from
+        the measured TCP exactly as a fresh start would, so the next target is still
+        bounded by max_step from where the arm actually is.
+        """
+        self._check_tracker()
+        if self.tracker is None:
+            raise RuntimeError("tracker is not running; a full reset is required")
+        raw = self.robot.state
+        measured = self._frame(raw).to_logical(_affine_pose(raw.O_T_EE))
+        self.tracker.set_target(_pose_to_affine(self.franky, self._frame(raw).to_hardware(measured)))
+        self.target_pose = measured
+        self.target_generation = generation
+        self.target_sequence = -1
+        self._check_tracker()
+
+    def rearmable(self) -> bool:
+        return not self.fault and self.tracker is not None and self._tracker_running()
 
     def set_target(self, pose: list[float], generation: int, sequence: int) -> None:
         self._check_tracker()
@@ -271,6 +334,7 @@ class FrankyArm:
         self._start_tracker()
 
     def stop(self, *, recover: bool = False) -> None:
+        self._tracker_started_at = None
         if self.tracker is not None:
             try:
                 self.tracker.stop()
@@ -334,16 +398,20 @@ class FrankyArm:
 
 class FrankyWorker:
     """One generation-fenced owner, with a watchdog independent of client traffic."""
-    IMPLEMENTATION_VERSION = 6
+    IMPLEMENTATION_VERSION = WORKER_IMPLEMENTATION_VERSION
 
     def __init__(self, arms, *, session_id, compliance=None, target_timeout_s=.1,
-                 state_timeout_s=.5):
+                 state_timeout_s=.5, realtime_config='ignore'):
         if not session_id or not arms:
             raise ValueError('worker requires a session and at least one arm')
         self.session_id = str(session_id)
         base = Compliance.from_mapping(compliance)
+        if realtime_config not in ('ignore', 'enforce'):
+            raise ValueError("realtime_config must be 'ignore' or 'enforce'")
+        self.realtime_config = realtime_config
         self.arms = {name: FrankyArm(name, str(value['robot_ip']),
-                                    compliance=Compliance.from_mapping({}, base))
+                                    compliance=Compliance.from_mapping({}, base),
+                                    realtime_config=realtime_config)
                      for name, value in arms.items()}
         self._lock = threading.RLock()
         self.generation = self.sequence = self.timestamp_ns = self.slot_id = -1
@@ -467,6 +535,15 @@ class FrankyWorker:
                 elif kind == 'reset':
                     if generation <= self.generation:
                         status = 'ignored'
+                    elif self._armed and all(arm.rearmable() for arm in self.arms.values()):
+                        # Owner change on a healthy, running stream: keep every tracker.
+                        for arm in self.arms.values():
+                            arm.rearm(generation)
+                        receipt['rearmed'] = True
+                        self.generation = generation
+                        self.sequence = self.timestamp_ns = self.slot_id = -1
+                        self._streaming = True
+                        self._last_target = time.monotonic()
                     else:
                         self._stop_all()
                         for arm in self.arms.values():
@@ -555,6 +632,7 @@ class FrankyWorker:
                     'states': states, 'fault': self.fault,
                     'implementation_version': self.IMPLEMENTATION_VERSION,
                     'binding_fingerprint': dict(self.binding_fingerprint),
+                    'realtime': {'config': self.realtime_config, **kernel_realtime()},
                     'compliance': dict(self._compliance)}
 
     def close(self):

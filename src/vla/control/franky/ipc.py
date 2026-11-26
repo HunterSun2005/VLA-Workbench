@@ -21,6 +21,8 @@ from typing import Any, Mapping
 
 
 IPC_VERSION = 2
+# 7: robot health fields, rearm-on-generation without tracker restart, realtime report.
+WORKER_IMPLEMENTATION_VERSION = 7
 MAX_PACKET = 2 * 1024 * 1024
 
 
@@ -74,6 +76,15 @@ def _validate_pose(value: Any) -> list[float]:
     return pose
 
 
+def _optional_rate(value):
+    if value is None:
+        return None
+    rate = float(value)
+    if not 0.0 <= rate <= 1.0:
+        raise ValueError('control_command_success_rate must be in [0, 1]')
+    return rate
+
+
 @dataclass(frozen=True)
 class WorkerState:
     arm: str
@@ -97,6 +108,9 @@ class WorkerState:
     tracker_running: bool = False
     state_valid: bool = True
     fault: str | None = None
+    robot_mode: str | None = None
+    control_command_success_rate: float | None = None
+    current_errors: tuple[str, ...] = ()
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "WorkerState":
@@ -138,6 +152,9 @@ class WorkerState:
             tracker_running=bool(value.get("tracker_running", False)),
             state_valid=bool(value.get("state_valid", not value.get("fault"))),
             fault=str(value["fault"]) if value.get("fault") else None,
+            robot_mode=str(value["robot_mode"]) if value.get("robot_mode") is not None else None,
+            control_command_success_rate=_optional_rate(value.get("control_command_success_rate")),
+            current_errors=tuple(str(x) for x in value.get("current_errors", ())),
         )
 
 
