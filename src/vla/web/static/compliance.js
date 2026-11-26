@@ -62,7 +62,7 @@ class ComplianceEditor {
   const values={},revisions={};
   for(const [key,value] of Object.entries(this.values()))if(value!==this.effective[key]){values[key]=value;revisions[key]=this.revisions[key]||0;}
   if(!Object.keys(values).length){this.dirty.clear();this.draw();return;}
-  const id=crypto.randomUUID();this.pending={id,revisions};this.failure='';this.draw();
+  const id=newId();this.pending={id,revisions};this.failure='';this.draw();
   try{await this.send(values,id);}catch(error){if(this.pending?.id===id){this.pending=null;this.failure=error.message;}this.draw();}
  }
  commandFailure(commands){

@@ -1,5 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id), form=$('setup');
+// crypto.randomUUID needs a secure context; plain-HTTP LAN/WSL addresses still need RFC 4122 v4 IDs.
+const newId=()=>crypto.randomUUID?crypto.randomUUID():'10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
 let selectedPage='collect';
 let token='', demo=false, workflow='collect', active=null, current=null, socket=null, connected=false;
 let lastReceive=0, pending=false, creating=false, awaitingCommandId=null, session=null, descriptors=[], rows=[], plots=[], paused=false, epoch=0;
@@ -148,7 +150,7 @@ form.onsubmit=async event=>{
 async function command(operation,args={},commandId=null){
  const priority=['pause','stop','mode','intervention'].includes(operation);
  if((pending&&!priority)||!current?.session_id)throw new Error('请等待当前命令完成');
- const id=commandId||crypto.randomUUID();pending=true;awaitingCommandId=id;freshness();error('');
+ const id=commandId||newId();pending=true;awaitingCommandId=id;freshness();error('');
  try{await api('/api/commands',{session_id:current.session_id,revision:current.revision,command_id:id,operation,args});}
  catch(e){if(awaitingCommandId===id){awaitingCommandId=null;pending=false;}freshness();error(e.message);if(operation==='compliance')throw e;}
 }
@@ -171,7 +173,7 @@ function render(message){
  current=message;if(Object.hasOwn(message,'active'))active=message.active;lastReceive=performance.now();const s=message.status||{};
  if(message.session_id&&session!==message.session_id){issueMessages.clear();seenFailedCommands.clear();drawIssues();render.lastState=null;session=message.session_id;awaitingCommandId=null;pending=false;rows=[];epoch=Date.now()/1000-message.now;descriptors=[];if(!s.final&&s.state!=='stopped')cameras(message.config||active?.config);else stopCameras();if(message.config){restoreSessionConfig(message.config);configureView();}}
 
- $('state').textContent=labels[s.state]||s.state;$('episode').textContent=s.episode??'—';$('frames').textContent=`${s.frames??'—'} / ${s.elapsed_s?.toFixed(1)??'—'}s`;$('source').textContent=({pose_return:'恢复姿态',waiting:'等待新动作',idle:'待命',human:'HUMAN',gamepad:'GAMEPAD'}[s.actual_source]||s.actual_source?.toUpperCase()||'—');
+ $('state').textContent=labels[s.state]||s.state;$('statusBar').dataset.state=s.state||'';$('episode').textContent=s.episode??'—';$('frames').textContent=`${s.frames??'—'} / ${s.elapsed_s?.toFixed(1)??'—'}s`;$('source').textContent=({pose_return:'恢复姿态',waiting:'等待新动作',idle:'待命',human:'HUMAN',gamepad:'GAMEPAD'}[s.actual_source]||s.actual_source?.toUpperCase()||'—');
  complianceEditor.observe(message.session_id,s.compliance);
  complianceEditor.commandFailure(message.commands);
  if($('inputDiagnostics'))$('inputDiagnostics').textContent=JSON.stringify(s.input_diagnostics||{},null,2);
@@ -183,7 +185,7 @@ function render(message){
  $('armStatus').replaceChildren();for(const [arm,value] of Object.entries(s.arms||{})){const badge=document.createElement('span');badge.textContent=`${arm==='left'?'左臂':'右臂'} · ${value.source} · ${value.speed==='fast'?'Fast':value.speed==='normal'?'Normal':value.speed==='fixed'?'固定':'不可用'}${value.speed_scale==null?'':` ${value.speed_scale.toFixed(2)}×`}${value.transition?' · 过渡中':''}`;$('armStatus').append(badge);}
  const commands=message.commands||[];const ack=commands.find(x=>x.command_id===awaitingCommandId);if(ack&&ack.status!=='accepted')awaitingCommandId=null;pending=Boolean(awaitingCommandId)||commands.some(x=>x.status==='accepted');renderIssues(message);
  if(s.final||s.state==='stopped'){awaitingCommandId=null;pending=false;}
- $('events').textContent=[...commands.map(x=>`${x.operation}: ${x.status}${x.error?' — '+x.error:''}`),...(s.events||[])].join('\n')||'暂无命令';
+ sessionLog.observe(message);
  if((s.state==='stopped'||s.final)&&render.lastState!=='stopped'){stopCameras();}render.lastState=s.state;
  sessionStage.observe(message);lockSetup();
  if(s.signals&&JSON.stringify(s.signals)!==JSON.stringify(descriptors)){descriptors=s.signals;rebuildSignals();}
@@ -204,7 +206,7 @@ function operationBlock(op,s){
 function freshness(){
  const elapsed=(performance.now()-lastReceive)/1000,s=current?.status||{},isLive=connected&&elapsed<.5&&s.updated_at!=null&&current.now-s.updated_at+elapsed<.5&&!s.final;
  complianceEditor.available=isLive&&(s.available_commands||[]).includes('compliance');complianceEditor.draw();
- $('connection').textContent=connected?'已连接':sessionStage.phase==='checking'?'正在确认会话':'连接中断 · 自动重连';$('dot').classList.toggle('live',connected);$('freshness').textContent=isLive?'实时更新':s.final?'会话已结束':'数据过期 / 等待';
+ $('connection').textContent=connected?'已连接':sessionStage.phase==='checking'?'正在确认会话':'连接中断 · 自动重连';$('dot').classList.toggle('live',connected);$('freshness').textContent=isLive?'实时更新':s.final?'会话已结束':'数据过期 / 等待';$('statusBar').dataset.live=String(isLive);
  for(const b of document.querySelectorAll('[data-op]')){
   const startupStop=connected&&elapsed<.5&&s.state==='starting'&&b.dataset.op==='stop';
   const reason=!(isLive||startupStop)?'等待实时会话连接':pending&&!['pause','stop'].includes(b.dataset.op)?'正在执行上一条命令':b.dataset.outcome==='failure'&&!(s.outcomes||[]).includes('failure')?'此采集后端不支持失败标签':operationBlock(b.dataset.op,s);
@@ -221,6 +223,7 @@ function freshness(){
 }
 async function connect(){try{const boot=await api('/api/bootstrap');token=boot.token;demo=boot.demo;active=boot.active;datasetDefaults=boot.dataset_defaults||{};complianceDefaults=boot.compliance_defaults||{};$('datasetBase').textContent=`相对路径基准：${boot.workspace_root}`;$('demo').hidden=!demo;if(!form.elements.model_python.value)form.elements.model_python.value=boot.defaults.model_python;if(active?.config&&!session&&!sessionStage.dismissed.has(active.session_id))restoreSessionConfig(active.config);sessionStage.bootstrap(active);if(active?.alive&&!session)$('state').textContent='启动中';configureView();socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/live`,['vla',token]);socket.onopen=()=>{connected=true;setIssue('web-connection','');};socket.onmessage=event=>render(JSON.parse(event.data));socket.onclose=()=>{connected=false;freshness();setTimeout(connect,1200);};socket.onerror=()=>socket.close();}catch(e){connected=false;setIssue('web-connection',`Web 连接失败：${e.message}`);setTimeout(connect,1500);}}
 const sessionStage=new SessionStage();
+const sessionLog=new SessionLog($('events'),$('logCount'),$('logFollow'),$('logCopy'));
 window.addEventListener('vla-layout-change',()=>{for(const p of plots)p.plot.setSize({width:Math.max(250,p.container.clientWidth-12),height:175});});
 window.addEventListener('vla-stage-change',configureView);
 configureView();setInterval(freshness,250);connect();

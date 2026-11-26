@@ -4,7 +4,7 @@
  const channel=typeof BroadcastChannel==='function'?new BroadcastChannel('vla-preview'):null;
  let wanted=false,suspended=false,acquiring=false,owned=false,release=null,generation=0;
  function clear(){for(const img of document.querySelectorAll('.camera img'))img.removeAttribute('src');}
- function notice(message){$('previewNotice').hidden=!wanted;$('previewStatus').textContent=message;$('previewTake').hidden=owned;}
+ function notice(message){$('previewNotice').hidden=!wanted||!message;$('previewStatus').textContent=message;$('previewTake').hidden=owned;}
  function relinquish(){generation++;clear();owned=false;release?.();release=null;}
  function attach(){for(const img of document.querySelectorAll('.camera img'))if(img.dataset.previewSrc)img.src=img.dataset.previewSrc;}
  async function acquire(){
@@ -15,7 +15,7 @@
    await navigator.locks.request('vla-camera-preview',{ifAvailable:true},async lock=>{
     if(!wanted||suspended||document.hidden||version!==generation)return;
     if(!lock){notice('另一标签页正在显示相机；本页遥测与操作仍可用。');return;}
-    owned=true;attach();notice('相机预览在本页；其他标签页保留遥测与操作。');
+    owned=true;attach();notice('');
     await new Promise(resolve=>{release=resolve;});
    });
   }catch(e){relinquish();notice('无法启用相机预览：'+e.message);}

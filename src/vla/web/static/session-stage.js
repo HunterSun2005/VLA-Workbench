@@ -62,7 +62,6 @@ class SessionStage {
   const panel=document.getElementById('livePanel');panel.dataset.phase=next;
   for(const [id,show] of Object.entries(visible))document.getElementById(id).hidden=!show;
   document.getElementById('phaseTitle').textContent=next==='finished'?'会话结束摘要':'运行会话';
-  document.querySelector('#sessionEvents details').open=next==='finished';
   if(animate&&previous!=='checking'&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
    const target=document.getElementById(next==='configure'?'configHost':next==='finished'?'sessionEnd':'sessionSummary');
    target.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:260,easing:'ease-out'});
