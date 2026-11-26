@@ -13,7 +13,7 @@ from vla.web.app import create_app
 from vla.web.config import SessionConfig
 from vla.web.demo import DemoBackend
 from vla.web.poses import PoseStore, validate_pose
-from vla.web.pose_control import PoseActions, ROSPoseDriver, pose_value, compatible, check_bounds
+from vla.web.pose_control import PoseActions, ROSPoseDriver, pose_value, compatible
 from vla.web.runtime import Runtime
 
 
@@ -94,14 +94,12 @@ def test_demo_persist_restore_pause_dedup_and_recording_guard(tmp_path, arms, so
     assert not second.recording
 
 
-def test_identity_tool_workspace_rejection():
+def test_identity_and_tool_rejection():
     current = sample()
     for changed in ({'device':'other'}, {'arm':'right'}, {'frame':'other'},
                     {'tool':{'position':[.1,0,0],'rotation':np.eye(3).tolist()}}):
         with pytest.raises(ValueError):
             compatible({**current,**changed}, current)
-    with pytest.raises(ValueError, match='工作空间'):
-        check_bounds(current, [0,0,0], [.2,.2,.2])
 
 
 def ros_backend(source, arm='left'):
@@ -201,21 +199,15 @@ def test_saved_return_cancels_on_new_input():
     assert not messages and b.collector.coordinator.mode == 'standby'
 
 
-@pytest.mark.parametrize('enabled',[False,True])
-def test_pose_start_and_goal_bounds_follow_session_switch(enabled):
+def test_pose_start_and_goal_ignore_former_workspace_bounds():
     b,latest,_ = ros_backend('gello')
-    b.collector.config = replace(b.collector.config,workspace_limits_enabled=enabled)
     driver = ROSPoseDriver(b)
     target = {**driver.read('left'),'position':[1.2,0,.3]}
-    if enabled:
-        with pytest.raises(ValueError,match='工作空间'):
-            driver.start(target)
-    else:
-        driver.start(target)
-        action = b.collector._pose_reference(1/30)
-        assert action[0] > .4
-        driver.stop()
-        assert driver.plan is None and b.collector._pose_reference is None
+    driver.start(target)
+    action = b.collector._pose_reference(1/30)
+    assert action[0] > .4
+    driver.stop()
+    assert driver.plan is None and b.collector._pose_reference is None
 
 
 def test_pose_plan_waits_for_ready_and_measured_completion_and_restarts():

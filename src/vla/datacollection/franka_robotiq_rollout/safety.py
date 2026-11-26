@@ -132,8 +132,10 @@ def validate_absolute_action(
     *,
     arm_count: int,
     workspace_bounds: list[tuple[np.ndarray, np.ndarray]],
-    workspace_limits_enabled: bool = True,
+    workspace_limits_enabled: bool = False,
 ) -> list[tuple[np.ndarray, np.ndarray, float]]:
+    if workspace_limits_enabled is not False:
+        raise ValueError('TCP workspace limits have been removed; workspace_limits_enabled must be false')
     value = np.asarray(action, dtype=np.float64)
     if value.shape != (10 * arm_count,) or not np.isfinite(value).all():
         raise ValueError(f"action must be finite with shape {(10 * arm_count,)}, got {value.shape}")
@@ -141,9 +143,6 @@ def validate_absolute_action(
     for arm_index in range(arm_count):
         arm = value[10 * arm_index : 10 * (arm_index + 1)]
         position = arm[:3]
-        lower, upper = workspace_bounds[arm_index]
-        if workspace_limits_enabled and (np.any(position < lower) or np.any(position > upper)):
-            raise ValueError(f"arm {arm_index} target is outside workspace: {position.tolist()}")
         gripper = float(arm[9])
         if not 0.0 <= gripper <= 1.0:
             raise ValueError(f"arm {arm_index} gripper is outside [0, 1]: {gripper}")
@@ -182,7 +181,7 @@ def validate_rollout_episode(
     *,
     arm_count: int,
     workspace_bounds: list[tuple[np.ndarray, np.ndarray]],
-    workspace_limits_enabled: bool = True,
+    workspace_limits_enabled: bool = False,
     maximum_gripper_width: float,
 ) -> None:
     states = np.asarray(states, dtype=np.float64)

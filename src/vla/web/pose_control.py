@@ -11,12 +11,6 @@ def pose_value(arm, device, frame, position, rotation, tool_position, tool_rotat
                          'tool':{'position':np.asarray(tool_position).tolist(), 'rotation':np.asarray(tool_rotation).tolist()}})
 
 
-def check_bounds(pose, minimum, maximum):
-    xyz = np.asarray(pose['position'])
-    if np.any(xyz < minimum) or np.any(xyz > maximum):
-        raise ValueError(f"{pose['arm']} TCP XYZ={xyz.round(4).tolist()} 超出工作空间 {list(minimum)} → {list(maximum)}")
-
-
 def compatible(saved, current):
     for key in ('arm', 'device', 'frame'):
         if saved[key] != current[key]:
@@ -155,8 +149,6 @@ class ROSPoseDriver:
         from vla.control.franky.tcp_frame import TCP_FRAME
         frame = self.arms[arm].base_link+'/TCP:'+TCP_FRAME if self.b.collector else self.arms[arm].base_link+'/EE'
         pose = pose_value(arm, self.b.hardware[f'{arm.upper()}_ROBOT_IP'], frame, position, rotation, tool_p, tool_r)
-        if self.config.workspace_limits_enabled:
-            check_bounds(pose, self.arms[arm].workspace_min, self.arms[arm].workspace_max)
         if np.asarray(joints).shape != (7,) or not np.isfinite(joints).all():
             raise ValueError('无效关节状态')
         return pose, joints
@@ -166,9 +158,6 @@ class ROSPoseDriver:
 
     def start(self, target):
         self.arm = target['arm']
-        arm = self.arms[self.arm]
-        if self.config.workspace_limits_enabled:
-            check_bounds(target, arm.workspace_min, arm.workspace_max)
         self.read(self.arm)
         c = self.b.collector
         if not c._neutral_gamepads():

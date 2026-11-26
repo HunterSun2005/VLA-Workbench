@@ -7,7 +7,7 @@ single outstanding target and a priority lifecycle queue.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -81,6 +81,7 @@ class WorkerState:
     tcp_pose: tuple[float, ...]
     joints: tuple[float, ...]
     joint_velocity: tuple[float, ...]
+    robot_time_s: float = field(default=0., kw_only=True)
     joint_torque: tuple[float, ...] = ()
     external_joint_torque: tuple[float, ...] = ()
     force: tuple[float, ...] = ()
@@ -113,6 +114,9 @@ class WorkerState:
                 or (external_torque and len(external_torque) != 7)):
             raise ValueError("worker state torques must contain seven joints when present")
         import math
+        robot_time = value.get('robot_time_s')
+        if isinstance(robot_time, bool) or not isinstance(robot_time, (int, float)) or not math.isfinite(robot_time) or robot_time < 0:
+            raise ValueError('worker state requires a finite nonnegative robot_time_s')
         for key, width in (('joints', 7), ('joint_velocity', 7), ('joint_torque', 7),
                            ('external_joint_torque', 7), ('target_joints', 7), ('force', 3), ('torque', 3),
                            ('commanded_twist', 6)):
@@ -125,6 +129,7 @@ class WorkerState:
             tcp_pose=pose,
             joints=joints,
             joint_velocity=velocity,
+            robot_time_s=float(robot_time),
             joint_torque=joint_torque,
             external_joint_torque=external_torque,
             force=tuple(float(x) for x in value.get("force", ())),
@@ -365,7 +370,12 @@ class FrankyWorkerClient:
         while not self._closed.is_set():
             with self._condition:
                 if not self._queue:
-                    self._condition.wait(.1)
+                    # State freshness is required even while inference supplies
+                    # no targets. A 100 ms wait already exhausts the collector's
+                    # 100 ms observation budget before transport/ROS scheduling.
+                    # Poll at the worker's 100 Hz cadence; queued commands wake
+                    # this wait immediately and retain their original deadlines.
+                    self._condition.wait(.01)
                 if self._closed.is_set():
                     break
                 if self._queue:

@@ -132,7 +132,11 @@ class RolloutConfig:
     lingbot_guard_slots: int = 1
     model_backend: str = 'pi05'
     policy_endpoint: str = ''
-    workspace_limits_enabled: bool = True
+    workspace_limits_enabled: bool = False
+
+    def __post_init__(self):
+        if self.workspace_limits_enabled is not False:
+            raise ValueError('TCP workspace limits have been removed; workspace_limits_enabled must be false')
 
     @property
     def policy_state_dim(self) -> int:
@@ -282,9 +286,9 @@ def load_rollout_config(path: str | Path) -> RolloutConfig:
         raise ValueError("Franky Cartesian velocity requires action_space: tcp")
     transport = _mapping(raw.get("transport"), "transport")
     control = _mapping(raw.get("control"), "control")
-    workspace_limits_enabled = control.get('workspace_limits_enabled', True)
-    if type(workspace_limits_enabled) is not bool:
-        raise ValueError('control.workspace_limits_enabled must be boolean')
+    workspace_limits_enabled = control.get('workspace_limits_enabled', False)
+    if workspace_limits_enabled is not False:
+        raise ValueError('TCP workspace limits have been removed; control.workspace_limits_enabled must be false')
     if 'compliance' in control or any(key.startswith('tracking_') for key in control):
         raise ValueError('Tracker compliance/tracking_* removed; migrate to control.velocity_control')
     velocity_control_raw = _mapping(control.get("velocity_control", {}), "control.velocity_control")

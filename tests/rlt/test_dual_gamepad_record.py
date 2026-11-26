@@ -117,8 +117,8 @@ def ros_module(monkeypatch):
         def __init__(self, *_):
             pass
 
-        def create_timer(self, *_):
-            pass
+        def create_timer(self, period, callback):
+            self._test_timer_period_s = period
 
         def create_subscription(self, *_):
             pass
@@ -174,7 +174,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
                                     hardware_flange_to_tcp_pose=(0., 0., 0., 0., 0., 0., 1.),
                                     hardware_tcp_pose=(0., 0., 0., 0., 0., 0., 1.)) for a in config.arms}
         client = SimpleNamespace(fault=None, target_available=True, result=lambda key:self._test_receipts.get(key), states=lambda: states, close=lambda: None,
-            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 9,
+            request_now=lambda _: {'binding_fingerprint': binding, 'implementation_version': 11,
                                    'tcp_frame': 'flange_aligned_tcp_v1'},
             velocity_control_values=lambda: config.franky_velocity_control)
         self._test_receipts = {}
@@ -226,7 +226,7 @@ def collector(ros_module, monkeypatch, tmp_path, request):
     for arm in config.arms:
         for key, value in {
             "measured_joint": SimpleNamespace(name=[f"j{i}" for i in range(7)], position=[0.] * 7),
-            "robot_state": SimpleNamespace(f_t_ee=pose, o_t_ee=measured_pose, o_t_ee_d=measured_pose),
+            "robot_state": SimpleNamespace(f_t_ee=pose, o_t_ee=measured_pose, o_t_ee_d=measured_pose, robot_time_s=time.monotonic()),
             "gripper_state": SimpleNamespace(name=[arm.gripper_joint_name], position=[0.]),
             "gamepad": SimpleNamespace(axes=[0., 0., 1., 0., 0., 1.], buttons=[0] * 11),
         }.items():
@@ -237,6 +237,54 @@ def collector(ros_module, monkeypatch, tmp_path, request):
     monkeypatch.setattr(c, "_snapshot", lambda **kwargs: ({key: item[1] for key, item in c._latest.items()}, images))
     yield c
     c.close()
+
+
+@pytest.mark.parametrize('age_ms', [20, 101, 501])
+def test_preflight_uses_latest_ipc_observation_without_renewing_its_timestamp(ros_module, monkeypatch, age_ms):
+    import threading
+    from collections import Counter
+    from unittest.mock import Mock, call
+    from vla.control.franky.ipc import WorkerState
+
+    c = object.__new__(ros_module.RolloutCollector)
+    c.config = load_rollout_config(DEFAULT_CONFIG)
+    now = 1_000_000_000
+    monkeypatch.setattr(ros_module.time, 'monotonic_ns', lambda: now)
+    c._lock = threading.RLock()
+    c._latest, c._sensor_sequences, c._skip_reasons = {}, {}, Counter()
+    c._faulted, c._teleop_enabled = True, False
+    c._camera_failures = lambda: {}
+    c.count_publishers = c.count_subscribers = lambda _: 1
+    c._gripper_action_clients = {a.name: SimpleNamespace(server_is_ready=lambda: True)
+                                 for a in c.config.arms}
+    c.policy_client = None
+    c._validate_robot_health = Mock()
+    stamp = now - int(age_ms * 1e6)
+    states = {a.name: WorkerState(a.name, stamp, (0., 0., 0., 0., 0., 0., 1.), (0.,)*7, (0.,)*7)
+              for a in c.config.arms}
+    client = Mock(fault=None)
+    client.states.return_value = states
+    c._worker_client = client
+    for arm in c.config.arms:
+        c._latest[f'{arm.name}.robot_state'] = (now - 200_000_000, object())
+        c._latest[f'{arm.name}.measured_joint'] = (now - 200_000_000, object())
+        c._latest[f'{arm.name}.gripper_state'] = (now, object())
+    for camera in c.config.cameras:
+        c._latest[f'camera.{camera.name}'] = (now, np.zeros((*c.config.image_size, 3), np.uint8))
+
+    problems = c._preflight_problems()
+    if age_ms == 20:
+        assert problems == []
+        c._validate_robot_health.assert_called_once()
+    else:
+        assert any(('stale' if age_ms == 101 else 'invalid') in p for p in problems)
+        c._validate_robot_health.assert_not_called()
+    if age_ms <= 500:
+        for arm in c.config.arms:
+            assert c._latest[f'{arm.name}.robot_state'][0] == stamp
+            assert c._latest[f'{arm.name}.measured_joint'][0] == stamp
+    assert c._faulted and not c._teleop_enabled
+    assert client.method_calls == [call.states()]
 
 
 def record_command(c, action, state, values, images):
@@ -296,6 +344,73 @@ def test_standby_never_publishes_unowned_commands(collector, monkeypatch):
     assert c.coordinator.owner is None and not c._faulted
 
 
+@pytest.mark.parametrize('try_save', [False, True])
+def test_zero_frame_fault_retains_journal_and_web_can_explicitly_discard(collector, try_save):
+    from vla.web.backends import BaseBackend
+    from vla.web.config import SessionConfig
+    c = collector
+    c.enable_teleop(); c.start_episode()
+    path = c._journal.path
+    assert c._recording and not c._states
+    c._latch_fault(RuntimeError('injected stale observation before first frame'))
+    assert not c._recording and c.has_uncommitted_episode and path.exists()
+    backend = BaseBackend.__new__(BaseBackend)
+    backend.collector = c
+    backend.config = SessionConfig()
+    backend.enabled = backend._policy_armed = False
+    backend.mode, backend.record_started = 'vla', None
+    backend.arms = [a.name for a in c.config.arms]
+    status = backend.collector_status()
+    assert status['unsaved_episode'] and not status['recording'] and status['frames'] == 0
+    if try_save:
+        c._subtask_index = len(c.config.subtasks)-1
+        try:
+            backend.collector_command('save', {'outcome':'success'})
+        except RuntimeError as error:
+            # The background rejection may finish before the command returns.
+            assert 'episode not saved' in str(error)
+        c._save_worker.join(30)
+        assert path.exists() and c.has_uncommitted_episode and c._storage_blocked
+        assert c.writer.episode_count == 0
+    backend.collector_command('discard', {})
+    c._save_worker.join(30)
+    assert not c._saving and not path.exists() and not c.has_uncommitted_episode
+    assert not backend.collector_status()['unsaved_episode']
+    assert c._faulted and not c._teleop_enabled and c.coordinator.owner is None
+    assert c.writer.episode_count == 0
+
+
+def test_retained_zero_frame_journal_blocks_new_episode_before_online_begin(collector, monkeypatch):
+    c = collector
+    c.enable_teleop(); c.start_episode()
+    journal = c._journal
+    c._recording = False  # Retained after a stop, even when no rows were accepted.
+    with monkeypatch.context() as m:
+        m.setattr(c, '_preflight_problems', lambda:pytest.fail('preflight before pending data check'))
+        m.setattr(c, 'require_online', True)
+        m.setattr(c, 'policy_client', SimpleNamespace(begin_episode=lambda:pytest.fail('new online identity created')))
+        with pytest.raises(RuntimeError, match='previous episode retained'):
+            c.start_episode()
+    assert c._journal is journal and journal.path.exists()
+
+
+def test_orphan_staging_reports_path_without_changing_data_or_beginning_online(collector, monkeypatch):
+    c = collector
+    orphan = c.config.dataset_root/'staging'/'orphan'
+    orphan.mkdir(parents=True)
+    original = b'{"schema_version":5}'
+    (orphan/'episode.json').write_bytes(original)
+    with monkeypatch.context() as m:
+        m.setattr(c, '_preflight_problems', lambda:pytest.fail('preflight before pending data check'))
+        m.setattr(c, 'require_online', True)
+        m.setattr(c, 'policy_client', SimpleNamespace(begin_episode=lambda:pytest.fail('new online identity created')))
+        with pytest.raises(RuntimeError, match='unpublished staging data exists at') as error:
+            c.start_episode()
+    assert str(orphan) in str(error.value)
+    assert (orphan/'episode.json').read_bytes() == original
+    assert c._journal is None and not c._recording
+
+
 def test_demo_save_preserves_stage_and_is_cache_demonstration(collector, monkeypatch):
     from datasets import Dataset
     c = collector
@@ -326,6 +441,9 @@ def test_demo_save_preserves_stage_and_is_cache_demonstration(collector, monkeyp
     assert info['recording_contract']['backend'] == 'franky_cartesian_velocity'
     assert info['franky_binding_diagnostics']['libfranka'] == '0.21.2'
     assert info['recording_contract']['control_fingerprint']
+    assert info['human_input']['version'] == 11
+    assert info['human_input']['release_parameters']['timeout_s'] == 2.
+    assert info['human_input']['release_parameters']['min_duration_s'] == .2
     assert np.stack(frame['diagnostic.actual_tcp']).shape == (12, 14)
     assert np.stack(frame['diagnostic.target_joint']).shape == (12, 14)
     assert frame["complementary_info.subtask_index"].tolist() == [0] * 6 + [1] * 6
@@ -480,7 +598,7 @@ def test_native_labels_are_accepted_commands_for_franky_contract(collector,ros_m
         cameras=tuple(cam for cam in base.config.cameras if arms==2 or cam.name!='right_wrist'),
         dataset_root=base.config.dataset_root.parent/f'{space}-{arms}',subtasks=())
     c=ros_module.RolloutCollector(config,demonstration=True)
-    c._latest=dict(base._latest)
+    c._latest={key:(time.monotonic_ns(), value) for key, (_,value) in base._latest.items()}
     values={key:v[1] for key,v in c._latest.items()}
     images={cam.feature_key:np.zeros((224,224,3),np.uint8) for cam in config.cameras}
     monkeypatch.setattr(c,'_snapshot',lambda **kwargs:(values,images))
@@ -673,9 +791,53 @@ def clocked_control(c, module, monkeypatch):
     monkeypatch.setattr(c, '_raw_state', lambda *a:raw.copy())
     def tick():
         c._latest = {key:(clock[0], value) for key, (_,value) in c._latest.items()}
+        for key, (_, value) in c._latest.items():
+            if key.endswith('.robot_state'):
+                value.robot_time_s = clock[0]/1e9
         c._tick()
         clock[0] += 33_333_334
     return clock, tick
+
+
+@pytest.mark.parametrize('phase_ms', [0, 5, 15, 30, 32])
+def test_control_wakeups_do_not_alias_serial_slots_under_small_scheduler_jitter(
+        collector, ros_module, monkeypatch, phase_ms):
+    from vla.control.serial_execution import SerialExecutionContract, SerialExecutor
+    from vla.control.execution import ExecutionState, PlanResponse
+
+    c = collector
+    clock, _ = clocked_control(c, ros_module, monkeypatch)
+    epoch = clock[0]
+    c._recording = False  # Unrecorded positioning, no storage throughput in this clock test.
+    pose = np.array([.4, 0, .3, 1, 0, 0, 0, 1, 0, .5])
+    ex = SerialExecutor(SerialExecutionContract(c.config.action_spec.__class__(), 'c', 'k', 't'),
+                        session_id='clock-test', model_version='m', epoch_ns=epoch)
+    ex.enable(pose, episode_id='e')
+    req = ex.request(slot=0, anchor=pose, observation_id=0, observed_at_ns=epoch, policy='vla')
+    actions = np.tile(pose, (50, 1))
+    ex.install(PlanResponse(req, actions, ('vla',)*50, (0,)*50, actions), epoch, start_slot=0)
+    accepted = []
+    publish = c._publish_gamepad
+
+    def observe_slot(values, dt):
+        publish(values, dt)
+        record = ex.advance(c._slot_id, clock[0])
+        assert record is not None, (phase_ms, accepted, c._slot_id, ex.state_reason)
+        accepted.append(record.slot_id)
+
+    monkeypatch.setattr(c, '_publish_gamepad', observe_slot)
+    period_ns = round(c._test_timer_period_s * 1e9)
+    jitter_ns = (0, 2_000_000, 0, 1_000_000, 3_000_000)
+    for i in range(1_350_000_000 // period_ns):
+        clock[0] = epoch + phase_ms*1_000_000 + i*period_ns + jitter_ns[i % len(jitter_ns)]
+        c._latest = {key: (clock[0], value) for key, (_, value) in c._latest.items()}
+        c._tick()
+    assert not c._faulted, c._fault_reason
+    assert accepted == list(range(len(accepted)))
+    assert 38 <= len(accepted) <= 42  # Acceptance stays at 30 Hz, not the wakeup rate.
+    assert ex.state == ExecutionState.POLICY
+    assert ex.advance(accepted[-1]+3, clock[0]+100_000_000) is None
+    assert ex.state == ExecutionState.WAITING  # A genuine gap still revokes the queue.
 
 
 def test_ack_backpressure_skips_slots_without_catching_up_or_losing_pending_row(collector,ros_module,monkeypatch):
@@ -844,6 +1006,9 @@ def test_gamepad_release_and_packet_gap_keep_absolute_action_and_fault_latched(c
         for key, (stamp, value) in list(c._latest.items()):
             if refresh_joy or not key.endswith('.gamepad'):
                 c._latest[key] = (clock[0], value)
+        for key, (_, value) in c._latest.items():
+            if key.endswith('.robot_state'):
+                value.robot_time_s = clock[0]/1e9
         c._tick()
         clock[0] += 33_333_334
     joy = c._latest['left.gamepad'][1]
@@ -873,6 +1038,50 @@ def test_gamepad_release_and_packet_gap_keep_absolute_action_and_fault_latched(c
     assert c.coordinator.owner is None
     tick(refresh_joy=True)
     assert c._faulted and c.coordinator.owner is None  # Reconnection cannot restore motion.
+
+
+@pytest.mark.parametrize('failure', ['cached_sample', 'pending_ack', 'regressing_sample'])
+def test_release_faults_revoke_generation_and_late_ack_cannot_resume(collector, ros_module, monkeypatch, failure):
+    c = collector
+    clock, tick = clocked_control(c, ros_module, monkeypatch)
+    joy = c._latest['left.gamepad'][1]
+    joy.axes[1] = 1.
+    tick(); tick()
+    joy.axes[1] = 0.
+    tick()
+    target = c._gamepad_targets['left']
+    assert target.release.braking[0]
+    generation = c.coordinator.generation
+    pending = c._pending_submission
+    receipt = c._test_receipts[pending['request_id']]
+    # Advance a simulated two seconds without saturating the real background
+    # disk writer by generating 30 Hz audit traffic as fast as Python can run.
+    c._recording = False
+    c._pending_submission['frame'] = None
+    monkeypatch.setattr(c, '_journal_event', lambda _:None)
+    if failure == 'pending_ack':
+        # The slot must enforce a release deadline even before it can integrate
+        # another target. A later ACK must not install anything in the new epoch.
+        c._test_receipts.pop(pending['request_id'])
+        target.release.started[0] = clock[0]/1e9-2.
+        tick()
+    else:
+        robot = c._latest['left.robot_state'][1]
+        stamp = robot.robot_time_s
+        for _ in range(65):
+            for key, (_, value) in c._latest.items():
+                c._latest[key] = (clock[0], value)
+            robot.robot_time_s = stamp if failure == 'cached_sample' else stamp-1.
+            c._tick()
+            clock[0] += 33_333_334
+            if c._faulted:
+                break
+    assert c._faulted and c.coordinator.owner is None
+    assert c.coordinator.generation > generation
+    assert not target.release.braking.any() and not c._gamepad_targets
+    c._test_receipts[pending['request_id']] = receipt
+    tick()
+    assert c._faulted and c.coordinator.owner is None
 
 
 def test_saved_pose_reference_freezes_on_ack_and_is_revoked_at_boundaries(collector, ros_module, monkeypatch):
@@ -916,14 +1125,12 @@ def test_saved_pose_reference_freezes_on_ack_and_is_revoked_at_boundaries(collec
     assert c._faulted and c.coordinator.mode=='fault'
 
 
-@pytest.mark.parametrize('change', ['workspace', 'bounds', 'speed'])
+@pytest.mark.parametrize('change', ['bounds', 'speed'])
 def test_resume_rejects_workspace_or_control_change_without_rewriting(collector,ros_module,change):
     c=collector
     paths=[c.config.dataset_root/'meta/info.json',c.config.dataset_root/'meta/vla_metadata.json']
     before=[p.read_bytes() for p in paths]
-    if change=='workspace':
-        changed=replace(c.config,workspace_limits_enabled=False)
-    elif change=='bounds':
+    if change=='bounds':
         changed=replace(c.config,arms=tuple(replace(a,workspace_min=(-.1,-.5,.01)) for a in c.config.arms))
     else:
         changed=replace(c.config,max_linear_velocity=.01)

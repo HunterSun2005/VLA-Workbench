@@ -36,14 +36,14 @@ class ControlCoordinator:
     """
     def __init__(self, spec, servos, bounds, publish, reset, *, state_timeout_s=.5,
                  command_timeout_s=.5, reset_timeout_s=1., clock=time.monotonic_ns,
-                 backend='ros2', workspace_limits_enabled=True):
+                 backend='ros2', workspace_limits_enabled=False):
         if spec.representation != 'absolute':
             raise ValueError('execution accepts only absolute targets')
         if backend == 'franky' and spec.space != 'tcp':
             raise ValueError('Franky Cartesian impedance requires TCP actions')
         self.spec, self.servos, self.bounds = spec, servos or {}, bounds
-        if type(workspace_limits_enabled) is not bool:
-            raise ValueError('workspace_limits_enabled must be boolean')
+        if workspace_limits_enabled is not False:
+            raise ValueError('TCP workspace limits have been removed; workspace_limits_enabled must be false')
         self.workspace_limits_enabled = workspace_limits_enabled
         self.backend = backend
         self.publish, self.request_reset, self.clock = publish, reset, clock
@@ -161,8 +161,6 @@ class ControlCoordinator:
                 model = self.servos[arm].model
                 target[off:off+7] = np.clip(target[off:off+7], model.lower_limits, model.upper_limits)
             else:
-                if self.workspace_limits_enabled:
-                    target[off:off+3] = np.clip(target[off:off+3], *self.bounds[arm])
                 target[off+3:off+9] = matrix_to_rot6d(rot6d_to_matrix(target[off+3:off+9]))
         return target
 

@@ -108,6 +108,7 @@ def test_actual_cross_repository_client_and_service(server_module):
             client.set_control_mode('vla')
             client.submit(plan=req, **observation())
             candidate = wait_for(client.poll_latest)
+            assert req.observed_at_ns <= candidate.received_at_ns <= time.monotonic_ns()
             assert ex.install(candidate, time.monotonic_ns(), start_slot=1)
             np.testing.assert_array_equal(candidate.actions, model.infer(
                 {'observation.state': observation()['state'], 'observation.anchor': req.anchor}, 'Pick and place.'))

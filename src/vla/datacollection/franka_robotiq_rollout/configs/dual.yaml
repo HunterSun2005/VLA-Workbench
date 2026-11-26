@@ -12,7 +12,7 @@ dataset:
 transport:
   socket_path: /tmp/vla_franka_dual.sock
 control:
-  workspace_limits_enabled: true
+  workspace_limits_enabled: false
   velocity_control:
     max_linear_speed: 0.05
     max_angular_speed: 0.2

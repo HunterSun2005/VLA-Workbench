@@ -50,7 +50,7 @@ from vla.datacollection.start_teleop.franka_kinematics import (
 )
 from .config import ArmConfig, RolloutConfig
 from .gamepad import decode_gamepad_values, gripper_direction_transition
-from .gamepad import gamepad_is_neutral, gamepad_has_motion, GamepadPoseReturn
+from .gamepad import gamepad_is_neutral, gamepad_has_motion, GamepadPoseReturn, GamepadRelease, RELEASE_PARAMETERS
 from .policy_client import AsyncPolicyClient, PolicyResult
 from .safety import (
     FrankaHealthMonitor,
@@ -156,6 +156,7 @@ class GamepadTarget:
     pose_return: GamepadPoseReturn | None = None
     shortcut_status: str = ''
     hardware_to_logical_rotation: np.ndarray = field(default_factory=lambda: np.eye(3))
+    release: GamepadRelease = field(default_factory=GamepadRelease)
 
 
 @dataclass(frozen=True)
@@ -395,16 +396,19 @@ class RolloutCollector(Node):
             'max_linear_velocity', 'max_angular_velocity', 'gamepad_max_angular_speed',
             'gamepad_xy_speed', 'gamepad_z_speed', 'gamepad_joint7_speed', 'gamepad_gripper_speed',
             'policy_gripper_speed', 'workspace_limits_enabled')}
+        metadata['human_input'] = {'version': 11, 'shortcut_orientation': 'logical_yaw_zero_downward_z', 'gamepads': {a.name: asdict(a.gamepad) for a in config.arms},
+                            'fast_translation_multiplier': 5.,
+                            'fast_right_stick_multiplier': 2.,
+                            'rotation_inputs': 'calibrated_hardware_tool_in_logical_tcp',
+                            'release': 'frontend_measured_channel_until_settled_then_absolute_hold',
+                            'release_parameters': RELEASE_PARAMETERS,
+                            'hold_timeout_s': config.gamepad_hold_timeout_s,
+                            'joy_timeout_s': config.gamepad_joy_timeout_s,
+                            'gello_sample_timeout_s': config.gello_sample_timeout_s}
         metadata['recording_contract']['control_fingerprint'] = fingerprint({
             'python': control_parameters, 'cpp': controller_parameters,
             'cartesian_tracking': 'source_independent_absolute_30hz_velocity_100hz_ack_v3',
-            'human_input': {'version': 9, 'shortcut_orientation': 'logical_yaw_zero_downward_z', 'gamepads': {a.name: asdict(a.gamepad) for a in config.arms},
-                            'fast_translation_multiplier': 5.,
-                            'rotation_inputs': 'calibrated_hardware_tool_in_logical_tcp',
-                            'release': 'frontend_measured_channel_once_then_absolute_hold',
-                            'hold_timeout_s': config.gamepad_hold_timeout_s,
-                            'joy_timeout_s': config.gamepad_joy_timeout_s,
-                            'gello_sample_timeout_s': config.gello_sample_timeout_s},
+            'human_input': metadata['human_input'],
             'execution': {'version': 2, 'loop': 'single_30hz', 'inference_slots': config.inference_slots, 'guard_slots': config.installation_guard_slots},
             'franky': controller_parameters,
             'binding': binding_identity if self._worker_client else None,
@@ -465,6 +469,7 @@ class RolloutCollector(Node):
         self._execution = None
         self._execution_record = None
         self._waiting_resume = False
+        self._waiting_resume_reason = None
         if self.policy_client is not None:
             model = self.policy_client.contract
             executor_type = Executor
@@ -867,6 +872,7 @@ class RolloutCollector(Node):
                                         else f'{name}.gello_joint')
                 data = {**self._input_diagnostics.get(name, {}), 'source': self.config.input_source,
                         'workspace_limits_enabled': self.config.workspace_limits_enabled,
+                        'right_stick_speed_scale': 1 + (self._speed_scale.get(name, 1.)-1)/4,
                         'shortcut_orientation': 'logical_yaw_zero_downward_z',
                         'tcp_frame': TCP_FRAME}
                 result[name] = data
@@ -896,10 +902,6 @@ class RolloutCollector(Node):
                         data['shortcut_status'] = target.shortcut_status
                         data['shortcut'] = target.pose_return.label if target.pose_return else None
                         p, r = target.position, target.rotation
-                        velocity = decoded.linear_velocity_base
-                        data['workspace_clipped'] = [bool(self.config.workspace_limits_enabled and ((p[i] <= arm.workspace_min[i] and velocity[i] < 0)
-                                                         or (p[i] >= arm.workspace_max[i] and velocity[i] > 0)))
-                                                     for i in range(3)]
                     elif getattr(self, '_input_action', None) is not None:
                         index = list(self.config.arms).index(arm) * self.config.action_spec.width
                         block = self._input_action[index:index+self.config.action_spec.width]
@@ -1056,6 +1058,8 @@ class RolloutCollector(Node):
         self._pose_action = None
         self._pose_reference = None
         for target in self._gamepad_targets.values():
+            target.release.clear()
+            target.linear_active = target.angular_active = (False, False, False)
             if target.pose_return is not None:
                 target.pose_return = None
                 target.shortcut_status = 'cancelled: control boundary'
@@ -1070,6 +1074,7 @@ class RolloutCollector(Node):
                 self._execution.enable(self.coordinator.project(self._raw_anchor(raw)),
                                      episode_id=str(self.writer.next_episode_index()))
                 self._waiting_resume = False
+                self._waiting_resume_reason = None
             else:
                 state = ExecutionState(execution_state) if execution_state else (
                     ExecutionState.FAULT if fault else ExecutionState.HUMAN if owner else ExecutionState.STANDBY)
@@ -1329,10 +1334,14 @@ class RolloutCollector(Node):
         record = self._execution.advance(self._slot_id, time.monotonic_ns())
         if record is None:
             if self._execution.state.value == 'waiting_resume' and not self._waiting_resume:
-                self._control_boundary(reason='policy queue exhausted; manual resume required',
+                reason = self._execution.state_reason or 'policy queue exhausted'
+                self._control_boundary(reason=f'{reason}; manual resume required',
                                        execution_state='waiting_resume')
                 self._waiting_resume = True
+                self._waiting_resume_reason = reason
                 self._stop_grippers_at_measured_position()
+                print(f'POLICY PAUSED; motion disabled; manual resume required: {reason}',
+                      file=sys.stderr, flush=True)
             return False
         self._execution_record = record
         accepted = self.coordinator.accept(record.accepted, source='policy',
@@ -1398,6 +1407,7 @@ class RolloutCollector(Node):
                                  torque=SimpleNamespace(**dict(zip(('x', 'y', 'z'), (state.torque + (0, 0, 0))[:3]))))
         return SimpleNamespace(
             o_t_ee=pose, o_t_ee_d=desired, f_t_ee=flange,
+            robot_time_s=state.robot_time_s,
             hardware_f_t_ee=self._worker_pose(state.hardware_flange_to_tcp_pose or state.flange_to_tcp_pose),
             o_f_ext_hat_k=SimpleNamespace(wrench=wrench),
             measured_joint_state=joints, tau_ext_hat_filtered=external,
@@ -1405,6 +1415,18 @@ class RolloutCollector(Node):
             ROBOT_MODE_IDLE=1, ROBOT_MODE_MOVE=2,
             control_command_success_rate=1.0,
         )
+
+    def _cache_worker_state(self, arm, state):
+        # Copy only observations, keeping the worker's original timestamp.
+        # Preflight may run between ROS slots and must see the latest IPC cache
+        # without processing lifecycle ACKs or submitting a control target.
+        if (not state.state_valid or state.fault
+                or not 0 <= time.monotonic_ns() - state.observed_at_ns
+                <= self.config.gamepad_state_timeout_s * 1e9):
+            raise RuntimeError(state.fault or f"Franky worker state for {arm} is invalid")
+        message = self._worker_robot_state(state)
+        self._store_latest(f'{arm}.robot_state', message, state.observed_at_ns)
+        self._store_latest(f'{arm}.measured_joint', message.measured_joint_state, state.observed_at_ns)
 
     def _poll_worker_states(self):
         if self._worker_client is None:
@@ -1458,14 +1480,11 @@ class RolloutCollector(Node):
             and lifecycle.get('generation') == self.coordinator.generation
             and not lifecycle.get('fault') and not lifecycle.get('error'))
         for arm, state in self._worker_client.states().items():
-            if (not state.state_valid or not 0 <= time.monotonic_ns() - state.observed_at_ns
-                    <= self.config.gamepad_state_timeout_s * 1e9):
-                self._latch_fault(RuntimeError(f"Franky worker state for {arm} is invalid"))
+            try:
+                self._cache_worker_state(arm, state)
+            except RuntimeError as error:
+                self._latch_fault(error)
                 continue
-            message = self._worker_robot_state(state)
-            joint = message.measured_joint_state
-            self._store_latest(f'{arm}.robot_state', message, state.observed_at_ns)
-            self._store_latest(f'{arm}.measured_joint', joint, state.observed_at_ns)
             if (lifecycle_ready and state.generation == self.coordinator.generation and not state.fault
                     and (self.coordinator._pending_owner is None or state.servo_ready)):
                 try:
@@ -1477,8 +1496,6 @@ class RolloutCollector(Node):
                     )
                 except (RuntimeError, ValueError) as error:
                     self._latch_fault(error)
-            if state.fault:
-                self._latch_fault(RuntimeError(state.fault))
 
     def _gripper_goal_result(self, arm_name: str, future: object) -> None:
         self._gripper_goal_futures.discard(future)
@@ -1545,6 +1562,7 @@ class RolloutCollector(Node):
             if target.pose_return is not None:
                 target.position, target.rotation = measured_position.copy(), measured_rotation.copy()
                 target.linear_active = target.angular_active = (False, False, False)
+                target.release.clear()
                 target.pose_return = None
                 target.shortcut_status = 'cancelled: input hold' if input_hold else 'cancelled: manual input'
             elif requested:
@@ -1556,11 +1574,10 @@ class RolloutCollector(Node):
             fixed_upright = np.diag([1., -1., -1.])
             rotation = (reset_tcp_heading(measured_rotation, fixed_upright)
                         if requested == 'heading' else fixed_upright)
-            if self.config.workspace_limits_enabled and (np.any(position < arm.workspace_min) or np.any(position > arm.workspace_max)):
-                raise RuntimeError(f'Gamepad {requested} target is outside {arm.name} workspace')
             target.pose_return = GamepadPoseReturn(requested, position, rotation, now+30.)
             target.position, target.rotation = measured_position.copy(), measured_rotation.copy()
             target.linear_active = target.angular_active = (False, False, False)
+            target.release.clear()
         if target.pose_return is None:
             return False
         goal = target.pose_return
@@ -1581,7 +1598,6 @@ class RolloutCollector(Node):
                 return False
             gamepad_message = values[f"{arm.name}.gamepad"]
             from .gamepad import decode_cartesian_gamepad_values, gamepad_rotation_basis, release_rotation_reference
-            decoded = decode_cartesian_gamepad_values(gamepad_message.axes, gamepad_message.buttons, arm.gamepad, self.config)
             measured_position, measured_rotation = schema.pose_from_stamped(values[f"{arm.name}.robot_state"].o_t_ee)
             now_ns = time.monotonic_ns()
             now = now_ns/1e9
@@ -1593,6 +1609,7 @@ class RolloutCollector(Node):
                 # Resume from fresh feedback, never integrate an input gap.
                 target.position, target.rotation = measured_position.copy(), measured_rotation.copy()
                 target.linear_active = target.angular_active = (False, False, False)
+                target.release.clear()
             buttons = list(gamepad_message.buttons)
             old = self._previous_buttons.get(arm.name, [0]*len(buttons))
             edge = lambda index: not input_hold and len(buttons) > index and buttons[index] and not (len(old) > index and old[index])
@@ -1608,6 +1625,9 @@ class RolloutCollector(Node):
             if not input_hold:
                 scale += np.clip(goal-scale, -4*dt/.3, 4*dt/.3)
             self._speed_scale[arm.name] = float(scale)
+            decoded = decode_cartesian_gamepad_values(
+                gamepad_message.axes, gamepad_message.buttons, arm.gamepad, self.config,
+                tilt_scale=1 + (scale-1)/4)
             velocity = _clamp_norm(decoded.linear_velocity_base * scale, self.config.max_linear_velocity)
             angular = _clamp_norm(target.hardware_to_logical_rotation @ decoded.angular_velocity_tool,
                                   self.config.max_angular_velocity)
@@ -1616,20 +1636,24 @@ class RolloutCollector(Node):
                 if not target.input_hold:
                     target.position, target.rotation = measured_position.copy(), measured_rotation.copy()
                     target.linear_active = target.angular_active = (False, False, False)
+                    target.release.clear()
             target.input_hold = input_hold
             if not shortcut:
                 basis = target.hardware_to_logical_rotation @ gamepad_rotation_basis(arm.gamepad)
                 linear_active = np.abs(velocity) > 1e-9
                 angular_active = np.abs(basis.T @ angular) > 1e-9
-                released = np.asarray(target.linear_active) & ~linear_active
-                target.position[released] = measured_position[released]
+                follow_linear, follow_angular = target.release.update(
+                    np.r_[linear_active, angular_active],
+                    np.r_[np.asarray(target.linear_active) & ~linear_active,
+                          np.asarray(target.angular_active) & ~angular_active],
+                    measured_position, measured_rotation, basis,
+                    values[f'{arm.name}.robot_state'].robot_time_s, now)
+                target.position[follow_linear] = measured_position[follow_linear]
                 target.rotation = release_rotation_reference(
                     measured_rotation, target.rotation, basis,
-                    np.asarray(target.angular_active) & ~angular_active)
+                    follow_angular)
                 target.linear_active, target.angular_active = tuple(linear_active), tuple(angular_active)
                 target.position = target.position + velocity*dt
-                if self.config.workspace_limits_enabled:
-                    target.position = np.clip(target.position, arm.workspace_min, arm.workspace_max)
                 from vla.control.geometry import integrate_human_tool_rotation
                 target.rotation, _ = integrate_human_tool_rotation(
                     measured_rotation, target.rotation, angular, joint7_velocity=0,
@@ -1769,8 +1793,11 @@ class RolloutCollector(Node):
             if self._worker_client is not None:
                 if self._worker_client.fault:
                     raise RuntimeError(f"Franky worker fault: {self._worker_client.fault}")
-                if set(self._worker_client.states()) != {a.name for a in self.config.arms}:
+                states = self._worker_client.states()
+                if set(states) != {a.name for a in self.config.arms}:
                     raise RuntimeError("Franky worker state is not ready")
+                for arm, state in states.items():
+                    self._cache_worker_state(arm, state)
             if self.policy_client is not None:
                 self.policy_client.raise_if_failed()
             snapshot = self._snapshot(raise_on_invalid=True)
@@ -1841,6 +1868,8 @@ class RolloutCollector(Node):
                     return
                 if self._faulted or self._saving or self._storage_blocked or self._pending_velocity_control is not None:
                     return
+                for target in self._gamepad_targets.values():
+                    target.release.check_deadline(now_ns/1e9)
                 if self._pending_submission is not None or not self._worker_client.target_available:
                     if self.coordinator.mode == 'active':
                         self._record_gap('target acknowledgement pending')
@@ -2039,25 +2068,46 @@ class RolloutCollector(Node):
         self._online_worker = threading.Thread(target=process, name='ros-online-save', daemon=True)
         self._online_worker.start()
 
+    @property
+    def has_uncommitted_episode(self) -> bool:
+        # A fault may precede the first accepted frame. The journal still owns
+        # the episode and must remain reachable through explicit save/discard.
+        return bool(self._recording or self._journal is not None or self._states)
+
     def start_episode(self) -> None:
         with self._lock:
+            self._start_rejection_reason = None
             if self._recording or self._processing or self._saving or self._storage_blocked:
+                self._start_rejection_reason = 'collector is recording, processing, saving or storage-blocked'
                 return
             if self._faulted:
+                self._start_rejection_reason = f'collector is fault-latched ({self._fault_reason}); recover first'
                 print(
                     f"Cannot start rollout: collector is fault-latched ({self._fault_reason})",
                     flush=True,
                 )
                 return
+            if self.has_uncommitted_episode:
+                raise RuntimeError('previous episode retained; save or explicitly discard it before a new episode')
+            staging = self.config.dataset_root/'staging'
+            unpublished = sorted(p.name for p in staging.iterdir()
+                                 if p.is_dir() and not (p/'published.json').is_file()) if staging.exists() else []
+            if unpublished:
+                raise RuntimeError(
+                    f'unpublished staging data exists at {staging / unpublished[0]}; '
+                    'stop collection and recover or explicitly discard it, or select a new output directory')
             if (self.demonstration or self._intervention) and (not self._teleop_enabled or not self._neutral_gamepads()):
+                self._start_rejection_reason = 'enable teleoperation and release controls before recording'
                 print("请先启用遥操作；开始录制前松开双侧手柄输入。", flush=True)
                 return
             problems = self._preflight_problems()
             if problems:
+                self._start_rejection_reason = '; '.join(problems)
                 print(f"Rollout start blocked: {'; '.join(problems)}", flush=True)
                 return
             snapshot = self._snapshot(raise_on_invalid=True)
             if snapshot is None:
+                self._start_rejection_reason = 'synchronized robot state is unavailable'
                 print("Rollout start blocked: synchronized robot state is unavailable", flush=True)
                 return
             if self.require_online:
@@ -2066,9 +2116,6 @@ class RolloutCollector(Node):
             episode_index = self.writer.next_episode_index()
             import uuid
             from vla.datacollection.episode_journal import EpisodeJournal
-            staging = self.config.dataset_root/'staging'
-            if staging.exists() and any(not (p/'published.json').is_file() for p in staging.iterdir() if p.is_dir()):
-                raise RuntimeError('unpublished staging data exists; recover or explicitly discard it before a new episode')
             self._journal_id = uuid.uuid4().hex
             self._journal = EpisodeJournal(staging/self._journal_id,
                 identity={**self._episode_identity, 'journal_id': self._journal_id, 'episode_index': episode_index,
@@ -2133,7 +2180,7 @@ class RolloutCollector(Node):
             if self._recording and not discard and not self._at_boundary:
                 self._pending_finish = outcome
                 return
-            if not self._recording and not self._storage_blocked and not self._states:
+            if not self.has_uncommitted_episode and not self._storage_blocked:
                 return
             self._recording = False
             self._teleop_enabled = False

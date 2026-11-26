@@ -229,6 +229,34 @@ def test_stale_or_active_input_blocks_initial_manual_enable(deployment):
         assert not c._recording and c._journal is None
 
 
+def test_record_reports_preflight_rejection_reason(deployment, monkeypatch):
+    b, c, *_ = deployment
+    command(b, 'enable')
+    monkeypatch.setattr(c, '_preflight_problems', lambda: ['rollout input is stale: left.robot_state, age=101.0ms'])
+    with pytest.raises(RuntimeError, match=r'start rejected: rollout input is stale: left.robot_state'):
+        command(b, 'record')
+    assert not c._recording and c._journal is None
+    assert b._policy_armed
+
+
+@pytest.mark.parametrize('reason', ['RTC inference deadline expired', 'missed RTC execution slot'])
+def test_policy_pause_preserves_actual_reason_in_web_and_log(deployment, monkeypatch, capsys, reason):
+    b, c, *_ = deployment
+    command(b, 'enable')
+    command(b, 'record')
+    c.coordinator.mode = 'active'
+    monkeypatch.setattr(c, '_stop_grippers_at_measured_position', Mock())
+    c._execution.invalidate(ExecutionState.WAITING, reason)
+    assert not c._publish_policy({}, 1 / 30)
+    assert c._waiting_resume and c._waiting_resume_reason == reason
+    assert c.coordinator.owner is None
+    assert b.collector_status()['error'] == reason
+    assert reason in capsys.readouterr().err
+    command(b, 'enable')
+    assert not c._waiting_resume and c._waiting_resume_reason is None
+    assert b.collector_status()['error'] is None
+
+
 def test_pause_retains_choice_but_selection_does_not_enable(deployment):
     b, c, *_ = deployment
     command(b, 'mode', mode='human')

@@ -154,11 +154,13 @@ class BaseBackend:
             c.start_episode()
             active = c.episode_active if hasattr(c,'episode_active') else c._recording
             if not active:
-                raise RuntimeError('start rejected; see session log')
+                reason = getattr(c, '_start_rejection_reason', None) or 'see session log'
+                raise RuntimeError(f'start rejected: {reason}')
             self._policy_armed = False
             self.record_started = time.monotonic()
         elif op in ('save','discard'):
-            if not active and not getattr(c, '_storage_blocked', False) and not getattr(c, '_states', []):
+            if (not active and not getattr(c, 'has_uncommitted_episode', False)
+                    and not getattr(c, '_storage_blocked', False) and not getattr(c, '_states', [])):
                 raise RuntimeError('no active episode')
             if op == 'save' and self.config.workflow == 'collect' and args.get('outcome','success') != 'success':
                 raise ValueError('this demonstration backend supports success/save or discard')
@@ -245,6 +247,8 @@ class BaseBackend:
         setup = getattr(c,'_setup_teleop',None)
         controls = getattr(c,'_gamepad_controls',None) if active else setup
         arms = {a: {'source': actual, 'speed': 'fast' if getattr(c, '_high_speed', {}).get(a, False) else 'normal', 'speed_scale': getattr(c, '_speed_scale', {}).get(a, 1.)} for a in self.arms}
+        for values in arms.values():
+            values['right_stick_speed_scale'] = 1 + (values['speed_scale']-1)/4
         if controls is not None:
             arms['left'].update(speed='fast' if controls.high_speed else 'normal', speed_scale=controls.speed_scale,
                                 transition=abs(controls.speed_scale-(controls.config.speed_modes.high_multiplier if controls.high_speed else 1.))>1e-6)
@@ -262,8 +266,12 @@ class BaseBackend:
                 'state': 'storage_blocked' if getattr(c, '_storage_blocked', False) else
                 'waiting_resume' if getattr(c, '_waiting_resume', False) else 'fault' if c._faulted else 'recording' if active else 'active' if self.enabled else 'standby',
                 'enabled': self.enabled, 'recording': active, 'episode': c.writer.episode_count,
+                'unsaved_episode': bool(active or getattr(c, 'has_uncommitted_episode', False)
+                                        or getattr(c, '_storage_blocked', False) or getattr(c, '_states', [])),
                 'frames': len(c._states), 'elapsed_s': time.monotonic()-self.record_started if active and self.record_started else 0.,
-                'saving': bool(getattr(c,'_saving', False) or getattr(c,'_processing',False) or getattr(c,'_pending_finish',None) is not None), 'error': c._fault_reason,
+                'saving': bool(getattr(c,'_saving', False) or getattr(c,'_processing',False) or getattr(c,'_pending_finish',None) is not None),
+                'error': c._fault_reason or (getattr(c, '_waiting_resume_reason', None)
+                                           if getattr(c, '_waiting_resume', False) else None),
                 'requested_mode': 'human' if manual and self.config.workflow == 'deploy' else self.mode, 'actual_source': actual,
                 'switch_pending': not manual and bool(getattr(c,'_web_switch_pending',False)),
                 'probability': getattr(result,'probability',None),
@@ -370,11 +378,9 @@ class ROSBackend(BaseBackend):
         import json
         worker_python = self._worker_python
         worker_config = self.directory / 'franky-worker.json'
-        bounds = {arm.name: [list(arm.workspace_min), list(arm.workspace_max)] for arm in rollout.arms}
         arms = {
             arm: {
                 'robot_ip': self.hardware[f'{arm.upper()}_ROBOT_IP'],
-                'workspace_bounds': bounds[arm] if rollout.workspace_limits_enabled else None,
             }
             for arm in self.arms
         }
@@ -408,6 +414,7 @@ class ROSBackend(BaseBackend):
                 try:
                     import uuid
                     from vla.control.franky.ipc import WorkerState
+                    from vla.control.franky.worker import FrankyWorker
                     from vla.core.franky_runtime import semantic_binding
                     message = {'kind': 'health', 'session_id': self.directory.name,
                                'generation': -1, 'request_id': uuid.uuid4().hex}
@@ -419,7 +426,7 @@ class ROSBackend(BaseBackend):
                             and set(states) == set(self.arms)
                             and all(v.state_valid and not v.fault for v in states.values())
                             and semantic_binding(response.get('binding_fingerprint', {})) == semantic_binding(self._worker_binding)
-                            and response.get('implementation_version') == 9
+                            and response.get('implementation_version') == FrankyWorker.IMPLEMENTATION_VERSION
                             and response.get('velocity_control') == rollout.franky_velocity_control):
                         client.request_now(message)
                         client._session_id = self.directory.name

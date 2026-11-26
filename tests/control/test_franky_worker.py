@@ -34,7 +34,7 @@ class _FakeWorker:
                 'applied_at_ns': time.monotonic_ns(),
                 'references': {name: value['pose'] for name, value in message.get('arms', {}).items()},
                 'request_status': 'applied', 'states': [{
-            'arm': 'left', 'observed_at_ns': 1,
+            'arm': 'left', 'observed_at_ns': 1, 'robot_time_s': .01,
             'tcp_pose': [0, 0, 0, 0, 0, 0, 1],
             'joints': [0] * 7, 'joint_velocity': [0] * 7,
         }]}
@@ -66,6 +66,63 @@ def test_worker_ipc_client_receives_state(tmp_path):
     server.close()
     thread.join(timeout=1)
     assert any(item['kind'] == 'target' for item in fake.requests)
+
+
+@pytest.mark.parametrize('stamp', [None, True, -1, float('nan'), float('inf')])
+def test_ipc_requires_native_robot_sample_clock(stamp):
+    from vla.control.franky.ipc import WorkerState
+    packet = _FakeWorker().snapshot()['states'][0]
+    packet['robot_time_s'] = stamp
+    with pytest.raises(ValueError, match='robot_time_s'):
+        WorkerState.from_dict(packet)
+    packet.pop('robot_time_s')
+    with pytest.raises(ValueError, match='robot_time_s'):
+        WorkerState.from_dict(packet)
+
+
+def test_idle_health_keeps_observations_fresh_between_control_slots():
+    """Virtual transport + ROS clocks reproduce idle inference without sleeps."""
+    from collections import deque
+    clock, observed, ages, exchanges = [0.], [0.], [], []
+    next_slot = [1 / 30]
+    closed = threading.Event()
+
+    class Condition:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def wait(self, timeout):
+            end = clock[0] + timeout
+            while next_slot[0] <= end:
+                ages.append(next_slot[0] - observed[0])
+                next_slot[0] += 1 / 30
+            clock[0] = end
+
+    client = object.__new__(FrankyWorkerClient)
+    client._condition = Condition()
+    client._lock = threading.RLock()
+    client._request_lock = threading.Lock()
+    client._queue = deque()
+    client._closed = closed
+    client._session_id, client._generation, client._epoch = 's', -1, 0
+    client._fault = None
+
+    def exchange(message):
+        assert message['kind'] == 'health'
+        exchanges.append(clock[0])
+        observed[0] = clock[0]
+        clock[0] += .005  # IPC delay does not renew the observation time.
+        if clock[0] >= 1:
+            closed.set()
+
+    client._exchange = exchange
+    client._run()
+    assert len(ages) >= 29
+    assert max(ages) < .1, f'idle feedback exceeded the 100 ms snapshot budget: {max(ages)}'
+    assert 30 <= len(exchanges) <= 100  # bounded polling, no spin loop
 
 
 def test_franky_coordinator_submits_tcp_pose_without_ik():

@@ -40,17 +40,34 @@ class LingBotRTCExecutor(Executor):
         return super().request(**kwargs)
 
     def install(self, response, now_ns):
+        self.events.append(('candidate', response, {'checked_at_ns': now_ns,
+                                                  'network_received_at_ns': response.received_at_ns}))
         expected, request = self.inflight, response.request
         # Old generations must never disturb a newer active request.
         if expected is None or request.identity != expected.identity:
             self.events.append(('reject', request.identity, 'stale_or_unrequested'))
             return False
+        reason = None
         if (request.packet()[0] != expected.packet()[0]
                 or not np.array_equal(request.prefix, expected.prefix)
-                or not np.array_equal(request.anchor, expected.anchor)
-                or self.state not in (ExecutionState.PREPARING, ExecutionState.POLICY)
-                or now_ns >= request.deadline_ns or self.last_slot >= request.replace_slot):
-            self.invalidate(reason='invalid or late RTC response')
+                or not np.array_equal(request.anchor, expected.anchor)):
+            reason = 'RTC response context mismatch'
+        elif self.state not in (ExecutionState.PREPARING, ExecutionState.POLICY):
+            reason = 'RTC response received while execution is disabled'
+        elif now_ns >= request.deadline_ns:
+            reason = (f'late RTC response: request={request.request_id}, '
+                      f'elapsed={(now_ns-request.observed_at_ns)/1e6:.1f}ms, '
+                      f'budget={(request.deadline_ns-request.observed_at_ns)/1e6:.1f}ms, '
+                      f'late_by={(now_ns-request.deadline_ns)/1e6:.1f}ms')
+            if response.received_at_ns is not None:
+                reason += (f', network_elapsed={(response.received_at_ns-request.observed_at_ns)/1e6:.1f}ms, '
+                           f'handoff={(now_ns-response.received_at_ns)/1e6:.1f}ms')
+        elif self.last_slot >= request.replace_slot:
+            reason = (f'RTC response missed installation boundary: request={request.request_id}, '
+                      f'last_slot={self.last_slot}, replace_slot={request.replace_slot}')
+        if reason:
+            self.events.append(('reject', request.identity, reason))
+            self.invalidate(reason=reason)
             return False
         try:
             d = request.start_idx

@@ -271,6 +271,20 @@ def test_lingbot_selection_preserves_pi05_fields_and_sends_remote_config(session
     assert browser.js("return document.getElementById('externalModelFields').hidden && !document.getElementById('localModelFields').hidden")
 
 
+def test_retained_fault_episode_exposes_save_discard_but_blocks_new_record(session_browser):
+    browser, _, _ = session_browser
+    phase(browser, 'configure')
+    result = browser.js("""
+      const s={state:'fault',recording:false,unsaved_episode:true,enabled:false,
+        available_commands:['record','save','discard','critical','intervention']};
+      return Object.fromEntries(s.available_commands.map(op=>[op,operationBlock(op,s)]));
+    """)
+    assert result['save'] == result['discard'] == ''
+    assert '保存或丢弃' in result['record']
+    assert result['critical'] and result['intervention']
+    assert browser.js("return operationBlock('discard',{recording:false,unsaved_episode:false,available_commands:['discard']})")
+
+
 def test_session_layout_and_lifecycle(session_browser):
     b, scenario, root = session_browser
     assert b.js('return document.querySelector("#configHost").hidden')
@@ -290,7 +304,7 @@ def test_session_layout_and_lifecycle(session_browser):
                 b.fill('[name=source]', source)
                 b.wait('!!document.querySelector("#hardware-LEFT_ROBOT_IP")')
                 assert b.js(f'return !!document.querySelector("#hardware-GELLO_CONFIG")==={str(source == "gello").lower()}')
-                assert b.js(f'return document.querySelector("#workspaceSetup").hidden==={"false"}')
+                assert b.js('return !document.querySelector("#workspaceSetup") && config().workspace_limits_enabled===false')
                 assert b.js(f'return document.querySelector("#modelFields").hidden==={str(workflow != "deploy").lower()}')
                 b.click('#preflight')
                 b.wait('!document.querySelector("#preflightResult").hidden && !document.querySelector("#preflight").disabled')
@@ -474,22 +488,17 @@ def test_isolated_demo_start_reconnect_stop(session_browser):
 
 
 @pytest.mark.parametrize('width',[1440,390])
-def test_workspace_and_resume_drafts_and_submitted_boolean_contract(session_browser,width):
+def test_removed_workspace_controls_and_resume_contract(session_browser,width):
     b,scenario,root=session_browser
     b.call('WebDriver:SetWindowRect',width=width,height=1000)
     phase(b,'configure')
-    b.wait('document.querySelector("#workspaceStatus").textContent.includes("YAML")')
-    b.click('#workspaceCustom')
-    b.fill('#workspace-left-min-0','-.23','input')
-    b.click('[name=workspace_limits_enabled]')
-    assert b.js('return config().workspace_limits_enabled===false && document.querySelector("#workspace-left-min-0").disabled')
-    assert b.js('return config().workspace_bounds.left.min[0]===-.23')
+    assert b.js('return !document.querySelector("#workspaceSetup") && config().workspace_limits_enabled===false')
     b.fill('[name=resume]','true')
     b.fill('[name=dataset_root]','datasets/raw/my-existing-data','input')
     for source in ('gello','gamepad'):
         b.fill('[name=source]',source)
         assert b.js('return config().resume===true && config().dataset_root==="datasets/raw/my-existing-data"')
-        assert b.js('return config().workspace_limits_enabled===false && config().workspace_bounds.left.min[0]===-.23')
+        assert b.js('return config().workspace_limits_enabled===false && !config().workspace_bounds')
     b.click('#preflight')
     b.wait('!document.querySelector("#preflight").disabled')
     assert scenario['checks'][-1]['workspace_limits_enabled'] is False
@@ -497,9 +506,9 @@ def test_workspace_and_resume_drafts_and_submitted_boolean_contract(session_brow
     b.click('#start')
     phase(b,'running')
     assert scenario['posts'][-1]['workspace_limits_enabled'] is False
-    assert scenario['posts'][-1]['workspace_bounds']['left']['min'][0]==-.23
+    assert not scenario['posts'][-1].get('workspace_bounds')
     assert scenario['posts'][-1]['resume'] is True
-    assert b.js('return document.querySelector("[name=workspace_limits_enabled]").disabled && document.querySelector("[name=resume]").disabled')
+    assert b.js('return !document.querySelector("[name=workspace_limits_enabled]") && document.querySelector("[name=resume]").disabled')
     scenario['state']='standby'
     scenario['disconnect']()
     b.wait('document.querySelector("#connection").textContent==="已连接"')
@@ -509,8 +518,7 @@ def test_workspace_and_resume_drafts_and_submitted_boolean_contract(session_brow
     phase(b,'finished')
     b.click('#nextSession')
     phase(b,'configure')
-    b.click('[name=workspace_limits_enabled]')
-    assert b.js('return config().workspace_bounds.left.min[0]===-.23 && !document.querySelector("#workspace-left-min-0").disabled')
+    assert b.js('return !document.querySelector("#workspaceSetup") && config().workspace_limits_enabled===false')
     b.fill('[name=source]','gello')
     assert b.js('return config().dataset_root==="datasets/raw/my-existing-data"')
     assert b.js('return document.documentElement.scrollWidth<=innerWidth')

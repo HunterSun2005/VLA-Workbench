@@ -131,7 +131,7 @@ def test_production_teaching_parquet_replay(models, tmp_path, space, arms, sourc
     assert 'torch' not in sys.modules
 
 
-def test_fk_tool_composition_clipping_and_finite_ik(models):
+def test_fk_tool_composition_unbounded_xyz_and_finite_joint_limited_ik(models):
     c, clock, published = make_rig(models, 'tcp', ('left',), 'human')
     servo = c.servos['left']
     p, r = servo.forward(Q)
@@ -139,7 +139,7 @@ def test_fk_tool_composition_clipping_and_finite_ik(models):
     np.testing.assert_allclose(tcp_p, p+r@TOOL_P)
     np.testing.assert_allclose(tcp_r, r@TOOL_R)
     receipt = c.accept(np.r_[[2., 0., .4], matrix_to_rot6d(tcp_r), .5], source='human', generation=c.generation, slot_id=0)
-    assert receipt.target[0] == .8
+    assert receipt.target[0] == 2.
     c.tick()
     q = published[-1][1]
     assert np.isfinite(q).all()

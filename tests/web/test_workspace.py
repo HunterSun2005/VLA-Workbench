@@ -59,32 +59,32 @@ def test_all_routes_apply_workspace(extra, tmp_path):
     assert rollout.arms[0].workspace_min == tuple(BOUNDS['left']['min'])
 
 
-@pytest.mark.parametrize('enabled',[True,False])
-def test_resume_preflight_mode_and_nonempty_guard(tmp_path,ros_ready,enabled):
+@pytest.mark.parametrize('recorded_enabled',[True,False])
+def test_resume_rejects_old_bounded_data_without_rewriting(tmp_path,ros_ready,recorded_enabled):
     import json
     from vla.web.config import preflight
     from vla.datacollection.franka_robotiq_single_left.schema import STATE_FIELDS
-    config=ros_ready(tmp_path,SessionConfig(task='test',dataset_root=str(tmp_path/'data/../data'),resume=True,
-                                          workspace_limits_enabled=enabled))
+    config=ros_ready(tmp_path,SessionConfig(task='test',dataset_root=str(tmp_path/'data/../data'),resume=True))
     root=config.dataset_path(tmp_path)
     bounds=workspace_defaults(config)['left']
-    info={'total_episodes':3,'gripper_recording_version':2,'workspace_limits_enabled':enabled,
-          'execution_projection':{'lower':bounds['min'],'upper':bounds['max'],'workspace_limits_enabled':enabled},
+    info={'total_episodes':3,'gripper_recording_version':2,'workspace_limits_enabled':recorded_enabled,
+          'execution_projection':{'lower':bounds['min'],'upper':bounds['max'],'workspace_limits_enabled':recorded_enabled},
           'features':{'observation.state':{'shape':[50],'names':STATE_FIELDS},
                       **{f'observation.images.{r}':{} for r in config.cameras}}}
     path=root/'meta/info.json';path.parent.mkdir(parents=True);path.write_text(json.dumps(info))
     before=path.read_bytes()
     result=preflight(config,root=tmp_path)
-    assert result['ok'] and result['existing_episodes']==3
+    assert result['ok'] is (not recorded_enabled)
+    assert result['existing_episodes']==3
+    if recorded_enabled:
+        assert any('工作空间开关' in e for e in result['errors'])
     assert result['dataset_root']==str(root)
-    result=preflight(replace(config,workspace_limits_enabled=not enabled),root=tmp_path)
-    assert not result['ok'] and any('工作空间开关' in e for e in result['errors'])
     result=preflight(replace(config,resume=False),root=tmp_path)
     assert not result['ok'] and any('非空' in e for e in result['errors'])
     assert path.read_bytes()==before
 
 
-def test_yaml_switch_default_and_web_override(tmp_path):
+def test_current_sessions_cannot_reenable_xyz_limits(tmp_path):
     import yaml
     from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
     raw=yaml.safe_load(SessionConfig().default_config().read_text())
@@ -93,6 +93,14 @@ def test_yaml_switch_default_and_web_override(tmp_path):
     c=SessionConfig(task='test',config_path=str(path))
     assert c.effective_workspace_limits() is False
     assert c.apply_rollout_workspace(load_rollout_config(path)).workspace_limits_enabled is False
-    assert replace(c,workspace_limits_enabled=True).apply_rollout_workspace(load_rollout_config(path)).workspace_limits_enabled is True
+    with pytest.raises(ValueError, match='workspace limits have been removed'):
+        replace(c,workspace_limits_enabled=True).apply_rollout_workspace(load_rollout_config(path))
     raw['control'].pop('workspace_limits_enabled');path.write_text(yaml.safe_dump(raw))
-    assert c.effective_workspace_limits() is True
+    assert c.effective_workspace_limits() is False
+    assert load_rollout_config(path).workspace_limits_enabled is False
+    raw['control']['workspace_limits_enabled']=True
+    path.write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError, match='workspace limits have been removed'):
+        load_rollout_config(path)
+    with pytest.raises(ValueError, match='workspace limits have been removed'):
+        SessionConfig.parse({'task':'test', 'workspace_limits_enabled':True})

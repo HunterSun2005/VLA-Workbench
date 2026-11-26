@@ -128,8 +128,12 @@ class PlanResponse:
     phases: tuple[int, ...]
     vla_reference: np.ndarray
     context: Mapping[str, np.ndarray] = field(default_factory=dict)
+    # Trusted local receive time, never accepted from or serialized onto the wire.
+    received_at_ns: int | None = field(default=None, kw_only=True, compare=False)
 
     def __post_init__(self):
+        if self.received_at_ns is not None and (type(self.received_at_ns) is not int or self.received_at_ns < 0):
+            raise ValueError('invalid local response receive timestamp')
         shape = (len(self.actions), self.request.anchor.size)
         if not 2*self.request.start_idx <= shape[0] <= self.request.horizon:
             raise ValueError('candidate has no valid suffix or exceeds requested range')
@@ -200,6 +204,7 @@ class Executor:
         self.contract, self.session_id, self.model_version = contract, session_id, model_version
         self.control_clock = FixedDeadline(epoch_ns, contract.control_hz)
         self.state = ExecutionState.STANDBY
+        self.state_reason = None
         self.generation = self.plan_version = self.request_id = 0
         self.episode_id = ''
         self.queue = {}
@@ -218,6 +223,7 @@ class Executor:
         self.locked_until = -1
         self.current = None
         self.state = ExecutionState(state)
+        self.state_reason = str(reason)
         self.events.append(('invalidate', self.generation, self.last_slot, reason))
 
     def enable(self, hold, *, episode_id):

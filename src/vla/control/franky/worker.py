@@ -58,12 +58,8 @@ class FrankyArm:
         self.robot_ip = robot_ip
         self.velocity_control = (velocity_control or VelocityControl()).validate()
         self.realtime_config = realtime_config
-        self.workspace_bounds = None
         if workspace_bounds is not None:
-            bounds = np.asarray(workspace_bounds, dtype=float)
-            if bounds.shape != (2, 3) or not np.isfinite(bounds).all() or np.any(bounds[0] >= bounds[1]):
-                raise ValueError('invalid Franky workspace bounds')
-            self.workspace_bounds = bounds.copy()
+            raise ValueError('TCP workspace limits have been removed; omit workspace_bounds')
         # The Franky worker owns the FCI arm exclusively. Gripper ownership
         # remains with the ROS peripheral stack, so gripper_port is optional.
         self._lease = None
@@ -148,6 +144,7 @@ class FrankyArm:
         if any(not np.isfinite(value).all() for value in (pose, q, dq, qd, tau, tau_ext, force)):
             raise RuntimeError("non-finite Franky measured state")
         return {"arm": self.name, "observed_at_ns": time.monotonic_ns(),
+                "robot_time_s": float(raw.time.to_sec()),
                 "tcp_pose": pose.tolist(), "joints": q.tolist(),
                 "joint_velocity": dq.tolist(), "joint_torque": tau.tolist(),
                 "external_joint_torque": tau_ext.tolist(), "target_joints": qd.tolist(),
@@ -169,7 +166,7 @@ class FrankyArm:
     def _check_state_time(self, raw):
         if hasattr(raw, 'time'):
             stamp = float(raw.time.to_sec())
-            if not math.isfinite(stamp) or (self._robot_stamp is not None and stamp < self._robot_stamp):
+            if not math.isfinite(stamp) or stamp < 0 or (self._robot_stamp is not None and stamp < self._robot_stamp):
                 raise RuntimeError('invalid or regressing Franky measured state timestamp')
             if stamp != self._robot_stamp:
                 self._robot_stamp, self._robot_stamp_at = stamp, time.monotonic()
@@ -191,8 +188,6 @@ class FrankyArm:
         target = np.asarray(_validate_pose(pose), dtype=float)
         target[3:] /= np.linalg.norm(target[3:])
         context = validate_context(context)
-        if self.workspace_bounds is not None and np.any((target[:3] < self.workspace_bounds[0]-1e-9) | (target[:3] > self.workspace_bounds[1]+1e-9)):
-            raise ValueError('absolute target outside workspace')
         previous = self.target_pose
         if previous is not None and self.velocity_control.target_smoothing_enabled:
             target = smooth_pose(previous, target, self.velocity_control.target_smoothing_alpha)
@@ -236,12 +231,6 @@ class FrankyArm:
             dt = (observed-self.last_servo_ns)/1e9 if self.last_servo_ns is not None else 1/30
             alpha = self.velocity_control.velocity_smoothing_alpha ** (30*min(.1, max(0., dt)))
             twist = alpha*self.last_twist + (1-alpha)*twist
-        if self.workspace_bounds is not None:
-            # The 100 ms native motion must not carry a command across a bound.
-            projected = np.clip(measured[:3]+twist[:3]*.1, *self.workspace_bounds)
-            twist[:3] = (projected-measured[:3])/.1
-            if np.any(measured[:3] < self.workspace_bounds[0]-1e-6) or np.any(measured[:3] > self.workspace_bounds[1]+1e-6):
-                raise RuntimeError('measured TCP outside workspace')
         if not np.isfinite(twist).all():
             raise RuntimeError('non-finite derived Cartesian velocity')
         motion = self.franky.CartesianVelocityMotion(
@@ -317,7 +306,7 @@ class FrankyArm:
 
 class FrankyWorker:
     """One generation-fenced owner, with a watchdog independent of client traffic."""
-    IMPLEMENTATION_VERSION = 9
+    IMPLEMENTATION_VERSION = 11
 
     def __init__(self, arms, *, session_id, velocity_control=None, target_timeout_s=.1,
                  state_timeout_s=.5):

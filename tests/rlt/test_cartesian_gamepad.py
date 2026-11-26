@@ -64,6 +64,25 @@ def test_combined_inputs_and_opposite_buttons(config):
     assert command.gripper_motion == 0
 
 
+@pytest.mark.parametrize('axis', [3, 4])
+def test_fast_right_stick_doubles_only_tilt_and_preserves_angular_cap(config, axis):
+    axes = [0, 0, -1, 0, 0, 1]
+    axes[axis] = 1.
+    mapping = config.arms[0].gamepad
+    normal = decode_cartesian_gamepad_values(axes, [0]*11, mapping, config)
+    fast = decode_cartesian_gamepad_values(axes, [0]*11, mapping, config, tilt_scale=2.)
+    np.testing.assert_allclose(fast.angular_velocity_tool, 2*normal.angular_velocity_tool)
+    np.testing.assert_array_equal(fast.linear_velocity_base, normal.linear_velocity_base)
+    assert fast.gripper_motion == normal.gripper_motion
+    assert np.linalg.norm(fast.angular_velocity_tool) <= config.gamepad_max_angular_speed+1e-12
+    axes[3] = axes[4] = 0.
+    buttons = [0]*11
+    buttons[mapping.x_button] = 1
+    normal = decode_cartesian_gamepad_values(axes, buttons, mapping, config)
+    fast = decode_cartesian_gamepad_values(axes, buttons, mapping, config, tilt_scale=2.)
+    np.testing.assert_array_equal(fast.angular_velocity_tool, normal.angular_velocity_tool)
+
+
 def test_deadzone_signs_and_legacy_decoder(config):
     np.testing.assert_allclose(decode(config, [0, 0, 1, .08, -.08, 1]).angular_velocity_tool, 0)
     mapping = replace(config.arms[0].gamepad, right_stick_x_sign=1., right_stick_y_sign=-1.)

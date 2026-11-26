@@ -35,7 +35,7 @@ class SessionConfig:
     side_camera_serial: str = ''
     camera_serials: dict | None = None
     workspace_bounds: dict | None = None
-    workspace_limits_enabled: bool | None = None
+    workspace_limits_enabled: bool = False
     velocity_control: dict | None = None
     lingbot_execution_mode: str = 'rtc'
     lingbot_inference_slots: int = 14
@@ -136,8 +136,8 @@ class SessionConfig:
             raise ValueError('各相机角色不能使用同一设备')
 
     def validate_workspace(self):
-        if self.workspace_limits_enabled is not None and type(self.workspace_limits_enabled) is not bool:
-            raise ValueError('workspace_limits_enabled must be boolean')
+        if self.workspace_limits_enabled is not False:
+            raise ValueError('TCP workspace limits have been removed; workspace_limits_enabled must be false')
         if self.workspace_bounds is None:
             return
         expected = {'left', 'right'} if self.arms == 'dual' else {'left'}
@@ -164,15 +164,10 @@ class SessionConfig:
 
     def effective_workspace_limits(self):
         self.validate_workspace()
-        if self.workspace_limits_enabled is not None:
-            return self.workspace_limits_enabled
-        from vla.datacollection.franka_robotiq_rollout.config import load_rollout_config
-        return load_rollout_config(self.default_config()).workspace_limits_enabled
+        return False
 
     def apply_rollout_workspace(self, rollout):
         self.validate_workspace()
-        if self.workspace_limits_enabled is not None:
-            rollout = replace(rollout, workspace_limits_enabled=self.workspace_limits_enabled)
         if self.workspace_bounds is None:
             return rollout
         return replace(rollout, arms=tuple(replace(arm,
@@ -357,8 +352,7 @@ def preflight(config, *, demo=False, root=None):
                 from .hardware import config_path
                 hardware = json.loads(config_path(root, config.ros_config).read_text())
             collection_camera_serials(config, hardware)
-            bounds = config.workspace_bounds if config.workspace_bounds is not None else workspace_defaults(config)
-            checks.append('TCP 工作空间限制: ' + ('开启' if workspace_enabled else '关闭') + '；范围（米）: ' + json.dumps(bounds, ensure_ascii=False))
+            checks.append('TCP XYZ 工作区域限制已移除')
         except (OSError, ValueError, KeyError, TypeError) as error:
             errors.append(f'无法配置采集相机: {error}')
     if config.workflow == 'deploy' and config.model_backend == 'lingbot_v2':

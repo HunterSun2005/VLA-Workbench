@@ -1,5 +1,6 @@
 from dataclasses import asdict
 from types import SimpleNamespace as NS
+import time
 import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
@@ -16,7 +17,7 @@ def fake_arm():
         is_in_control = False
         def __init__(self):
             self.moves = []
-            self.state = NS(O_T_EE=np.eye(4), F_T_EE=np.eye(4), q=np.zeros(7), dq=np.zeros(7))
+            self.state = NS(time=NS(to_sec=lambda: time.monotonic()), O_T_EE=np.eye(4), F_T_EE=np.eye(4), q=np.zeros(7), dq=np.zeros(7))
         def poll_motion(self): pass
         def move(self, motion, **kw):
             self.moves.append((motion, kw))

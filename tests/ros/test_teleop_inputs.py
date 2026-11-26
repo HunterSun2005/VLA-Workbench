@@ -41,7 +41,7 @@ def rig(profile):
         c._gamepad_targets[a.name] = GamepadTarget(p.copy(),ref.copy(),.5,np.zeros(7),np.zeros(3),np.eye(3))
         from vla.control.geometry import upright_tcp_rotation
         c._initial_pose[a.name] = (p.copy(),upright_tcp_rotation(ref))
-        robot = NS(o_t_ee=c._worker_pose([*p, *Rotation.from_matrix(measured).as_quat()]))
+        robot = NS(robot_time_s=time.monotonic(), o_t_ee=c._worker_pose([*p, *Rotation.from_matrix(measured).as_quat()]))
         now = time.monotonic_ns()
         for key,value in [('robot_state',robot),('gamepad',NS(axes=[0.,0.,1.,0.,0.,1.],buttons=[0]*21)),
                           ('gripper_state',NS(name=[a.gripper_joint_name],position=[.4])),
@@ -54,6 +54,7 @@ def rig(profile):
 def drive(c, values, dt):
     for a in c.config.arms:
         c._latest[f'{a.name}.gamepad'] = (time.monotonic_ns(), values[f'{a.name}.gamepad'])
+        values[f'{a.name}.robot_state'].robot_time_s += dt
     return c._publish_gamepad(values, dt)
 
 
@@ -113,8 +114,8 @@ def test_standard_buttons_raw_profile_and_workspace():
     values['left.robot_state'].o_t_ee.pose.position.x=a.workspace_max[0]
     c._gamepad_targets['left'].position[0]=a.workspace_max[0]
     drive(c,values,.01)
-    assert c._gamepad_targets['left'].position[0]==a.workspace_max[0]
-    assert c.input_diagnostics()['left']['workspace_clipped'][0]
+    assert c._gamepad_targets['left'].position[0]>a.workspace_max[0]
+    assert c.input_diagnostics()['left']['workspace_limits_enabled'] is False
     joy.axes[1]=0;joy.axes[2]=-1
     drive(c,values,.01)
     assert c._gamepad_targets['left'].gripper>.5
@@ -233,7 +234,7 @@ def test_standard_rejects_raw_trigger_shape_and_all_button_roles():
     assert toggles==[True]
 
 
-def test_partial_translation_release_reanchors_once_and_preserves_other_axes():
+def test_partial_translation_release_follows_until_settled_and_preserves_other_axes():
     c = rig('single_left')
     values = {k:v[1] for k,v in c._latest.items()}
     joy, t = values['left.gamepad'], c._gamepad_targets['left']
@@ -244,10 +245,95 @@ def test_partial_translation_release_reanchors_once_and_preserves_other_axes():
     joy.axes[1] = 0.
     drive(c, values, 1/30)
     np.testing.assert_allclose(t.position, [.4, before[1]+c.config.gamepad_xy_speed/30, before[2]], atol=1e-12)
-    # Move the measurement after the release: neutral X must keep its latched reference.
+    # During braking, only the released X channel follows the moving measurement.
     values['left.robot_state'].o_t_ee.pose.position.x = .39
     drive(c, values, 1/30)
-    assert t.position[0] == pytest.approx(.4)
+    assert t.position[0] == pytest.approx(.39)
+
+
+@pytest.mark.parametrize('profile', ['single_left', 'dual'])
+@pytest.mark.parametrize('motion', ['xyz', 'tilt', 'twist'])
+@pytest.mark.parametrize('fast', [False, True])
+@pytest.mark.parametrize('smoothing', [(False, False), (True, False), (False, True), (True, True)])
+def test_release_with_moving_delayed_plant(profile, motion, fast, smoothing, monkeypatch):
+    """30 Hz production frontend + 100 Hz servo + delayed inertial plant.
+
+    The fixed-state acceptance harness cannot expose a stale release latch.
+    This plant carries velocity beyond release and makes that regression visible.
+    """
+    from collections import deque
+    from tests.control.test_velocity_control import fake_arm
+    from vla.control.franky.velocity_control import VelocityControl
+    import vla.control.franky.worker as worker_module
+    import vla.datacollection.franka_robotiq_rollout.collect_ros as collector_module
+    c = rig(profile)
+    values = {k:v[1] for k,v in c._latest.items()}
+    clock = [0.]
+    fake_time = NS(monotonic=lambda:clock[0], monotonic_ns=lambda:int(clock[0]*1e9))
+    monkeypatch.setattr(collector_module, 'time', fake_time)
+    monkeypatch.setattr(worker_module, 'time', fake_time)
+    plants = {}
+    for arm in c.config.arms:
+        name = arm.name
+        servo = fake_arm()
+        servo.velocity_control = VelocityControl(target_smoothing_enabled=smoothing[0],
+                                                velocity_smoothing_enabled=smoothing[1])
+        servo.robot.state.time = NS(to_sec=lambda:clock[0])
+        servo.reset(1)
+        t = c._gamepad_targets[name]
+        plants[name] = dict(servo=servo, p=t.position.copy(), r=t.rotation.copy(), v=np.zeros(6),
+                            delay=deque([np.zeros(6) for _ in range(6)]), trace=[], latched=None)
+        c._high_speed[name] = fast
+    step = 1/300
+    for tick in range(1350):  # 2s motion, then 2.5s to brake and observe the hold.
+        clock[0] = tick*step
+        if tick % 10 == 0:
+            for arm in c.config.arms:
+                name, m = arm.name, arm.gamepad
+                plant = plants[name]
+                robot, joy = values[f'{name}.robot_state'], values[f'{name}.gamepad']
+                robot.robot_time_s = clock[0]
+                robot.o_t_ee = c._worker_pose([*plant['p'], *Rotation.from_matrix(plant['r']).as_quat()])
+                c._latest[f'{name}.gamepad'] = (int(clock[0]*1e9), joy)
+                if motion == 'xyz':
+                    joy.axes[1] = float(tick < 600)
+                elif motion == 'tilt':
+                    joy.axes[3] = float(tick < 600)
+                else:
+                    joy.buttons[m.x_button] = int(tick < 600)
+            c._publish_gamepad(values, 1/30)
+            for name, plant in plants.items():
+                t = c._gamepad_targets[name]
+                pose = np.r_[t.position, Rotation.from_matrix(t.rotation).as_quat()]
+                plant['servo'].set_target(pose.tolist(), 1, tick//10, {'source':'gamepad', 'dt':1/30})
+                if tick > 600 and not t.release.braking.any() and plant['latched'] is None:
+                    plant['latched'] = len(plant['trace'])
+        for plant in plants.values():
+            servo = plant['servo']
+            servo.robot.state.O_T_EE[:3, 3] = plant['p']
+            servo.robot.state.O_T_EE[:3, :3] = plant['r']
+            if tick % 3 == 0:
+                servo.servo_once()
+            plant['delay'].append(servo.last_twist.copy())
+            demanded = plant['delay'].popleft()
+            plant['v'] += (demanded-plant['v'])*(1-np.exp(-step/.12))
+            plant['p'] += plant['v'][:3]*step
+            plant['r'] = Rotation.from_rotvec(plant['v'][3:]*step).as_matrix() @ plant['r']
+            plant['trace'].append((plant['p'].copy(), plant['r'].copy()))
+    for plant in plants.values():
+        assert plant['latched'] is not None
+        p, r = plant['trace'][plant['latched']]
+        held = plant['trace'][plant['latched']:]
+        assert max(np.linalg.norm(q-p) for q, _ in held) <= .0005
+        assert max(Rotation.from_matrix(s @ r.T).magnitude() for _, s in held) <= .01
+        # No sustained return to the pose sampled at release, even before latching.
+        after = plant['trace'][600:]
+        if motion == 'xyz':
+            assert max(q[0] for q, _ in after)-after[-1][0][0] < .0005
+        else:
+            r0 = after[0][1]
+            angles = [Rotation.from_matrix(s @ r0.T).magnitude() for _, s in after]
+            assert max(angles)-angles[-1] < .01
 
 
 @pytest.mark.parametrize('profile', ['single_left', 'dual'])
@@ -301,29 +387,36 @@ def test_partial_angular_release_uses_calibrated_axis_with_following_error():
     expected = Rotation.from_rotvec(basis[:,1]*c.config.gamepad_tilt_speed/30).as_matrix() @ held
     np.testing.assert_allclose(t.rotation, expected, atol=1e-12)
     np.testing.assert_array_equal(t.position, p)
-    # Only the horizontal increment continues; released-axis error is not reset every tick.
+    # With stationary feedback the released component stays zero while horizontal input continues.
+    components = basis.T @ Rotation.from_matrix(expected @ measured.T).as_rotvec()
+    components[0] = 0.
+    expected = Rotation.from_rotvec(basis @ components).as_matrix() @ measured
     drive(c, values, 1/30)
     expected = Rotation.from_rotvec(basis[:,1]*c.config.gamepad_tilt_speed/30).as_matrix() @ expected
     np.testing.assert_allclose(t.rotation, expected, atol=1e-12)
 
 
-def test_fast_is_five_times_translation_without_changing_rotation_or_gripper():
+@pytest.mark.parametrize('axis', [3, 4])
+def test_fast_is_five_times_translation_and_twice_right_stick_with_same_gripper(axis):
     normal, fast = rig('single_left'), rig('single_left')
     for c in (normal, fast):
         values = {k:v[1] for k,v in c._latest.items()}
         joy = values['left.gamepad']
-        joy.axes[1] = joy.axes[4] = 1.; joy.axes[2] = -1.
+        joy.axes[1] = joy.axes[axis] = 1.; joy.axes[2] = -1.
         if c is fast:
             c._high_speed['left'] = True
         p = c._gamepad_targets['left'].position.copy()
         for _ in range(9):
             drive(c, values, 1/30)
         c._test_before = c._gamepad_targets['left'].position.copy()
+        c._test_rotation_before = c._gamepad_targets['left'].rotation.copy()
         drive(c, values, 1/30)
     nt, ft = normal._gamepad_targets['left'], fast._gamepad_targets['left']
     assert fast._speed_scale['left'] == pytest.approx(5.)
     np.testing.assert_allclose(ft.position-fast._test_before, 5*(nt.position-normal._test_before), atol=1e-12)
-    np.testing.assert_allclose(ft.rotation, nt.rotation, atol=1e-12)
+    normal_step = Rotation.from_matrix(nt.rotation @ normal._test_rotation_before.T).as_rotvec()
+    fast_step = Rotation.from_matrix(ft.rotation @ fast._test_rotation_before.T).as_rotvec()
+    np.testing.assert_allclose(fast_step, 2*normal_step, atol=1e-12)
     assert ft.gripper == pytest.approx(nt.gripper)
 
 
@@ -370,13 +463,12 @@ def test_workspace_disabled_gamepad_and_all_source_projection_keep_finite_checks
     values['left.gamepad'].axes[1]=1.
     drive(c,values,1/30)
     assert t.position[0]>a.workspace_max[0]
-    assert not c.input_diagnostics()['left']['workspace_clipped'][0]
+    assert c.input_diagnostics()['left']['workspace_limits_enabled'] is False
     action=np.r_[[1.2,0,.3],matrix_to_rot6d(t.rotation),.5]
     np.testing.assert_allclose(c.coordinator.project(action),action)
     bounds=[(np.array(a.workspace_min),np.array(a.workspace_max))]
     validate_absolute_action(action,arm_count=1,workspace_bounds=bounds,workspace_limits_enabled=False)
-    with pytest.raises(ValueError,match='outside workspace'):
-        validate_absolute_action(action,arm_count=1,workspace_bounds=bounds)
+    validate_absolute_action(action,arm_count=1,workspace_bounds=bounds)
     for bad in (np.r_[np.nan,action[1:]], np.r_[action[:3],np.zeros(6),.5]):
         with pytest.raises(ValueError):
             c.coordinator.project(bad)

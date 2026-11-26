@@ -96,11 +96,47 @@ def test_discontinuity_requires_explicit_enable(fault):
         assert ex.advance(2, 2) is None
     else:
         ex.invalidate(ExecutionState.STORAGE if fault == 'storage' else ExecutionState.WAITING, fault)
+    reason = {'timeout': 'RTC inference deadline expired', 'late': 'late RTC response',
+              'missing': 'queue exhausted', 'skip': 'missed RTC execution slot'}.get(fault, fault)
+    assert ex.state_reason.startswith(reason)
+    reason = ex.state_reason
     assert not ex.install(response(req), 3)
+    assert ex.state_reason == reason  # A stale result must not erase the cause.
     assert request(ex, 2) is None
     assert ex.advance(3, 4) is None
     ex.enable(POSE, episode_id='resumed')
     assert request(ex, 4) is not None
+
+
+@pytest.mark.parametrize('fault', ['context', 'deadline', 'boundary'])
+def test_rtc_rejection_identifies_context_deadline_and_boundary_separately(fault):
+    ex = setup(); req = request(ex, 0); result = response(req)
+    now = 1
+    if fault == 'context':
+        result = replace(result, request=replace(req, observed_at_ns=1))
+        expected = 'RTC response context mismatch'
+    elif fault == 'deadline':
+        now = req.deadline_ns + 12_000_000
+        expected = 'late RTC response: request=0, elapsed=478.7ms, budget=466.7ms, late_by=12.0ms'
+    else:
+        ex.last_slot = req.replace_slot
+        expected = 'RTC response missed installation boundary: request=0, last_slot=15, replace_slot=15'
+    assert not ex.install(result, now)
+    assert ex.state_reason == expected and ex.state == ExecutionState.WAITING
+    candidates = [event for event in ex.events if event[0] == 'candidate']
+    assert candidates[-1][2] == {'checked_at_ns': now, 'network_received_at_ns': None}
+    assert any(e[0] == 'reject' and e[2] == expected for e in ex.events)
+    assert not ex.queue and ex.inflight is None
+
+
+def test_late_response_reports_network_and_control_handoff_without_extending_deadline():
+    ex = setup(); req = request(ex, 0)
+    result = replace(response(req), received_at_ns=req.deadline_ns-1_000_000)
+    assert not ex.install(result, req.deadline_ns+12_000_000)
+    assert 'network_elapsed=465.7ms, handoff=13.0ms' in ex.state_reason
+    header, arrays = result.packet()
+    assert 'received_at_ns' not in header
+    assert PlanResponse.from_packet(dict(header, received_at_ns=123), arrays).received_at_ns is None
 
 
 def test_old_generation_does_not_revoke_new_inflight():

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -29,12 +29,84 @@ class CartesianGamepadCommand:
     gripper_motion: float
 
 
+# Included in the recording control fingerprint. These are frontend semantics,
+# not a different servo law for human commands.
+RELEASE_PARAMETERS = dict(min_duration_s=.2, stable_duration_s=.1,
+                          linear_speed_m_s=.002, angular_speed_rad_s=.02,
+                          timeout_s=2., max_sample_gap_s=.1)
+
+
+@dataclass
+class GamepadRelease:
+    """Follow only released channels while native velocity motion settles.
+
+    Stop detection uses measured poses and the robot's sample clock. Cached
+    samples and command velocities cannot provide evidence of a stopped arm.
+    Returned masks include the final sample, so latching uses that sample.
+    """
+    braking: np.ndarray = field(default_factory=lambda: np.zeros(6, dtype=bool))
+    started: np.ndarray = field(default_factory=lambda: np.zeros(6))
+    stable: np.ndarray = field(default_factory=lambda: np.zeros(6))
+    sample: tuple | None = None
+
+    def clear(self):
+        self.braking[:] = False
+        self.stable[:] = 0.
+        self.sample = None
+
+    def check_deadline(self, now):
+        if np.any(self.braking & (now-self.started >= RELEASE_PARAMETERS['timeout_s'])):
+            raise RuntimeError('gamepad release did not settle within 2s; manual recovery required')
+
+    def update(self, active, released, position, rotation, basis_tool, robot_time_s, now):
+        from scipy.spatial.transform import Rotation
+        if isinstance(robot_time_s, bool) or not isinstance(robot_time_s, (int, float)) or not math.isfinite(robot_time_s) or robot_time_s < 0:
+            raise RuntimeError('gamepad release requires a valid robot sample time')
+        active, released = np.asarray(active, dtype=bool), np.asarray(released, dtype=bool)
+        self.braking[active] = False
+        self.stable[active | released] = 0.
+        self.braking[released] = True
+        self.started[released] = now
+        self.check_deadline(now)
+        speed = None
+        sample_dt = 0.
+        if self.sample is not None:
+            stamp, previous_p, previous_r = self.sample
+            sample_dt = robot_time_s-stamp
+            if sample_dt < 0:
+                raise RuntimeError('regressing robot sample time during gamepad control')
+            if 0 < sample_dt <= RELEASE_PARAMETERS['max_sample_gap_s']:
+                angular_base = Rotation.from_matrix(rotation @ previous_r.T).as_rotvec()/sample_dt
+                speed = np.r_[(position-previous_p)/sample_dt,
+                              (rotation @ basis_tool).T @ angular_base]
+        if self.sample is None or sample_dt > 0:
+            self.sample = (robot_time_s, position.copy(), rotation.copy())
+        follow = self.braking.copy()
+        if speed is not None:
+            thresholds = np.r_[np.full(3, RELEASE_PARAMETERS['linear_speed_m_s']),
+                               np.full(3, RELEASE_PARAMETERS['angular_speed_rad_s'])]
+            slow = np.abs(speed) < thresholds
+            self.stable[~slow] = 0.
+            self.stable[slow & self.braking & ~released] += sample_dt
+            done = (self.braking & (self.stable >= RELEASE_PARAMETERS['stable_duration_s']-1e-9)
+                    & (now-self.started >= RELEASE_PARAMETERS['min_duration_s']-1e-9))
+            self.braking[done] = False
+        else:
+            # Never let a long gap or duplicate sample count as stationary time.
+            self.stable[:] = 0.
+        return follow[:3], follow[3:]
+
+
 def decode_cartesian_gamepad_values(
     axes: Sequence[float],
     buttons: Sequence[int],
     mapping: GamepadConfig,
     config: CartesianGamepadParameters,
+    *,
+    tilt_scale: float = 1.,
 ) -> CartesianGamepadCommand:
+    if not math.isfinite(tilt_scale) or not 1 <= tilt_scale <= 2:
+        raise ValueError('right-stick tilt scale must be in [1, 2]')
     validate_gamepad_values(axes, buttons, mapping)
     linear, x_button, b_button, gripper = decode_gamepad_values(axes, buttons, mapping, config)
     try:
@@ -46,8 +118,8 @@ def decode_cartesian_gamepad_values(
     # The physical tilt directions are defined by this mapping plus the -45
     # degree calibration, not by relabeling the tool X/Y axes as pitch/roll.
     angular = np.array([
-        mapping.right_stick_y_sign * vertical * config.gamepad_tilt_speed,
-        mapping.right_stick_x_sign * horizontal * config.gamepad_tilt_speed,
+        mapping.right_stick_y_sign * vertical * config.gamepad_tilt_speed * tilt_scale,
+        mapping.right_stick_x_sign * horizontal * config.gamepad_tilt_speed * tilt_scale,
         mapping.tool_roll_button_sign * (x_button - b_button) * config.gamepad_roll_speed,
     ], dtype=float)
     # Rotate only the tilt vector in tool XY. Positive angles are counterclockwise
@@ -70,8 +142,8 @@ def release_rotation_reference(measured, reference, basis_tool, released):
     """Remove only released-channel error, in the current measured control basis.
 
     Project a single rotation vector, rather than subtracting Euler angles.
-    The other channels keep their reference error; subsequent neutral samples
-    do not re-anchor the pose or turn impedance hold into gravity compensation.
+    The other channels keep their reference error. The frontend selects these
+    channels only during release braking; after settling the absolute pose holds.
     """
     if not np.any(released):
         return reference

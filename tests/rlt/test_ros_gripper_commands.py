@@ -253,6 +253,9 @@ def test_collector_preflight_requires_drive_consumer_not_recording_listener(ros_
     c._gripper_action_clients = {a.name: NS(server_is_ready=lambda: True) for a in c.config.arms}
     c.policy_client = None
     c._worker_client = NS(fault=None, states=lambda:{a.name:NS() for a in c.config.arms})
+    # This test isolates gripper connectivity; observation import and freshness
+    # are exercised with actual WorkerState objects in the collector tests.
+    c._cache_worker_state = lambda *args: None
     c._snapshot = lambda **_: None
     missing.update(a.command_gripper_topic for a in c.config.arms)
     assert c._preflight_problems() == []

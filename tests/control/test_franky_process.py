@@ -124,16 +124,15 @@ def test_real_tracker_lifecycle_and_explicit_recovery(arms):
                 pass
 
 
-def test_absolute_target_receipts_frames_and_velocity_workspace_limits():
+def test_absolute_target_receipts_frames_and_speed_limits_without_xyz_bounds():
     import numpy as np
     from scipy.spatial.transform import Rotation
     from vla.control.franky.tcp_frame import TCPFrame
     tool = [0, 0, .174, *Rotation.from_euler('z', -np.pi/4).as_quat()]
     frame = TCPFrame(tool)
-    bounds = [[-.005]*3, [.005]*3]
-    with process_worker(tool_pose=tool, workspace_bounds=bounds) as (root, _, _):
+    with process_worker(tool_pose=tool) as (root, _, _):
         request(root, 'reset', 1)
-        goal = frame.to_logical(np.array([.0048, 0, 0, 0, 0, 0, 1.]))
+        goal = frame.to_logical(np.array([1.2, 0, 0, 0, 0, 0, 1.]))
         result = request(root, 'target', 1, sequence=1, timestamp_ns=time.monotonic_ns(),
                          arms={'left': {'pose': goal.tolist()}})
         assert not result['fault']
@@ -141,7 +140,7 @@ def test_absolute_target_receipts_frames_and_velocity_workspace_limits():
         np.testing.assert_allclose(state['nominal_tcp_pose'], goal)
         np.testing.assert_allclose(state['reference_tcp_pose'], goal)
         np.testing.assert_allclose(state['hardware_reference_tcp_pose'], frame.to_hardware(goal), atol=1e-12)
-        assert abs(state['commanded_twist'][0]) <= .005/.1
+        assert state['commanded_twist'][0] == pytest.approx(.05)
         event = result['servo_events'][0]
         assert event['sequence'] == 1 and event['slot_id'] == 1
         assert event['applied_at_ns'] >= event['observed_at_ns']
@@ -218,6 +217,27 @@ def test_client_fault_latches_until_recover_and_control_requires_reset():
                                            'request_id': uuid.uuid4().hex})
             assert not client.fault and not response['fault']
             assert not any(s.servo_ready for s in client.states().values())
+        finally:
+            client.close()
+
+
+def test_idle_client_refreshes_real_worker_without_enabling_motion():
+    with process_worker(target_timeout=.1, state_timeout=.5) as (root, _, _):
+        client = FrankyWorkerClient(root/'w.sock', session_id='s')
+        try:
+            wait_for(client.states)
+            samples = []
+            end = time.monotonic() + .6
+            while time.monotonic() < end:
+                state = client.states()['left']
+                samples.append((time.monotonic_ns() - state.observed_at_ns) / 1e9)
+                assert not state.servo_ready
+                time.sleep(.005)
+            assert max(samples) < .1, max(samples)
+            assert not client.fault
+            log = root/'robot-events.jsonl'
+            events = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+            assert not any(event in ('move', 'recover') for _, event in events)
         finally:
             client.close()
 

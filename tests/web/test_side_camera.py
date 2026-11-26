@@ -58,7 +58,7 @@ def test_resume_refuses_adding_or_removing_side(tmp_path, initial_side, ros_read
     path = cfg.dataset_path(tmp_path)/'meta/info.json'
     path.parent.mkdir(parents=True)
     bounds = workspace_defaults(cfg)
-    path.write_text(json.dumps({'total_episodes':0, 'execution_projection':{'lower':bounds['left']['min'], 'upper':bounds['left']['max']}, 'gripper_recording_version': 2, 'features': {'observation.state': {'shape':[50], 'names':STATE_FIELDS},
+    path.write_text(json.dumps({'total_episodes':0, 'workspace_limits_enabled':False, 'execution_projection':{'workspace_limits_enabled':False, 'lower':bounds['left']['min'], 'upper':bounds['left']['max']}, 'gripper_recording_version': 2, 'features': {'observation.state': {'shape':[50], 'names':STATE_FIELDS},
                                             **{f'observation.images.{r}': {} for r in cfg.cameras}}}))
     assert preflight(cfg, root=tmp_path)['ok']
     changed = replace(cfg, side_camera_serial='' if initial_side else 'SIDE123')

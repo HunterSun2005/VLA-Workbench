@@ -5,7 +5,7 @@ import socket
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -160,6 +160,7 @@ class AsyncPolicyClient:
                 with self._connect() as connection:
                     send_packet(connection, header, arrays)
                     response, values = recv_packet(connection)
+                    received_at_ns = time.monotonic_ns()
                 with self._lock:
                     stale = header['request_id'] < self._min_valid_request_id
                 if stale:
@@ -168,7 +169,7 @@ class AsyncPolicyClient:
                     continue
                 if response.get('kind') != 'plan_result':
                     raise RuntimeError(f'invalid candidate response: {response}')
-                plan = PlanResponse.from_packet(response, values)
+                plan = replace(PlanResponse.from_packet(response, values), received_at_ns=received_at_ns)
                 if plan.request.identity != PlanRequest.from_packet(header, arrays).identity:
                     raise ValueError('response identity mismatch')
                 self._results.put_nowait(plan)
